@@ -39,6 +39,39 @@ It is designed to stay out of your way:
 
 Design and planning documents (in Turkish) live in [`docs/`](docs/). The implementation plan is in [`docs/plan/`](docs/plan/README.md).
 
+## Development
+
+### Prerequisites (Windows)
+
+- [rustup](https://rustup.rs/) with the MSVC host toolchain. The exact Rust version is pinned in `rust-toolchain.toml` and installed automatically.
+- Visual Studio Build Tools with the "Desktop development with C++" workload.
+- [Node.js](https://nodejs.org/) LTS (22.12 or newer) and [pnpm](https://pnpm.io/) (version pinned in `package.json`; `corepack enable` picks it up).
+- Microsoft Edge WebView2 Runtime (preinstalled on Windows 11).
+- Optional: [`cargo-deny`](https://github.com/EmbarkStudios/cargo-deny) for `pnpm deny` (`cargo install cargo-deny --locked`).
+
+### Common tasks
+
+```sh
+pnpm i                         # install JS dependencies
+pnpm dev                       # run the app in development mode (tray icon, no window)
+pnpm check:all                 # rustfmt, clippy, cargo test, Biome, svelte-check, Vitest
+pnpm fmt                       # format Rust and frontend code
+pnpm deny                      # license, advisory and source checks for Rust dependencies
+pnpm tauri build --no-bundle   # release binaries in target/release/
+```
+
+The first `pnpm dev` compiles the whole Tauri stack and takes a few minutes.
+
+### Layout
+
+| Path | What |
+|---|---|
+| `crates/tokenradar-core` | Domain, storage, indexer, providers, limit engine (no Tauri dependency) |
+| `crates/tokenradar-i18n` | Fluent-based localization shared by the app and the CLI |
+| `crates/tokenradar-cli` | The `tokenradar` console binary |
+| `app/src-tauri` | The `tokenradar-app` Tauri shell: tray and windows |
+| `app/src` | Svelte 5 frontend, one bundle per window |
+
 ## License
 
 [MIT](LICENSE)

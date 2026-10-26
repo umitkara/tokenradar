@@ -131,3 +131,14 @@
 ### ADR-021 — Platform tabanı
 **Durum:** Kabul
 - **Karar:** Birincil hedef Windows 11'dir. Windows 10 (1809+, WebView2 mevcut) desteklenir: Mica yerine opak/Acrylic yedek kullanılır. macOS ve Linux v0.5'te eklenir. Tüm kod, platforma özgü kısımlar `cfg` ile ayrılmış şekilde yazılır.
+
+### ADR-022 — Adım 01 araç zinciri sürümleri
+**Durum:** Kabul (2026-10-27, Adım 01)
+- **Bağlam:** Plan yazıldıktan sonra ekosistemde üç değişiklik çıktı: Vite 8 paketleyici olarak Rolldown'a geçti, TypeScript 7.0 (Go portu) yayımlandı ve rustfmt'nin `imports_granularity` seçeneği hâlâ yalnızca nightly'de çalışıyor. Ayrıca `clippy -D warnings` kullandığımız için her yeni Rust sürümü CI'ı habersizce kırabilir.
+- **Karar:**
+  - **Rust toolchain sabitlenir:** `rust-toolchain.toml` → `1.99.1` (rustfmt + clippy). Yerel ortam ve CI aynı lint kümesini görür. Yükseltme bilinçli bir commit ile yapılır: `rust-toolchain.toml` ve `rust-version` birlikte güncellenir, yeni clippy uyarıları aynı commit'te giderilir.
+  - **Vite 8:** Çok sayfalı girişler `build.rolldownOptions.input` ile tanımlanır. Plandaki `build.rollupOptions` adı yalnızca uyumluluk takma adı olarak yaşıyor.
+  - **TypeScript 6.x'e sabitlenir:** `svelte-check` 4.x yalnızca `typescript ^5 || ^6` destekliyor. svelte-check TS 7 desteği yayımladığında yükseltilir.
+  - **rustfmt yalnızca stable ayarlarla çalışır:** `rustfmt.toml` içinde yalnızca `max_width = 100` bulunur. Crate bazlı import gruplama bir konvansiyondur, araçla zorlanmaz. `imports_granularity` stable'a geçtiğinde geri eklenir.
+- **Bedel:** Rust sürüm yükseltmeleri elle yapılır. TS 7'nin hız kazancından şimdilik yararlanılmıyor. Import biçimi kod incelemesine kalıyor.
+- **Alternatifler:** `channel = "stable"` (bakımı daha az, ama CI sürprizleri olabilir); biçimlendirme için tarihli nightly toolchain (ayar zorlanır ama ikinci bir toolchain gerekir). İkisi de kullanıcıyla değerlendirildi ve reddedildi.
