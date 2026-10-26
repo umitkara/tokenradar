@@ -67,6 +67,7 @@ TokenRadar'ı ilk kez dış dünyaya çıkarmak. Bu adımda şunlar yapılır:
 
 ### GitHub ve CI/CD
 
+- [ ] **Ad çakışması kontrolü:** Planlama araştırmasında "TokenRadar" / "Token Radar" adını kullanan başka ürünler görüldü (ai.cc, PeerPush listeleri). Kullanıcı adı korumayı seçti. Public sürümden önce GitHub, winget, Scoop ve crates.io'da adın müsait olup olmadığını kontrol et; sonuçları kullanıcıya sun. Paket kimlikleri (winget `Publisher.TokenRadar`, Scoop manifest adı) bu sonuca göre belirlenir.
 - [ ] **Kullanıcıya sor ve onay al:** repo adı, sahibi, görünürlük (public), açıklama ve konu etiketleri (`claude-code`, `usage-tracker`, `tauri`, `rust`, `windows`, `tray`). Repo `gh repo create` ile oluşturulur. **Push, kullanıcı onayından sonra yapılır.**
 - [ ] `ci.yml` (Adım 01) yeşil olmalı. Gerekli düzeltmeleri yap.
 - [ ] `release.yml`:
