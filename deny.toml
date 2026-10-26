@@ -1,0 +1,45 @@
+# cargo-deny configuration. Run with `pnpm deny` (or `cargo deny check`).
+
+[graph]
+# The app ships on Windows first; macOS and Linux join in v0.5 (ADR-021).
+targets = [
+    "x86_64-pc-windows-msvc",
+    "aarch64-pc-windows-msvc",
+]
+all-features = false
+
+[advisories]
+version = 2
+yanked = "deny"
+
+[licenses]
+version = 2
+confidence-threshold = 0.9
+# The allow list is a policy, not an inventory: entries may be unused at any given time.
+unused-allowed-license = "allow"
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Unicode-3.0",
+    "Zlib",
+    # File-level copyleft only: modified MPL files must stay MPL, the rest of the app is unaffected.
+    "MPL-2.0",
+    # Fonts only (embedded reading font, Step 09).
+    "OFL-1.1",
+]
+
+[licenses.private]
+ignore = true
+
+[bans]
+multiple-versions = "allow"
+wildcards = "deny"
+allow-wildcard-paths = true
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]

@@ -1,0 +1,16 @@
+[package]
+name = "tokenradar-core"
+description = "Domain, storage, indexing and limit engine for TokenRadar"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[dependencies]
+tokenradar-i18n.workspace = true
+
+[lints]
+workspace = true

@@ -1,0 +1,21 @@
+[package]
+name = "tokenradar-cli"
+description = "TokenRadar command-line interface and Claude Code statusline bridge"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "tokenradar"
+path = "src/main.rs"
+
+[dependencies]
+tokenradar-core.workspace = true
+lexopt.workspace = true
+
+[lints]
+workspace = true

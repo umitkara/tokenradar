@@ -1,0 +1,5 @@
+[toolchain]
+# Pinned so that local builds and CI see the same clippy lints (ADR-022).
+channel = "1.99.1"
+components = ["rustfmt", "clippy"]
+profile = "minimal"

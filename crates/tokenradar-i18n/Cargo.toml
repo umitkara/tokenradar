@@ -1,0 +1,15 @@
+[package]
+name = "tokenradar-i18n"
+description = "Fluent-based localization shared by the TokenRadar app and CLI"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[dependencies]
+
+[lints]
+workspace = true
