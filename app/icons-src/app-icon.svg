@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <title>TokenRadar</title>
+  <!-- Static placeholder: outer ring = weekly, inner ring = 5-hour window (design-language.md). -->
+  <rect width="1024" height="1024" rx="224" fill="#15181c"/>
+  <g fill="none" transform="rotate(-90 512 512)">
+    <circle cx="512" cy="512" r="380" stroke="#464b52" stroke-width="70"/>
+    <circle cx="512" cy="512" r="380" stroke="#43d3cc" stroke-width="70" stroke-linecap="round" stroke-dasharray="1552 2388"/>
+    <circle cx="512" cy="512" r="250" stroke="#464b52" stroke-width="100"/>
+    <circle cx="512" cy="512" r="250" stroke="#43d3cc" stroke-width="100" stroke-linecap="round" stroke-dasharray="628 1571"/>
+  </g>
+</svg>

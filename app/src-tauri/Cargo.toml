@@ -1,0 +1,22 @@
+[package]
+name = "tokenradar-app"
+description = "TokenRadar desktop app: tray icon, panel and windows"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[build-dependencies]
+tauri-build.workspace = true
+
+[dependencies]
+tokenradar-core.workspace = true
+tokenradar-i18n.workspace = true
+tauri.workspace = true
+tauri-plugin-single-instance.workspace = true
+
+[lints]
+workspace = true
