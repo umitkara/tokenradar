@@ -1,0 +1,19 @@
+{
+  "name": "tokenradar",
+  "private": true,
+  "license": "MIT",
+  "packageManager": "pnpm@11.10.0",
+  "engines": {
+    "node": ">=22.12"
+  },
+  "scripts": {
+    "dev": "pnpm -C app tauri dev",
+    "build": "pnpm -C app tauri build",
+    "tauri": "pnpm -C app tauri",
+    "lint": "cargo clippy --workspace --all-targets -- -D warnings && pnpm -C app lint",
+    "fmt": "cargo fmt --all && pnpm -C app fmt",
+    "test": "cargo test --workspace && pnpm -C app test",
+    "deny": "cargo deny check",
+    "check:all": "cargo fmt --all --check && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace && pnpm -C app lint && pnpm -C app check && pnpm -C app test"
+  }
+}

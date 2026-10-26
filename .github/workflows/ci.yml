@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  check:
+    name: Check and build (Windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # Installs the toolchain pinned in rust-toolchain.toml.
+      - name: Install Rust toolchain
+        run: rustup toolchain install
+
+      - uses: Swatinem/rust-cache@v2
+
+      # Reads the pnpm version from `packageManager` in package.json.
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install JS dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Format, lint and test
+        run: pnpm check:all
+
+      - name: Release build
+        run: pnpm tauri build --no-bundle
+
+  deny:
+    name: Dependency policy
+    # cargo-deny-action is a container action, so it needs a Linux runner.
+    # deny.toml pins the Windows targets, so the analysed graph is the same.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: EmbarkStudios/cargo-deny-action@v2
