@@ -9,8 +9,13 @@
 //!               │  └──────────(indexed)─────────────────┘
 //!               ├─ live-session trackers, credentials mtime
 //!               └─ timers: debounce, hot files, liveness, safety scan
+//!               └─ live sessions, credentials ──► core-limits ◄── core-api-<account> (S2)
 //!  every thread ──► EventBus ──► app
 //! ```
+//!
+//! `core-limits` owns the [`LimitEngine`]: it fuses observations, detects resets and publishes
+//! [`CoreEvent::LimitsUpdated`] when the panel would look different. Each account has a
+//! `core-api-<id>` poller that only sends requests with the user's consent (ADR-006).
 //!
 //! Start-up order (architecture §2): the watcher starts at once; the first full scan waits
 //! [`Timings::startup_delay`] so the tray and IPC come up first.
@@ -26,18 +31,21 @@ use std::time::{Duration, Instant, SystemTime};
 use serde::Serialize;
 use specta::Type;
 
-use crate::domain::{AccountId, AccountSpec, Provider, Timestamp};
+use crate::clock::SystemClock;
+use crate::domain::{AccountId, AccountSpec, LimitObservation, Provider, Timestamp};
 use crate::events::{CoreEvent, DriftSource, EventBus, Subscription};
 use crate::indexer::{
     self, IndexEvent, IndexMilestone, IndexReport, Indexer, IndexerConfig, RetentionScheduler,
 };
+use crate::limits::{AccountMeta, IndexState, LimitEngine, LimitEvent, PanelSnapshot, VisibleKey};
 use crate::live_sessions::{self, LiveSession, LiveSessionTracker};
+use crate::providers::claude::credentials::{self, CREDENTIALS_FILE};
+use crate::providers::claude::usage_api::{
+    HttpTransport, PollInputs, PollUpdate, PollerMsg, UsageApiPoller,
+};
 use crate::providers::claude::{AccountDescriptor, PROJECTS_DIR, classify_path};
 use crate::store::{Store, StoreError};
 use crate::watcher::{self, Debouncer, FsSignal, FsWatcher, HotFiles, Stamp};
-
-/// Claude Code's credentials file. Only its modification time is ever looked at here.
-const CREDENTIALS_FILE: &str = ".credentials.json";
 
 /// How long shutdown waits for the threads by default (Step 05 acceptance: exit within 2 s).
 pub const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(2);
@@ -45,6 +53,9 @@ pub const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(2);
 /// How often liveness is re-checked while sessions are listed. Exits that remove the file are
 /// seen at once through the watcher; this only catches crashes that leave the file behind.
 pub const LIVENESS_INTERVAL: Duration = Duration::from_secs(15);
+
+/// The panel snapshot is rebuilt at most this often; statusline calls can arrive every second.
+pub const LIMITS_REBUILD_GAP: Duration = Duration::from_secs(2);
 
 #[derive(Debug, thiserror::Error)]
 pub enum RuntimeError {
@@ -89,6 +100,9 @@ pub struct CoreConfig {
     pub indexer: IndexerConfig,
     /// Raw-event retention in days; `None` disables the daily job.
     pub retention_days: Option<u32>,
+    /// The user allowed the OAuth usage API (see [`crate::config::AppConfig::api_consent_granted`]).
+    /// Without it no request is ever sent and the token is never read.
+    pub api_consent: bool,
 }
 
 impl CoreConfig {
@@ -99,12 +113,13 @@ impl CoreConfig {
             timings: Timings::default(),
             indexer: IndexerConfig::default(),
             retention_days: Some(indexer::DEFAULT_KEEP_DAYS),
+            api_consent: false,
         }
     }
 }
 
 /// A snapshot of the runtime's state; what a subscriber reloads after [`crate::events::Delivery::Resync`].
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Type)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Type)]
 pub struct CoreStatus {
     pub live_sessions: Vec<LiveSession>,
     /// End of the last indexing pass that stored something, or of the first full scan.
@@ -113,6 +128,8 @@ pub struct CoreStatus {
     pub initial_scan_done: bool,
     /// Incremental passes since start (diagnostics).
     pub incremental_passes: u64,
+    /// The latest panel view model; `None` until the limit engine has built one.
+    pub limits: Option<PanelSnapshot>,
 }
 
 /// Entry point.
@@ -127,7 +144,10 @@ impl CoreRuntime {
         let status = Arc::new(Mutex::new(CoreStatus::default()));
         let cancel = Arc::new(AtomicBool::new(false));
         let (watch_tx, watch_rx) = mpsc::channel::<WatchMsg>();
+        let (limits_tx, limits_rx) = mpsc::channel::<LimitsMsg>();
         let mut threads = Vec::new();
+        let mut metas = Vec::new();
+        let mut pollers = Vec::new();
 
         let mut watched = Vec::new();
         let mut index_txs = Vec::new();
@@ -136,14 +156,18 @@ impl CoreRuntime {
             lock(&status).initial_scan_done = true;
         }
         for desc in &config.accounts {
-            let account = store.writer().upsert_account(AccountSpec {
-                provider: Provider::Claude,
-                label: desc.label.clone(),
-                config_dir: desc.config_dir.to_string_lossy().into_owned(),
-                plan: None,
-                tier: None,
-                environment: "native".into(),
-            })?;
+            let meta = register_account(&store, desc)?;
+            let account = meta.id;
+            metas.push(meta);
+            let (thread, link) = spawn_poller(
+                account,
+                desc.config_dir.clone(),
+                config.api_consent,
+                &cancel,
+                limits_tx.clone(),
+            )?;
+            threads.push(thread);
+            pollers.push(link);
             let mut indexer = Indexer::new(
                 store.clone(),
                 account,
@@ -158,6 +182,7 @@ impl CoreRuntime {
                 bus: bus.clone(),
                 status: status.clone(),
                 watch_tx: watch_tx.clone(),
+                limits_tx: limits_tx.clone(),
                 startup_delay: config.timings.startup_delay,
                 pending_initial: pending_initial.clone(),
             };
@@ -173,10 +198,20 @@ impl CoreRuntime {
             ));
         }
 
+        let engine = LimitEngine::new(store.clone(), metas, config.api_consent, Timestamp::now())?;
+        let ctx = LimitsCtx {
+            engine,
+            pollers,
+            bus: bus.clone(),
+            status: status.clone(),
+        };
+        threads.push(spawn("core-limits", move || limits_loop(ctx, &limits_rx))?);
+
         let fs = FsWatcher::new(watch_tx.clone(), WatchMsg::Fs)?;
         let ctx = WatchCtx {
             accounts: watched,
             fs,
+            limits_tx: limits_tx.clone(),
             bus: bus.clone(),
             status: status.clone(),
             timings: config.timings.clone(),
@@ -198,6 +233,7 @@ impl CoreRuntime {
             status,
             cancel,
             watch_tx,
+            limits_tx,
             index_txs,
             threads,
             retention,
@@ -213,6 +249,7 @@ pub struct CoreHandle {
     status: Arc<Mutex<CoreStatus>>,
     cancel: Arc<AtomicBool>,
     watch_tx: mpsc::Sender<WatchMsg>,
+    limits_tx: mpsc::Sender<LimitsMsg>,
     index_txs: Vec<mpsc::Sender<IndexCmd>>,
     threads: Vec<JoinHandle<()>>,
     retention: Option<RetentionScheduler>,
@@ -240,6 +277,21 @@ impl CoreHandle {
         lock(&self.status).clone()
     }
 
+    /// Feeds a limit reading into the engine, e.g. from the statusline bridge (Step 07).
+    pub fn ingest_limit(&self, obs: LimitObservation) {
+        let _ = self.limits_tx.send(LimitsMsg::Observe(obs));
+    }
+
+    /// The panel opened: the usage API refreshes data older than 60 s (with consent).
+    pub fn panel_opened(&self) {
+        let _ = self.limits_tx.send(LimitsMsg::PanelOpened);
+    }
+
+    /// Grants or withdraws consent for the usage API at runtime (settings, Step 11).
+    pub fn set_api_consent(&self, granted: bool) {
+        let _ = self.limits_tx.send(LimitsMsg::Consent(granted));
+    }
+
     /// Stops every core thread and waits up to `timeout`. An indexing pass in progress stops
     /// after its current file; what it stored stays consistent.
     pub fn shutdown(mut self, timeout: Duration) -> ShutdownReport {
@@ -251,6 +303,7 @@ impl CoreHandle {
         let deadline = Instant::now().checked_add(timeout);
         self.cancel.store(true, Ordering::Relaxed);
         let _ = self.watch_tx.send(WatchMsg::Stop);
+        let _ = self.limits_tx.send(LimitsMsg::Stop);
         for tx in self.index_txs.drain(..) {
             let _ = tx.send(IndexCmd::Stop);
         }
@@ -290,6 +343,56 @@ impl Drop for CoreHandle {
             self.stop_all(Duration::MAX);
         }
     }
+}
+
+/// Upserts a discovered account with its plan. Plan metadata needs no consent: the token
+/// fields are never deserialized.
+fn register_account(store: &Store, desc: &AccountDescriptor) -> Result<AccountMeta, StoreError> {
+    let plan = credentials::read_plan(&desc.config_dir).unwrap_or_default();
+    let id = store.writer().upsert_account(AccountSpec {
+        provider: Provider::Claude,
+        label: desc.label.clone(),
+        config_dir: desc.config_dir.to_string_lossy().into_owned(),
+        plan: plan.subscription_type.clone(),
+        tier: plan.rate_limit_tier.clone(),
+        environment: "native".into(),
+    })?;
+    Ok(AccountMeta {
+        id,
+        label: desc.label.clone(),
+        plan: plan.subscription_type,
+        tier: plan.rate_limit_tier,
+    })
+}
+
+/// Starts `core-api-<account>`. It idles on its channel until consent and a due request.
+fn spawn_poller(
+    account: AccountId,
+    config_dir: PathBuf,
+    consent: bool,
+    cancel: &Arc<AtomicBool>,
+    out: mpsc::Sender<LimitsMsg>,
+) -> std::io::Result<(JoinHandle<()>, PollerLink)> {
+    let (tx, rx) = mpsc::channel::<PollerMsg>();
+    let poller = UsageApiPoller::new(
+        account,
+        config_dir.clone(),
+        consent,
+        HttpTransport::with_cancel(cancel.clone()),
+        SystemClock,
+    );
+    let thread = spawn(&format!("core-api-{account}"), move || {
+        poller.run(&rx, |update| {
+            let _ = out.send(LimitsMsg::Poll(Box::new(update)));
+        });
+    })?;
+    let link = PollerLink {
+        account,
+        config_dir,
+        tx,
+        sent: None,
+    };
+    Ok((thread, link))
 }
 
 fn spawn(name: &str, f: impl FnOnce() + Send + 'static) -> std::io::Result<JoinHandle<()>> {
@@ -339,6 +442,7 @@ struct IndexCtx {
     bus: EventBus,
     status: Arc<Mutex<CoreStatus>>,
     watch_tx: mpsc::Sender<WatchMsg>,
+    limits_tx: mpsc::Sender<LimitsMsg>,
     startup_delay: Duration,
     pending_initial: Arc<std::sync::atomic::AtomicUsize>,
 }
@@ -450,6 +554,7 @@ fn run_pass(ctx: &mut IndexCtx, work: Pending, initial: bool) {
     }
     if !report.sessions.is_empty() {
         let _ = ctx.watch_tx.send(WatchMsg::Indexed);
+        let _ = ctx.limits_tx.send(LimitsMsg::Indexed);
     }
 }
 
@@ -481,6 +586,7 @@ fn finish_initial(ctx: &IndexCtx) {
     });
     if ctx.pending_initial.fetch_sub(1, Ordering::AcqRel) == 1 {
         lock(&ctx.status).initial_scan_done = true;
+        let _ = ctx.limits_tx.send(LimitsMsg::Indexed);
     }
 }
 
@@ -544,14 +650,16 @@ impl AccountWatch {
             })
     }
 
-    /// Publishes [`CoreEvent::CredentialsChanged`] when the modification time moved.
-    fn check_credentials(&mut self, bus: &EventBus) {
+    /// Publishes [`CoreEvent::CredentialsChanged`] when the modification time moved, and
+    /// tells the limit thread: a stale API token may have been renewed.
+    fn check_credentials(&mut self, bus: &EventBus, limits_tx: &mpsc::Sender<LimitsMsg>) {
         let mtime = credentials_mtime(&self.config_dir);
         if mtime != self.credentials_mtime {
             self.credentials_mtime = mtime;
             bus.publish(CoreEvent::CredentialsChanged {
                 account: self.account,
             });
+            let _ = limits_tx.send(LimitsMsg::CredentialsChanged(self.account));
         }
     }
 }
@@ -566,6 +674,7 @@ fn credentials_mtime(config_dir: &Path) -> Option<SystemTime> {
 struct WatchCtx {
     accounts: Vec<AccountWatch>,
     fs: FsWatcher,
+    limits_tx: mpsc::Sender<LimitsMsg>,
     bus: EventBus,
     status: Arc<Mutex<CoreStatus>>,
     timings: Timings,
@@ -585,6 +694,7 @@ impl WatchCtx {
                 .flat_map(|a| a.tracker.sessions().iter().cloned())
                 .collect();
             lock(&self.status).live_sessions.clone_from(&all);
+            let _ = self.limits_tx.send(LimitsMsg::Live(all.clone()));
             self.bus.publish(CoreEvent::LiveSessionsChanged(all));
         }
     }
@@ -599,7 +709,7 @@ impl WatchCtx {
     fn rescan(&mut self) {
         for a in &mut self.accounts {
             a.ensure_watches(&mut self.fs);
-            a.check_credentials(&self.bus);
+            a.check_credentials(&self.bus, &self.limits_tx);
             let _ = a.index_tx.send(IndexCmd::FullScan);
         }
         self.refresh_live();
@@ -621,7 +731,7 @@ impl WatchCtx {
                 } else if live_sessions::is_session_file(a.tracker.sessions_dir(), path) {
                     live = true;
                 } else if a.is_credentials(path) {
-                    a.check_credentials(&self.bus);
+                    a.check_credentials(&self.bus, &self.limits_tx);
                 } else if (path == &a.projects_dir || path == a.tracker.sessions_dir())
                     && (!self.fs.is_watched(path) || !path.is_dir())
                 {
@@ -730,6 +840,159 @@ fn watch_loop(mut ctx: WatchCtx, rx: &mpsc::Receiver<WatchMsg>) {
         if now >= next_safety {
             ctx.rescan();
             next_safety = now + t.safety_scan;
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Limits thread
+// ---------------------------------------------------------------------------------------------
+
+enum LimitsMsg {
+    Observe(LimitObservation),
+    Poll(Box<PollUpdate>),
+    Live(Vec<LiveSession>),
+    /// An indexing pass stored events, or the first scan finished.
+    Indexed,
+    CredentialsChanged(AccountId),
+    PanelOpened,
+    Consent(bool),
+    Stop,
+}
+
+struct PollerLink {
+    account: AccountId,
+    config_dir: PathBuf,
+    tx: mpsc::Sender<PollerMsg>,
+    /// Last inputs sent, so unchanged ones are not sent again.
+    sent: Option<PollInputs>,
+}
+
+struct LimitsCtx {
+    engine: LimitEngine,
+    pollers: Vec<PollerLink>,
+    bus: EventBus,
+    status: Arc<Mutex<CoreStatus>>,
+}
+
+impl LimitsCtx {
+    /// Publishes the engine's signals; `true` if there were any.
+    fn publish_all(&self, events: Vec<LimitEvent>) -> bool {
+        let any = !events.is_empty();
+        for e in events {
+            self.bus.publish(CoreEvent::Limit(e));
+        }
+        any
+    }
+
+    fn sync_poll_inputs(&mut self) {
+        for p in &mut self.pollers {
+            let inputs = self.engine.poll_inputs(p.account);
+            if p.sent.as_ref() != Some(&inputs) {
+                let _ = p.tx.send(PollerMsg::Inputs(inputs.clone()));
+                p.sent = Some(inputs);
+            }
+        }
+    }
+
+    fn broadcast(&self, msg: &PollerMsg) {
+        for p in &self.pollers {
+            let _ = p.tx.send(msg.clone());
+        }
+    }
+
+    /// Applies one message. Returns `false` on [`LimitsMsg::Stop`].
+    fn handle(&mut self, msg: LimitsMsg, now: Timestamp) -> bool {
+        match msg {
+            LimitsMsg::Stop => {
+                self.broadcast(&PollerMsg::Stop);
+                return false;
+            }
+            LimitsMsg::Observe(obs) => {
+                let events = self.engine.ingest(&obs, now);
+                self.publish_all(events);
+            }
+            LimitsMsg::Poll(update) => {
+                let events = self.engine.apply_poll(*update, now);
+                self.publish_all(events);
+            }
+            LimitsMsg::Live(list) => self.engine.set_live_sessions(list),
+            LimitsMsg::Indexed => {}
+            LimitsMsg::CredentialsChanged(account) => {
+                if let Some(p) = self.pollers.iter().find(|p| p.account == account) {
+                    let _ = p.tx.send(PollerMsg::CredentialsChanged);
+                    let plan = credentials::read_plan(&p.config_dir).unwrap_or_default();
+                    self.engine
+                        .set_plan(account, plan.subscription_type, plan.rate_limit_tier);
+                }
+            }
+            LimitsMsg::PanelOpened => self.broadcast(&PollerMsg::PanelOpened),
+            LimitsMsg::Consent(granted) => self.broadcast(&PollerMsg::Consent(granted)),
+        }
+        true
+    }
+
+    /// Rebuilds the snapshot, keeps it in [`CoreStatus`] and publishes it if it looks different.
+    fn rebuild(&mut self, now: Timestamp, last: &mut Option<VisibleKey>) {
+        {
+            let status = lock(&self.status);
+            self.engine.set_index_state(IndexState {
+                initial_scan_done: status.initial_scan_done,
+                last_indexed_at: status.last_indexed_at,
+            });
+        }
+        let (snapshot, events) = self.engine.snapshot(now);
+        self.publish_all(events);
+        let key = snapshot.visible_key();
+        lock(&self.status).limits = Some(snapshot.clone());
+        if last.as_ref() != Some(&key) {
+            *last = Some(key);
+            self.bus
+                .publish(CoreEvent::LimitsUpdated(Box::new(snapshot)));
+        }
+    }
+}
+
+fn limits_loop(mut ctx: LimitsCtx, rx: &mpsc::Receiver<LimitsMsg>) {
+    let mut last_key = None;
+    let mut dirty = true;
+    let mut next_build = Instant::now();
+    loop {
+        let now = Timestamp::now();
+        let resets = ctx.engine.tick(now);
+        dirty |= ctx.publish_all(resets);
+        ctx.sync_poll_inputs();
+        if dirty && Instant::now() >= next_build {
+            ctx.rebuild(now, &mut last_key);
+            dirty = false;
+            next_build = Instant::now() + LIMITS_REBUILD_GAP;
+        }
+
+        // Sleep until the engine's next reset or freshness step, or the pending rebuild.
+        let mut wait: Option<Duration> = ctx.engine.next_wake(now).map(|w| {
+            Duration::from_millis(u64::try_from(w.as_millis() - now.as_millis()).unwrap_or(0))
+        });
+        if dirty {
+            let until_build = next_build.saturating_duration_since(Instant::now());
+            wait = Some(wait.map_or(until_build, |w| w.min(until_build)));
+        }
+        let msg = match wait {
+            Some(wait) => match rx.recv_timeout(wait) {
+                Ok(msg) => Some(msg),
+                Err(RecvTimeoutError::Timeout) => None,
+                Err(RecvTimeoutError::Disconnected) => return,
+            },
+            None => match rx.recv() {
+                Ok(msg) => Some(msg),
+                Err(_) => return,
+            },
+        };
+        // A timeout means time itself changed something (freshness, reset).
+        dirty = true;
+        if let Some(msg) = msg
+            && !ctx.handle(msg, Timestamp::now())
+        {
+            return;
         }
     }
 }

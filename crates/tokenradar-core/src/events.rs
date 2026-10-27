@@ -12,13 +12,14 @@ use tokio::sync::broadcast;
 
 use crate::domain::{AccountId, SessionId, Timestamp};
 use crate::indexer::{IndexMilestone, IndexProgress};
+use crate::limits::{LimitEvent, PanelSnapshot};
 use crate::live_sessions::LiveSession;
 
 /// Events buffered per subscriber before the oldest are dropped.
 pub const BUS_CAPACITY: usize = 256;
 
 /// Something in the core changed. New variants may be added in any release.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Type)]
+#[derive(Debug, Clone, PartialEq, Serialize, Type)]
 #[serde(tag = "type", content = "data", rename_all = "snake_case")]
 #[non_exhaustive]
 pub enum CoreEvent {
@@ -47,6 +48,11 @@ pub enum CoreEvent {
         source: DriftSource,
         unknown_count: u64,
     },
+    /// The panel's view model changed visibly: a rounded percentage, a state, a source or a
+    /// freshness level. Also the full state to reload after `Resync`.
+    LimitsUpdated(Box<PanelSnapshot>),
+    /// A threshold, projection or reset signal for the notifier.
+    Limit(LimitEvent),
 }
 
 /// Which parser reported [`CoreEvent::SchemaDrift`].
@@ -57,7 +63,7 @@ pub enum DriftSource {
 }
 
 /// What a subscriber receives.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Delivery {
     Event(CoreEvent),
     /// `missed` events were dropped because this subscriber lagged. Refresh the full state.

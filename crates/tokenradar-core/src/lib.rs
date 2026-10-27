@@ -2,6 +2,8 @@
 //!
 //! This crate has no Tauri dependency so that a headless daemon or another front end can reuse it.
 
+pub mod clock;
+pub mod config;
 pub mod domain;
 pub mod events;
 pub mod indexer;

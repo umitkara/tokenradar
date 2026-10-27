@@ -8,8 +8,10 @@
 //!     <sessionId>/tool-results/…            large tool outputs, never indexed
 //! ```
 
+pub mod credentials;
 mod project;
 mod record;
+pub mod usage_api;
 
 use std::ffi::OsStr;
 use std::path::{Component, Path, PathBuf};

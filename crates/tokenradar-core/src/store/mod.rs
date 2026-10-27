@@ -16,6 +16,7 @@ mod migrate;
 mod retention;
 mod snapshots;
 mod sql;
+mod windows;
 
 use std::path::{Path, PathBuf};
 use std::sync::mpsc;
@@ -27,11 +28,13 @@ use rusqlite::{Connection, OpenFlags};
 pub use events::UpsertStats;
 pub use index::{IndexBatch, SourceFileState};
 pub use retention::{PruneStats, RETENTION_INTERVAL_MS};
+pub use windows::{SessionLabel, WINDOW_MATCH_TOLERANCE_MS};
 
 use crate::domain::{
-    Account, AccountId, AccountSpec, LimitObservation, ModelFamily, ModelId, ProjectId,
-    ProjectSpec, Session, SessionId, SessionSpec, Timestamp, UsageEvent,
+    Account, AccountId, AccountSpec, LimitObservation, LimitWindow, MicroUsd, ModelFamily, ModelId,
+    ProjectId, ProjectSpec, Session, SessionId, SessionSpec, Timestamp, UsageEvent,
 };
+use crate::limits::RootUsage;
 
 /// Read connections kept open between reads. More may exist briefly under load. Each idle
 /// connection keeps its page cache, which counts against the 25 MB tray budget.
@@ -163,6 +166,34 @@ impl Store {
         self.read(|c| snapshots::between(c, account, from, to))
     }
 
+    pub fn limit_windows(&self, account: AccountId) -> Result<Vec<LimitWindow>> {
+        self.read(|c| windows::windows(c, account))
+    }
+
+    /// Cost and tokens per session tree with `from <= ts < to`, largest cost first.
+    pub fn root_usage_between(
+        &self,
+        account: AccountId,
+        from: Timestamp,
+        to: Timestamp,
+    ) -> Result<Vec<RootUsage>> {
+        self.read(|c| windows::root_usage_between(c, account, from, to))
+    }
+
+    pub fn cost_between(
+        &self,
+        account: AccountId,
+        from: Timestamp,
+        to: Timestamp,
+    ) -> Result<MicroUsd> {
+        self.read(|c| windows::cost_between(c, account, from, to))
+    }
+
+    /// Titles and project names of the given sessions; unknown ids are left out.
+    pub fn session_labels(&self, ids: &[SessionId]) -> Result<Vec<SessionLabel>> {
+        self.read(|c| windows::session_labels(c, ids))
+    }
+
     pub fn kv_get(&self, key: &str) -> Result<Option<String>> {
         self.read(|c| kv::get(c, key))
     }
@@ -273,6 +304,37 @@ impl Writer {
     /// Stores an observation. Estimates are rejected (architecture §7).
     pub fn insert_snapshot(&self, obs: LimitObservation) -> Result<i64> {
         self.call(move |conn| snapshots::insert(conn, &obs))
+    }
+
+    /// Stores an observation and records it in its window (`window_length_ms`, when the
+    /// limit has windows), in one transaction.
+    pub fn record_snapshot(
+        &self,
+        obs: LimitObservation,
+        window_length_ms: Option<i64>,
+    ) -> Result<i64> {
+        self.call(move |conn| {
+            let tx = conn.transaction()?;
+            let id = snapshots::insert(&tx, &obs)?;
+            if let Some(length) = window_length_ms {
+                windows::upsert_window(&tx, &obs, length)?;
+            }
+            tx.commit()?;
+            Ok(id)
+        })
+    }
+
+    /// Stores the API's `seven_day_breakdown`.
+    pub fn insert_breakdown(
+        &self,
+        account: AccountId,
+        as_of: Timestamp,
+        window_started_at: Option<Timestamp>,
+        rows: Vec<(String, Option<f64>)>,
+    ) -> Result<()> {
+        self.call(move |conn| {
+            windows::insert_breakdown(conn, account, as_of, window_started_at, &rows)
+        })
     }
 
     pub fn kv_set(&self, key: String, value: String) -> Result<()> {

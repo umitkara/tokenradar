@@ -3,11 +3,14 @@
 //! Starting opens the database and runs migrations, so it happens on a helper thread: the main
 //! thread owns the event loop and must never wait on disk.
 
+use std::fmt::Write as _;
 use std::sync::{Arc, Mutex, PoisonError};
 
 use tauri::{AppHandle, Manager};
+use tokenradar_core::config::AppConfig;
 use tokenradar_core::domain::Timestamp;
 use tokenradar_core::events::{CoreEvent, Delivery, Subscription};
+use tokenradar_core::limits::{LimitEvent, PanelSnapshot};
 use tokenradar_core::live_sessions::LiveStatus;
 use tokenradar_core::paths::Paths;
 use tokenradar_core::providers::claude;
@@ -69,10 +72,16 @@ pub fn shutdown(app: &AppHandle) {
 fn open() -> Result<CoreHandle, Box<dyn std::error::Error>> {
     let paths = Paths::resolve()?;
     let accounts = claude::discover(&[]);
-    Ok(CoreRuntime::start(&CoreConfig::new(
-        paths.db_path(),
-        accounts,
-    ))?)
+    let mut config = CoreConfig::new(paths.db_path(), accounts);
+    // An unreadable config must not stop the app; it only means no API consent.
+    config.api_consent = match AppConfig::load(paths.config_path()) {
+        Ok(app_config) => app_config.api_consent_granted(),
+        Err(error) => {
+            eprintln!("TokenRadar: config.toml ignored: {error}");
+            false
+        }
+    };
+    Ok(CoreRuntime::start(&config)?)
 }
 
 /// What the temporary tray tooltip shows (Step 05 debug aid; Step 08 replaces it).
@@ -149,8 +158,62 @@ fn log_delivery(delivery: &Delivery) {
         Delivery::Event(CoreEvent::SchemaDrift { unknown_count, .. }) => {
             format!("schema_drift unknown={unknown_count}")
         }
+        Delivery::Event(CoreEvent::LimitsUpdated(snapshot)) => limits_line(snapshot),
+        Delivery::Event(CoreEvent::Limit(event)) => limit_event_line(event),
         Delivery::Event(_) => "other".to_owned(),
         Delivery::Resync { missed } => format!("resync missed={missed}"),
     };
     eprintln!("[{now}] {line}");
+}
+
+/// Percentages, sources and API state for the Step 06 comparison with `/usage`. No token,
+/// path or session content can appear here: the snapshot holds none of them.
+fn limits_line(snapshot: &PanelSnapshot) -> String {
+    let mut line = format!(
+        "limits_updated api={:?} requests={} errors={} last_success={}",
+        snapshot.api.state,
+        snapshot.api.diagnostics.requests,
+        snapshot.api.diagnostics.errors,
+        snapshot
+            .api
+            .diagnostics
+            .last_success
+            .map_or_else(|| "-".to_owned(), |t| t.to_string()),
+    );
+    for l in &snapshot.limits {
+        let scope = l
+            .scope
+            .as_ref()
+            .map_or_else(String::new, |s| format!("[{s:?}]"));
+        let resets = l
+            .resets_at
+            .map_or_else(|| "-".to_owned(), |t| t.to_string());
+        let _ = write!(
+            line,
+            " | {:?}{scope} {:.1}% src={:?} {:?} resets={resets}",
+            l.kind, l.percent, l.source, l.freshness
+        );
+    }
+    line
+}
+
+fn limit_event_line(event: &LimitEvent) -> String {
+    match event {
+        LimitEvent::ThresholdCrossed {
+            kind,
+            threshold,
+            percent,
+            ..
+        } => format!("limit_threshold {kind:?} >= {threshold} ({percent:.1}%)"),
+        LimitEvent::ProjectionChanged {
+            kind,
+            will_hit_before_reset,
+            ..
+        } => format!("limit_projection {kind:?} will_hit={will_hit_before_reset}"),
+        LimitEvent::Reset {
+            kind,
+            previous_percent,
+            ..
+        } => format!("limit_reset {kind:?} previous={previous_percent:.1}%"),
+    }
 }

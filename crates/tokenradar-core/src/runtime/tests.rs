@@ -308,14 +308,51 @@ fn shutdown_stops_every_thread_in_time() {
     let report = handle.shutdown(SHUTDOWN_TIMEOUT);
     assert!(started.elapsed() < SHUTDOWN_TIMEOUT);
     assert!(report.timed_out.is_empty(), "{report:?}");
-    // core-watch, core-index-1 and retention.
-    assert_eq!(report.joined, 3);
+    // core-watch, core-index-1, core-api-1, core-limits and retention.
+    assert_eq!(report.joined, 5);
     // Every thread held a bus sender; the bus closing proves they are all gone.
     while sub.blocking_recv().is_some() {}
     // The store's writer thread stopped too: the database can be opened exclusively again.
     let conn = rusqlite::Connection::open(&env.db_path).expect("open");
     conn.execute_batch("PRAGMA locking_mode = EXCLUSIVE; BEGIN EXCLUSIVE; COMMIT;")
         .expect("exclusive lock");
+}
+
+#[test]
+fn a_limit_reading_reaches_the_panel_snapshot() {
+    use crate::domain::{LimitKind, Source};
+    use crate::providers::claude::usage_api::ApiState;
+
+    let env = Env::new();
+    let handle = CoreRuntime::start(&env.config()).expect("start");
+    let rx = events(&handle);
+    let now = Timestamp::now();
+    handle.ingest_limit(LimitObservation {
+        account: AccountId(1),
+        kind: LimitKind::Session,
+        scope: None,
+        percent: 42.0,
+        resets_at: Some(Timestamp::from_millis(now.as_millis() + 3 * 3_600_000)),
+        severity: None,
+        source: Source::Statusline,
+        session_uuid: None,
+        observed_at: now,
+    });
+    let snapshot = wait_for(&rx, Duration::from_secs(5), |e| match e {
+        CoreEvent::LimitsUpdated(s) if !s.limits.is_empty() => Some(s.clone()),
+        _ => None,
+    })
+    .expect("LimitsUpdated");
+    let view = &snapshot.limits[0];
+    assert_eq!(view.kind, LimitKind::Session);
+    assert!((view.percent - 42.0).abs() < 1e-9);
+    assert_eq!(view.source, Source::Statusline);
+    // Without consent the API reports itself off and the poller never ran a request.
+    assert_eq!(snapshot.api.state, ApiState::Off);
+    assert_eq!(snapshot.api.diagnostics.requests, 0);
+    let status = handle.status();
+    assert!(status.limits.is_some_and(|s| !s.limits.is_empty()));
+    handle.shutdown(SHUTDOWN_TIMEOUT);
 }
 
 #[test]
