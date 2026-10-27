@@ -99,11 +99,30 @@ fn open() -> Result<CoreHandle, Box<dyn std::error::Error>> {
     Ok(CoreRuntime::start(&config)?)
 }
 
-/// The panel's view model, or `None` while the core is not running (starting, failed, or
-/// replaced by fake limits).
+/// The panel's view model, or `None` while the core is not running (starting or failed).
 pub fn panel_snapshot(app: &AppHandle) -> Option<PanelSnapshot> {
+    #[cfg(any(debug_assertions, feature = "spike"))]
+    if let Some(snapshot) = crate::panel::fake::panel_snapshot(app) {
+        return snapshot;
+    }
     let state = app.try_state::<CoreState>()?;
-    status(&state.0).and_then(|s| s.limits)
+    status(&state.0).and_then(|s| s.panel_snapshot())
+}
+
+/// The panel opened or "Refresh" was clicked: with API consent, data older than 60 s is
+/// fetched again (the poller keeps its minimum interval and backoff).
+pub fn panel_opened(app: &AppHandle) {
+    let Some(state) = app.try_state::<CoreState>() else {
+        return;
+    };
+    if let Some(handle) = state
+        .0
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .as_ref()
+    {
+        handle.panel_opened();
+    }
 }
 
 /// Hands the core's limit snapshots to the tray and its events to the visible windows.
@@ -122,7 +141,7 @@ async fn forward(app: AppHandle, mut sub: Subscription, state: Arc<Mutex<Option<
             }
             // Missed events: rebuild from the full state instead of patching.
             Delivery::Resync { .. } => {
-                if let Some(limits) = status(&state).and_then(|s| s.limits) {
+                if let Some(limits) = status(&state).and_then(|s| s.panel_snapshot()) {
                     let limits = Box::new(limits);
                     tray::send(&app, TrayMsg::Snapshot(limits.clone()));
                     ipc::emit_core_event(&app, CoreEvent::LimitsUpdated(limits));

@@ -8,6 +8,7 @@
 //! - `sweep`: one `LimitsUpdated`-like snapshot per second with a moving percentage, for the
 //!   10-minute CPU measurement.
 //! - `stress`: 10,000 `set_icon` calls in a row; logs GDI and USER handle counts.
+//! - `panel:<scene>`: a fixed panel state (`crate::panel::fake`).
 //!
 //! `TOKENRADAR_FAKE_LOG=<file>` also writes the log lines to a file (release builds have no
 //! console).
@@ -40,6 +41,9 @@ pub fn start(app: &AppHandle, mode: &str) {
     let spawned = std::thread::Builder::new()
         .name("tray-fake".into())
         .spawn(move || match mode.as_str() {
+            panel if panel.starts_with("panel:") => {
+                crate::panel::fake::start(&app, &panel["panel:".len()..]);
+            }
             "cycle" => cycle(&app),
             "sweep" => sweep(&app),
             "stress" => stress(&app),

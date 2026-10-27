@@ -12,12 +12,30 @@ export const commands = {
 	getSettings: () => __TAURI_INVOKE<SettingsView>("get_settings"),
 	setLocale: (locale: LocalePref) => typedError<SettingsView, string>(__TAURI_INVOKE("set_locale", { locale })),
 	setTheme: (theme: ThemePref) => typedError<SettingsView, string>(__TAURI_INVOKE("set_theme", { theme })),
+	/**  The panel rendered its first snapshot; `height` is its content height in CSS pixels. */
+	panelReady: (height: number | null) => __TAURI_INVOKE<void>("panel_ready", { height }),
+	/**  The panel's content height changed. */
+	panelResize: (height: number | null) => __TAURI_INVOKE<void>("panel_resize", { height }),
+	/**  The panel painted after becoming visible (latency log only). */
+	panelPainted: () => __TAURI_INVOKE<void>("panel_painted"),
+	/**  `Esc` in the panel. */
+	panelHide: () => __TAURI_INVOKE<void>("panel_hide"),
+	/**  "Refresh": asks the usage API for data older than 60 s (with consent). */
+	refreshLimits: () => __TAURI_INVOKE<void>("refresh_limits"),
+	getMuted: () => __TAURI_INVOKE<boolean>("get_muted"),
+	/**  Mutes notifications for an hour, or unmutes them; answered with [`MuteChanged`]. */
+	toggleMute: () => __TAURI_INVOKE<void>("toggle_mute"),
+	/**  Opens the settings window on `section`. */
+	openSettings: (section: SettingsSection) => typedError<null, string>(__TAURI_INVOKE("open_settings", { section })),
 };
 
 /** Events */
 export const events = {
 	coreEventEmitted: makeEvent<CoreEventEmitted, CoreEventEmitted>("core-event-emitted"),
+	muteChanged: makeEvent<MuteChanged, MuteChanged>("mute-changed"),
+	panelShown: makeEvent<PanelShown, PanelShown>("panel-shown"),
 	settingsChanged: makeEvent<SettingsChanged, SettingsChanged>("settings-changed"),
+	settingsSectionRequested: makeEvent<SettingsSectionRequested, SettingsSectionRequested>("settings-section-requested"),
 };
 
 /* Types */
@@ -128,6 +146,12 @@ export type IndexProgress = {
 export type IndexState = {
 	initial_scan_done: boolean,
 	last_indexed_at: Timestamp | null,
+	/**  The first scan's latest progress; `None` before it reported and after it finished. */
+	progress: IndexProgress | null,
+	/**  The current window and this week are indexed (`IndexMilestone::RecentReady`). */
+	recent_ready: boolean,
+	/**  Records the parser could not use since the app started; the format may have changed. */
+	drift: SchemaDriftView | null,
 };
 
 /**  Signals for the notifier (Step 11), which applies its own rules, hysteresis and quiet hours. */
@@ -188,12 +212,20 @@ export type LocalePref = "system" | "en" | "tr";
 /**  US dollars × 10⁶. A price of $1 per million tokens is exactly one micro-dollar per token. */
 export type MicroUsd = number;
 
+/**  Notifications were muted or unmuted (tray menu, panel, or the mute running out). */
+export type MuteChanged = {
+	muted: boolean,
+};
+
 /**  Which window backdrop the system supports (`data-os` on `<html>`). */
 export type OsFlavor = 
 /**  Mica and Acrylic backdrops; the page background stays transparent. */
 "win11" | 
 /**  No usable backdrop: opaque surfaces (design-language.md §4). */
 "win10";
+
+/**  Sent to the panel each time it appears: it moves the focus inside and replays its entrance. */
+export type PanelShown = null;
 
 /**  Everything the tray panel needs (Step 10). */
 export type PanelSnapshot = {
@@ -239,6 +271,13 @@ export type RateMethod =
 /**  Local cost rate times the window's percent-per-dollar. */
 "cost_rate";
 
+/**  Unusable records seen since start, summed over indexing passes. */
+export type SchemaDriftView = {
+	unknown_count: number,
+	/**  The latest pass that reported some. */
+	last_at: Timestamp,
+};
+
 /**  What a scoped limit applies to. Stored as `model:<name>` or `surface:<name>`. */
 export type Scope = ({ model: string }) & { surface?: never } | ({ surface: string }) & { model?: never };
 
@@ -266,6 +305,21 @@ export type SessionShareView = {
 
 /**  Sent to every open window when [`SettingsView`] changed. */
 export type SettingsChanged = SettingsView;
+
+/**  A part of the settings window the panel's calls to action point at. */
+export type SettingsSection = "general" | 
+/**  Claude Code folders (`CLAUDE_CONFIG_DIR`). */
+"accounts" | 
+/**  Installing the statusline bridge. */
+"statusline" | 
+/**  Consent for the usage API. */
+"api" | "diagnostics";
+
+/**
+ *  Sent to an open settings window that should switch to `0`. A new window reads the section
+ *  from its URL fragment (`settings.html#api`).
+ */
+export type SettingsSectionRequested = SettingsSection;
 
 /**  Everything a page needs to look right: sent by `get_settings` and [`SettingsChanged`]. */
 export type SettingsView = {

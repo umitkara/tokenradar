@@ -4872,6 +4872,7 @@ dependencies = [
  "tiny-skia",
  "tokenradar-core",
  "tokenradar-i18n",
+ "tokio",
  "webview2-com",
  "windows-core",
  "windows-sys 0.61.2",

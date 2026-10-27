@@ -23,15 +23,20 @@ specta = "=2.0.0-rc.26"
 specta-typescript = "=0.0.13"
 serde_json = "1.0.154"
 serde = { version = "1.0.229", features = ["derive"] }
+# Panel timers (warm TTL, ready timeout) on Tauri's runtime; already in the graph through the core.
+tokio = { version = "1.54.1", default-features = false, features = ["time"] }
 
-# Raw WebView2 access for the Step 02 lifecycle spike. Same versions as wry's, so the COM types match.
+# Raw WebView2 access: the hidden panel's memory level and the Step 02 spike. Same versions as
+# wry's, so the COM types match.
 [target.'cfg(windows)'.dependencies]
 webview2-com = "0.39"
 windows-core = "0.62"
 # Tray: local time, icon size (DPI), taskbar theme, high contrast and the change watcher window.
+# Panel: monitor work area, taskbar edge and rounded corners.
 windows-sys = { version = "0.61", features = [
     "Win32_Foundation",
     "Win32_Globalization",
+    "Win32_Graphics_Dwm",
     "Win32_Graphics_Gdi",
     "Win32_System_LibraryLoader",
     "Win32_System_Registry",
@@ -39,6 +44,7 @@ windows-sys = { version = "0.61", features = [
     "Win32_System_Time",
     "Win32_UI_Accessibility",
     "Win32_UI_HiDpi",
+    "Win32_UI_Shell",
     "Win32_UI_WindowsAndMessaging",
 ] }
 

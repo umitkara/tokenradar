@@ -12,8 +12,9 @@ use tokenradar_core::config::{LocalePref, ThemePref};
 use tokenradar_core::events::CoreEvent;
 use tokenradar_core::limits::PanelSnapshot;
 
-use crate::core_bridge;
 use crate::prefs::{self, Prefs, SettingsChanged, SettingsView};
+use crate::settings::{self, SettingsSection, SettingsSectionRequested};
+use crate::{core_bridge, panel, tray};
 
 /// Relative to the `app/src-tauri` crate. Release builds never write the bindings.
 #[cfg(debug_assertions)]
@@ -23,6 +24,12 @@ pub const BINDINGS_PATH: &str = "../src/lib/ipc/bindings.ts";
 #[derive(Debug, Clone, Serialize, Type, Event)]
 pub struct CoreEventEmitted(pub CoreEvent);
 
+/// Notifications were muted or unmuted (tray menu, panel, or the mute running out).
+#[derive(Debug, Clone, Serialize, Type, Event)]
+pub struct MuteChanged {
+    pub muted: bool,
+}
+
 /// The commands and events the frontend can use.
 pub fn builder() -> Builder<tauri::Wry> {
     Builder::<tauri::Wry>::new()
@@ -30,9 +37,23 @@ pub fn builder() -> Builder<tauri::Wry> {
             get_panel_snapshot,
             get_settings,
             set_locale,
-            set_theme
+            set_theme,
+            panel_ready,
+            panel_resize,
+            panel_painted,
+            panel_hide,
+            refresh_limits,
+            get_muted,
+            toggle_mute,
+            open_settings
         ])
-        .events(collect_events![CoreEventEmitted, SettingsChanged])
+        .events(collect_events![
+            CoreEventEmitted,
+            SettingsChanged,
+            MuteChanged,
+            SettingsSectionRequested,
+            panel::PanelShown
+        ])
         // Ids, timestamps and money are `i64` but stay far below 2^53 (Step 03).
         .dangerously_cast_bigints_to_number()
         // The frontend only receives: one shape per type instead of serialize/deserialize twins.
@@ -56,6 +77,11 @@ fn typescript() -> specta_typescript::Typescript {
 /// Sends `event` to visible windows only. Without one, nothing is serialized: a hidden panel
 /// fetches a fresh snapshot when it is shown again.
 pub fn emit_core_event(app: &AppHandle, event: CoreEvent) {
+    emit_to_visible(app, &CoreEventEmitted(event));
+}
+
+/// Sends `event` to the visible windows; a hidden page reloads its state when shown.
+pub fn emit_to_visible<E: Event + Serialize + Clone>(app: &AppHandle, event: &E) {
     let visible: Vec<String> = app
         .webview_windows()
         .into_iter()
@@ -65,7 +91,7 @@ pub fn emit_core_event(app: &AppHandle, event: CoreEvent) {
     if visible.is_empty() {
         return;
     }
-    let _ = CoreEventEmitted(event).emit_filter(app, |target| match target {
+    let _ = event.emit_filter(app, |target| match target {
         EventTarget::WebviewWindow { label } | EventTarget::Webview { label } => {
             visible.iter().any(|v| v == label)
         }
@@ -96,6 +122,61 @@ async fn set_locale(app: AppHandle, locale: LocalePref) -> Result<SettingsView, 
 #[specta::specta]
 async fn set_theme(app: AppHandle, theme: ThemePref) -> Result<SettingsView, String> {
     prefs::set_theme(&app, theme)
+}
+
+/// The panel rendered its first snapshot; `height` is its content height in CSS pixels.
+#[tauri::command]
+#[specta::specta]
+async fn panel_ready(app: AppHandle, height: f64) {
+    panel::ready(&app, Some(height));
+}
+
+/// The panel's content height changed.
+#[tauri::command]
+#[specta::specta]
+async fn panel_resize(app: AppHandle, height: f64) {
+    panel::resize(&app, height);
+}
+
+/// The panel painted after becoming visible (latency log only).
+#[tauri::command]
+#[specta::specta]
+async fn panel_painted(app: AppHandle) {
+    panel::painted(&app);
+}
+
+/// `Esc` in the panel.
+#[tauri::command]
+#[specta::specta]
+async fn panel_hide(app: AppHandle) {
+    panel::hide(&app);
+}
+
+/// "Refresh": asks the usage API for data older than 60 s (with consent).
+#[tauri::command]
+#[specta::specta]
+async fn refresh_limits(app: AppHandle) {
+    core_bridge::panel_opened(&app);
+}
+
+#[tauri::command]
+#[specta::specta]
+async fn get_muted(app: AppHandle) -> bool {
+    tray::is_muted(&app)
+}
+
+/// Mutes notifications for an hour, or unmutes them; answered with [`MuteChanged`].
+#[tauri::command]
+#[specta::specta]
+async fn toggle_mute(app: AppHandle) {
+    tray::send(&app, tray::TrayMsg::ToggleMute);
+}
+
+/// Opens the settings window on `section`.
+#[tauri::command]
+#[specta::specta]
+async fn open_settings(app: AppHandle, section: SettingsSection) -> Result<(), String> {
+    settings::show(&app, Some(section)).map_err(|e| e.to_string())
 }
 
 #[cfg(test)]

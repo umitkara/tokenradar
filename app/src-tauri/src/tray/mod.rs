@@ -13,6 +13,7 @@ mod visual;
 #[cfg(any(debug_assertions, feature = "spike"))]
 pub mod fake;
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::time::Duration;
 
@@ -27,6 +28,7 @@ use tokenradar_core::paths::Paths;
 use tokenradar_core::store::Store;
 use tokenradar_i18n::{Domain, Locale, Localizer};
 
+use crate::ipc::MuteChanged;
 use crate::{panel, settings};
 #[cfg(test)]
 use render::Theme;
@@ -68,6 +70,21 @@ pub enum TrayMsg {
 /// Sends to the `tray` thread; managed by Tauri.
 pub struct Tray(Sender<TrayMsg>);
 
+/// Whether notifications are muted, as the tray last showed it; managed by Tauri for the panel.
+#[derive(Default)]
+pub struct Muted(AtomicBool);
+
+/// Whether notifications are muted right now.
+pub fn is_muted(app: &AppHandle) -> bool {
+    app.try_state::<Muted>()
+        .is_some_and(|m| m.0.load(Ordering::Relaxed))
+}
+
+/// The tray icon's screen rectangle, in physical pixels.
+pub fn icon_rect(app: &AppHandle) -> Option<tauri::Rect> {
+    app.tray_by_id(TRAY_ID)?.rect().ok().flatten()
+}
+
 /// Sends `msg` to the tray thread. Before the tray exists, or after it stopped, it is dropped.
 pub fn send(app: &AppHandle, msg: TrayMsg) {
     if let Some(tray) = app.try_state::<Tray>() {
@@ -95,21 +112,26 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
         .on_menu_event(|app, event| match event.id().as_ref() {
             MENU_OPEN_PANEL => panel::report(panel::show(app)),
             MENU_MUTE => send(app, TrayMsg::ToggleMute),
-            MENU_SETTINGS | MENU_ABOUT => panel::report(settings::show(app)),
+            MENU_SETTINGS | MENU_ABOUT => panel::report(settings::show(app, None)),
             MENU_QUIT => app.exit(0),
             #[cfg(debug_assertions)]
             MENU_GALLERY => panel::report(crate::gallery::show(app)),
             _ => {}
         })
         .on_tray_icon_event(|tray, event| {
-            // Windows reports both the press and the release; act on the release only.
-            if let TrayIconEvent::Click {
-                button: MouseButton::Left,
-                button_state: MouseButtonState::Up,
-                ..
-            } = event
-            {
-                panel::report(panel::toggle(tray.app_handle()));
+            match event {
+                // The press only remembers whether the panel was open; the release toggles it.
+                TrayIconEvent::Click {
+                    button: MouseButton::Left,
+                    button_state,
+                    rect,
+                    ..
+                } => match button_state {
+                    MouseButtonState::Down => panel::tray_pressed(tray.app_handle()),
+                    MouseButtonState::Up => panel::tray_released(tray.app_handle(), rect),
+                },
+                TrayIconEvent::Enter { .. } => panel::tray_hovered(tray.app_handle()),
+                _ => {}
             }
         })
         .build(app)?;
@@ -122,6 +144,7 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
         eprintln!("TokenRadar: tray will not follow theme or scale changes: {error}");
     }
     app.manage(Tray(tx));
+    app.manage(Muted::default());
 
     let presenter = Presenter {
         icon: Some((visual, env)),
@@ -243,6 +266,18 @@ struct TauriSink {
     mute_item: MenuItem<Wry>,
 }
 
+impl TauriSink {
+    /// Tells the panel when the mute changed (the tray thread owns it).
+    fn publish_mute(&self, muted: bool) {
+        let Some(state) = self.app.try_state::<Muted>() else {
+            return;
+        };
+        if state.0.swap(muted, Ordering::Relaxed) != muted {
+            crate::ipc::emit_to_visible(&self.app, &MuteChanged { muted });
+        }
+    }
+}
+
 impl Sink for TauriSink {
     fn set_icon(&mut self, visual: TrayVisual, env: Environment) {
         if let Err(error) = self.tray.set_icon(Some(icon_image(visual, env))) {
@@ -266,12 +301,14 @@ impl Sink for TauriSink {
             }
             Err(error) => eprintln!("TokenRadar: could not build the tray menu: {error}"),
         }
+        self.publish_mute(muted);
     }
 
     fn set_mute_label(&mut self, l10n: &Localizer, muted: bool) {
         if let Err(error) = self.mute_item.set_text(l10n.msg(mute_key(muted))) {
             eprintln!("TokenRadar: could not update the tray menu: {error}");
         }
+        self.publish_mute(muted);
     }
 }
 

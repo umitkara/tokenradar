@@ -4,6 +4,9 @@
 //! On Windows 11 the window is transparent and the system draws Mica (long-lived windows) or
 //! Acrylic (the panel, a transient surface) behind the page; the page keeps `html` and `body`
 //! transparent. Windows 10 gets an opaque window: its Acrylic stutters while dragging.
+//!
+//! Every window renders without the GPU (ADR-032): the first frame after showing a hidden panel
+//! took ~470 ms with GPU compositing and 17 ms without, and the GPU process cost ~45 MB.
 
 use tauri::utils::config::WindowEffectsConfig;
 use tauri::window::{Color, Effect};
@@ -25,6 +28,11 @@ pub enum Surface {
 const SOLID_DARK: Color = Color(19, 22, 26, 255);
 const SOLID_LIGHT: Color = Color(243, 245, 248, 255);
 
+/// WebView2 arguments for every window. Windows that share a WebView2 environment must pass the
+/// same arguments. The first part is wry's default, which an explicit value replaces.
+const BROWSER_ARGS: &str =
+    "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --disable-gpu";
+
 /// Applies the backdrop, the theme and the boot script to a window under construction.
 pub fn dress<'a>(
     app: &AppHandle,
@@ -35,6 +43,7 @@ pub fn dress<'a>(
     let view = prefs.view();
     let platform = prefs.platform();
     let builder = builder
+        .additional_browser_args(BROWSER_ARGS)
         .initialization_script(boot_script(&view))
         .theme(window_theme(view.theme_pref));
     match platform.os {

@@ -38,6 +38,7 @@ fn main() {
         }))
         .setup(move |app| {
             // Tray first, so it shows within its 300 ms budget; the core starts behind it.
+            panel::init(app.handle());
             tray::create(app.handle())?;
             bridge.mount_events(app);
             prefs::init(app.handle());
@@ -53,6 +54,8 @@ fn main() {
             }
             #[cfg(any(debug_assertions, feature = "spike"))]
             spike::start(app.handle());
+            #[cfg(any(debug_assertions, feature = "spike"))]
+            panel::scenario::start(app.handle());
             #[cfg(debug_assertions)]
             gallery::open_on_start(app.handle());
             Ok(())

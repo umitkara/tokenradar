@@ -58,24 +58,27 @@ fn spike_ready(window: WebviewWindow, ready: tauri::State<'_, Ready>, event: Str
     }
 }
 
-/// Registers the readiness command next to the app's `typed` commands. Tauri keeps only the
-/// last `invoke_handler`, so both go through one dispatcher.
+/// Registers the readiness command and the fake panel scene switch next to the app's `typed`
+/// commands. Tauri keeps only the last `invoke_handler`, so all go through one dispatcher.
 pub fn register(
     builder: tauri::Builder<Wry>,
     typed: impl Fn(tauri::ipc::Invoke<Wry>) -> bool + Send + Sync + 'static,
 ) -> tauri::Builder<Wry> {
     let spike = spike_handler();
-    builder.invoke_handler(move |invoke| {
-        if invoke.message.command() == "spike_ready" {
-            spike(invoke)
-        } else {
-            typed(invoke)
-        }
+    let fake = fake_handler();
+    builder.invoke_handler(move |invoke| match invoke.message.command() {
+        "spike_ready" => spike(invoke),
+        "fake_panel_scene" => fake(invoke),
+        _ => typed(invoke),
     })
 }
 
 fn spike_handler() -> impl Fn(tauri::ipc::Invoke<Wry>) -> bool + Send + Sync + 'static {
     tauri::generate_handler![spike_ready]
+}
+
+fn fake_handler() -> impl Fn(tauri::ipc::Invoke<Wry>) -> bool + Send + Sync + 'static {
+    tauri::generate_handler![crate::panel::fake::fake_panel_scene]
 }
 
 /// Starts the scenario named by `TOKENRADAR_SPIKE`, if any.
