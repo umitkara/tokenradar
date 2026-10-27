@@ -356,12 +356,11 @@ S2 yalnızca **açık onay** varsa kullanılır.
 - **Özel Fluent fonksiyonları (Rust ve TS'de birebir aynı davranış):**
   - `NUM(n, decimals)`: yerel ayara göre gruplama ve ondalık ayırıcı. TR: `1.234,5`, EN: `1,234.5`.
   - `PCT(n)`: TR `%72`, EN `72%`.
-  - `DUR(ms, style)`: TR `1 sa 48 dk`, EN `1h 48m`.
+  - `DUR(ms, style)`: TR `1 sa 48 dk`, EN `1h 48m`. `"long"` stili ekran okuyucular içindir: `1 saat 48 dakika`, `1 hour 48 minutes` (ADR-031).
   - `TR_SUFFIX(n, case)`: Türkçe sayı ekleri. Örnekler: `5'te`, `6'da`, `%72'si`, `10'dan`, `3'e`. Ek, sayının okunuşunun son hecesine göre seçilir (bir, iki, üç … on, yirmi … yüz, bin, milyon). Girdi sayı veya biçimlenmiş metin olabilir (`%23,5`, `10:59`, `Çar 10:00`); saatte `:00` saate, diğer dakikalar dakikaya göre çekimlenir. Haller: `loc`, `abl`, `dat`, `acc`, `gen`, `poss` (ADR-030).
   - Parite garantisi: `testdata/i18n-vectors.json` dosyasındaki ortak test vektörleri hem Rust hem TS testlerinde çalıştırılır.
 - **Tarih ve saat:**
-  - TS tarafında `Intl.DateTimeFormat` ve `Intl.RelativeTimeFormat` kullanılır.
-  - Rust tarafında EN/TR için küçük, el yazımı biçimlendiriciler bulunur. Bunlar da ortak test vektörleriyle doğrulanır. ICU verisi gömülmez, çünkü binary boyutunu artırır.
+  - Rust ve TS tarafında EN/TR için küçük, el yazımı biçimlendiriciler bulunur (TS: `app/src/lib/i18n/format.ts`, Rust'ın portu). `Intl` kullanılmaz: yuvarlama ve `-0` davranışı Rust'tan farklı ve ICU sürümüne bağlı (ADR-031). İki taraf da ortak test vektörleriyle doğrulanır. ICU verisi gömülmez, çünkü binary boyutunu artırır.
   - TR her zaman 24 saat kullanır. EN, işletim sistemi bölge ayarını izler.
 - **Dil seçimi:** İşletim sistemi dili (`sys-locale`) `tr` ile başlıyorsa TR, aksi halde EN seçilir. Kullanıcı ayarlardan değiştirebilir. Değişiklik yeniden başlatmadan uygulanır.
 - **Büyük-küçük harf:** `<html lang>` her zaman ayarlanır. JS'de `toUpperCase()` yerine `toLocaleUpperCase(lang)` kullanılır. Böylece `i → İ` ve `ı → I` dönüşümleri doğru çalışır.

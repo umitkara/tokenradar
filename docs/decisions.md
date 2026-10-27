@@ -323,3 +323,32 @@
   - Duraklatılmışken ikonu soluklaştırmak (bayat durumla karışır) veya halkaları griye çevirmek (değerler okunmaz olur).
   - Yalnızca iç halkada çentik (haftalık kritik durum görünmez kalır).
   - Tek satırlı kısa tooltip (Windows çok satırı destekliyor; tam cümle ekran okuyucuda daha iyi okunuyor).
+
+### ADR-031 — Frontend temeli: TS biçimleme portu, `light-dark()` token'ları, açılış betiği, tek komut yönlendiricisi
+**Durum:** Kabul (2026-10-27, Adım 09)
+- **Bağlam:**
+  - Plan TS tarafında biçimlemenin `Intl` ile yapılmasını, çıktıların ortak vektörlerle karşılaştırılmasını öngörüyordu. Node 22.14 (ICU 76) üzerinde ölçüldü: `Intl.NumberFormat('tr-TR', {style: 'percent'})` beklendiği gibi `%72` veriyor. Ancak `-0.04` tek ondalıkla `-0` oluyor (vektör `0,0` bekliyor); Rust `{:.N}` tam yarımları çifte yuvarlarken (`0.125` → `0.12`) `Intl`/`toFixed` yukarı yuvarlıyor. ICU sürümü WebView2 ile Node arasında da farklı olabilir. (Soru sırasında `en-US` saatlerinde U+202F dar boşluk olduğunu söylemiştim; Node 22/ICU 76'da bu **doğrulanmadı**, normal boşluk çıktı.)
+  - Ekran okuyucu cümleleri (`aria-*`) `1 sa 48 dk` kısaltmasını iyi okumuyor.
+  - Sayfa ilk çizildiğinde tema ve dil yanlışsa bir kare yanlış görünür; config.toml okunması ise ana thread'i bekletmemeli.
+  - tauri-specta, Tauri'nin yalnızca **son** `invoke_handler`'ı tuttuğunu bilmiyor: debug derlemede her zaman kayıtlı olan Adım 02 `spike_ready` komutu tipli komutları sessizce eziyordu (`Command get_settings not found`).
+- **Karar (kullanıcıyla kararlaştırıldı):**
+  - **Biçimleme:** `NUM`/`PCT`/`DUR`/`TR_SUFFIX` Rust'ın elle yazılmış TS portudur (`app/src/lib/i18n/format.ts`, `suffix.ts`); `Intl` kullanılmaz. `NUM` tam yarımları çifte yuvarlar (`toFixed(100)` ile tam açılım), `PCT` sıfırdan uzağa yuvarlar. İki taraf da `testdata/i18n-vectors.json`'dan geçer; eşitlik vakaları vektörlere eklendi.
+  - **`DUR(ms, "long")`:** Ekran okuyucular için kelimeli biçim (`1 saat 48 dakika`, `1 hour 48 minutes`); Rust ve TS'te aynı, vektörlerle test edilir. Halka merkezi için kısa `resets-in-short` mesajı eklendi.
+  - **Token'lar:** Her renk CSS `light-dark()` çiftidir; `data-theme` → `color-scheme`. Kontrast `tokens.test.ts`'te OKLCH → sRGB ve zemin aralığı üzerine bindirme ile test edilir; Win10 opak renkleri Rust `chrome.rs` ile eşitliği de test edilir. Yeni token `--on-accent`.
+  - **Zemin:** Windows 11 (build ≥ 22000) şeffaf + Mica; panel yalnızca build ≥ 22523'te (sistem Acrylic'i) Acrylic, aksi halde Mica. Windows 10 opak `background_color`. Build numarası registry'den (`CurrentBuildNumber`).
+  - **Açılış betiği:** Her pencere `window.__TOKENRADAR_BOOT__ = {SettingsView}` ile açılır (initialization script); ilk kare doğru dil/temadadır. Ayarlar config.toml'dan ayrı bir thread'de okunur, değişirse `settings-changed` olayı gider.
+  - **`set_locale`/`set_theme`:** config.toml `[general]` altına `toml_edit` ile yazılır (yorumlar ve diğer anahtarlar korunur), sonra tüm pencerelere ve tray'e yayılır.
+  - **Bağlamalar:** `disable_serde_phases()` (tek tip, `_Serialize`/`_Deserialize` ikizi yok) ve `dangerously_cast_bigints_to_number()` (id, zaman damgası ve para 2^53'ün çok altında). `f64` alanları `number | null` olarak üretilir (specta-typescript'te sabit); UI `null`'u "veri yok" sayar. `specta-typescript` 0.0.13'e sabitlendi (0.0.14 specta rc.27 istiyor). Tazelik `bindings_are_fresh` testiyle CI'da kontrol edilir; dışa aktarma yalnızca debug'dadır.
+  - **Komut yönlendirici:** Spike komutu ve tipli komutlar tek bir `invoke_handler` içinde komut adına göre yönlendirilir (`spike::register`).
+  - **Olaylar:** `CoreEvent` yalnızca görünür pencerelere gider; görünür pencere yoksa serileştirme yapılmaz. Sayfa gizlenince dinleyiciyi bırakır, görünür olunca tam snapshot çeker.
+  - **Galeri:** `gallery.html` yalnızca `vite build --mode development` ve `pnpm dev`'de vardır; `check-bundle-size.mjs` üretim derlemesinde bulunursa başarısız olur. Tray menüsünde (yalnızca debug) "Bileşen galerisi" öğesi; `TOKENRADAR_GALLERY=1` galeriyi açılışta açar. Galeri tema/dil değişikliklerini kaydetmez; yalnızca kendi pencere temasını değiştirir (`core:window:allow-set-theme`, yalnızca galeri capability'sinde).
+- **Bedel:**
+  - Biçimleme kodu iki dilde bakım ister; bir taraf değişip vektör eklenmezse sapma fark edilmez.
+  - Yalnızca EN ve TR biçimleri vardır; yeni dil, iki tarafta da kod ister.
+  - `f64` için `number | null` tipi her kullanımda `null` kontrolü gerektirir.
+  - Galeri capability dosyası release'te de bulunur (pencere hiç oluşmadığı için etkisizdir).
+- **Alternatifler:**
+  - `Intl` + vektörlerde ICU'ya özgü istisnalar (eşitlik ve `-0` farkları istisnasız giderilemiyor; WebView2 güncellemesiyle davranış değişebilir).
+  - Tüm metni Rust'ta biçimleyip hazır göndermek (her saniyelik geri sayım için IPC gerekir).
+  - `prefers-color-scheme`'e bırakıp açılış betiği kullanmamak (kullanıcı teması sistemden farklıysa ilk kare yanlış).
+  - specta-typescript 0.0.14 ve specta rc.27 (tauri-specta rc.26 ile uyumsuz).

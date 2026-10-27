@@ -1,7 +1,8 @@
 # Görsel Dil — "Native kabuk + enstrüman"
 
-> Bu doküman yön belirler. Kesin token değerleri Adım 09'da, tasarım skill'leri (`frontend-design`, `impeccable`)
-> kullanılarak ve gerçek ekranda Mica üzerinde test edilerek sabitlenir. Aşağıdaki değerler başlangıç önerisidir.
+> Token değerleri Adım 09'da gerçek Mica zemin üzerinde denenerek sabitlendi (ADR-031). Kaynak `app/src/lib/styles/tokens.css`'tir;
+> bu doküman onunla aynı tutulur. Kontrast eşikleri `tokens.test.ts` tarafından test edilir. Bileşenlerin tümü geliştirme
+> derlemesindeki galeride (`gallery.html`) görülebilir; ekran görüntüleri `docs/plan/img/09-gallery-*.png`.
 
 ## 1. Fikir
 
@@ -11,20 +12,26 @@
 
 ## 2. Renk
 
-OKLCH ile tanımlanır. Değerler başlangıç önerisidir.
+OKLCH ile tanımlanır. Her token CSS `light-dark(açık, koyu)` çiftidir; etkin taraf `color-scheme` ile seçilir.
 
 | Token | Koyu tema | Açık tema | Kullanım |
 |---|---|---|---|
-| `--surface-0` | Mica (şeffaf) / yedek `oklch(0.20 0.01 250)` | Mica / yedek `oklch(0.97 0.005 250)` | Pencere zemini |
+| `--surface-0` | Mica (şeffaf) / Win10 yedek `oklch(0.20 0.01 250)` | Mica / yedek `oklch(0.97 0.005 250)` | Pencere zemini (`--surface-0-solid`, Rust `SOLID_*` ile aynı) |
 | `--surface-1` | `oklch(0.26 0.01 250 / 0.72)` | `oklch(1 0 0 / 0.70)` | Kartlar |
+| `--surface-2` | `oklch(0.31 0.01 250 / 0.80)` | `oklch(1 0 0 / 0.90)` | İkincil düğme, hover |
+| `--stroke` | `oklch(1 0 0 / 0.09)` | `oklch(0 0 0 / 0.08)` | Kart ve kontrol kenarı |
 | `--text-1` | `oklch(0.96 0.005 250)` | `oklch(0.22 0.01 250)` | Birincil metin |
-| `--text-2` | `oklch(0.75 0.01 250)` | `oklch(0.45 0.01 250)` | İkincil metin |
-| `--track` | `oklch(0.40 0.01 250 / 0.5)` | `oklch(0.85 0.01 250)` | Halka ve çubuk zemini |
-| `--signal-ok` | `oklch(0.82 0.13 190)` (fosfor camgöbeği) | `oklch(0.58 0.12 195)` | Normal durum, veri mürekkebi |
-| `--signal-warn` | `oklch(0.84 0.15 80)` (amber) | `oklch(0.66 0.15 70)` | Uyarı |
-| `--signal-crit` | `oklch(0.70 0.19 25)` (mercan kırmızı) | `oklch(0.56 0.20 25)` | Kritik |
+| `--text-2` | `oklch(0.78 0.01 250)` | `oklch(0.42 0.01 250)` | İkincil metin |
+| `--text-3` | `oklch(0.68 0.01 250)` | `oklch(0.50 0.01 250)` | Soluk (bayat, düşük güven); yalnızca kart üzerinde |
+| `--track` | `oklch(0.42 0.01 250 / 0.6)` | `oklch(0.86 0.01 250)` | Halka ve çubuk zemini |
+| `--signal-ok` | `oklch(0.82 0.13 190)` (fosfor camgöbeği) | `oklch(0.50 0.11 200)` | Normal durum, veri mürekkebi; `--accent` |
+| `--signal-warn` | `oklch(0.84 0.15 80)` (amber) | `oklch(0.53 0.13 65)` | Uyarı |
+| `--signal-crit` | `oklch(0.72 0.18 25)` (mercan kırmızı) | `oklch(0.52 0.19 25)` | Kritik |
 | `--signal-est` | `--text-2` + kesikli çizgi | aynı | Tahmini değerler |
-| `--signal-other` | `oklch(0.70 0.06 300)` (soluk mor) | `oklch(0.55 0.08 300)` | "Diğer" kovası (claude.ai/Desktop) |
+| `--signal-other` | `oklch(0.74 0.07 300)` (soluk mor) | `oklch(0.50 0.09 300)` | "Diğer" kovası (claude.ai/Desktop) |
+| `--on-accent` | `oklch(0.20 0.01 250)` | `oklch(1 0 0)` | Vurgu dolgusu üzerindeki metin (birincil düğme, toggle) |
+
+**Kontrast ölçümü:** Kartlar, Mica/Acrylic'in açık ve koyu duvar kağıtlarıyla alabileceği zemin aralığı üzerine bindirilerek ölçüldü (açık: `L` 0.84–1.0, koyu: `L` 0.17–0.38; odak kaybındaki düz renk dahil). `--text-1`/`--text-2` hem kartta hem çıplak zeminde ≥ 4.5:1, `--text-3` kartta ≥ 4.5:1, sinyaller ≥ 3:1. Sinyal renkleri **asla gövde metni olarak kullanılmaz**; yalnızca yay, çubuk ve glif çizer. Başlangıç önerisindeki açık tema `ok`/`warn` değerleri ve koyu `--text-3` bu eşiklerin altında kaldığı için koyulaştırıldı/açıldı.
 
 **Durum eşikleri** (varsayılan, ayarlanabilir): `< 75` ok, `75–90` warn, `≥ 90` crit.
 
@@ -38,7 +45,7 @@ OKLCH ile tanımlanır. Değerler başlangıç önerisidir.
 ## 3. Tipografi
 
 - **UI metni:** `"Segoe UI Variable Text", "Segoe UI", system-ui` (Windows); macOS'ta `-apple-system`. Ek font yüklenmez.
-- **Okuma değerleri (enstrüman rakamları):** Gömülü ve **alt kümesi alınmış** bir mono variable font (adaylar: Geist Mono, JetBrains Mono). Yalnızca rakamlar, `% , . : - + ≈ ▲ ▼` ve harfler `s d h m g sa dk`. Hedef boyut ≤ 25 KB woff2. Kesin seçim Adım 09'da yapılır.
+- **Okuma değerleri (enstrüman rakamları):** **Geist Mono** (OFL, v1.8.2), `wght` ekseni korunarak alt kümesi alınmış variable woff2: **12,8 KB** (bütçe ≤ 25 KB). Kapsam: yazdırılabilir ASCII, Türkçe harfler (`çğıöşüÇĞİÖŞÜ`), `NBSP ≈ ▲ ▼ · − …`. Korunan OpenType özellikleri: `kern`, `tnum`, `zero`, `case`. Üretim: `scripts/subset-font.py`; lisans `app/src/lib/fonts/OFL.txt`. Mono yüz yalnızca okuma değerlerinde (`.readout`) kullanılır, etiket ve cümlelerde kullanılmaz.
 - Tüm sayılarda `font-variant-numeric: tabular-nums` kullanılır, böylece geri sayım sırasında metin titremez.
 
 **Ölçek:**
@@ -57,7 +64,8 @@ OKLCH ile tanımlanır. Değerler başlangıç önerisidir.
 
 - **Dış halka (haftalık):** kalınlık 6 px. **İç halka (5 saatlik pencere):** kalınlık 10 px. Halkalar arasında 4 px boşluk bulunur. 25/50/75 noktalarında 1 px tick'ler yer alır.
 - **Projeksiyon yayı:** Mevcut hızla reset anında ulaşılacak yüzdeyi, dolu yayın devamında **soluk bir "hayalet" yay** olarak gösterir. Hayalet yay 100'ü aşıyorsa uç noktada crit rengi ve ▲ glifi kullanılır.
-- **Merkez:** Büyük punto ile 5 saatlik %, altında küçük punto ile reset geri sayımı.
+- **Merkez:** Büyük punto (`display`) ile 5 saatlik %, altında küçük punto ile yalnızca kalan süre (`1 sa 48 dk`); "… sonra yenilenir" cümlesi halka boşluğuna sığmaz, limit satırında tam cümle kullanılır.
+- **Geometri (bileşen, 168 px tasarım boyu):** dış halka yarıçapı 77, iç halka 65; tick'ler 60–80 arası, yayların altında çizilir (yalnızca track üzerinde görünür). Tahmini yay `--signal-est` rengindedir ve maske ile kesikli çizilir. Kritik çentik: yayın sonundan önce %1,5'lik boşluk ve %1,5'lik uç. Hayalet yay %30 opaklıktadır; 100'ü aşarsa crit rengine döner ve 12 yönünde ▲ çizilir. Bayat veride yaylar %50 opaklık, merkez rakam `--text-3`.
 - **Animasyon:** Değer değiştiğinde 400 ms ease-out ile geçiş yapılır ve bir kez radar taraması (conic gradient, 600 ms) oynar. **Sürekli animasyon yoktur.** Bu kural boşta CPU bütçesi gereği zorunludur.
 
 ### Limit satırı
@@ -109,7 +117,7 @@ Her limit kartının köşesinde küçük bir rozet bulunur: `canlı` (S1), `API
 ## 5. Yerleşim ve şekil
 
 - **Grid:** 4 px tabanlı; boşluk değerleri 4/8/12/16/24.
-- **Köşe yarıçapı:** pencerelerde 8 px (Windows 11 standardı), kartlarda 8 px, rozetlerde 999 px.
+- **Köşe yarıçapı (hiyerarşiye göre):** pencerelerde ve kartlarda 8 px (Windows 11 standardı), düğme/tooltip/iskelet gibi kontrollerde 4 px, rozet ve toggle'da 999 px.
 - **Panel:** 360 px genişlik, yükseklik içeriğe göre ve en fazla 600 px. Tray'e hizalanır (görev çubuğu konumu ve çoklu monitör DPI'ı hesaba katılır).
 - **Ana pencere (v0.2):** Sol tarafta dar bir navigasyon (ikon + etiket) ve içerik alanı bulunur. Minimum boyut 900×600'dür.
 
@@ -120,8 +128,11 @@ Her limit kartının köşesinde küçük bir rozet bulunur: `canlı` (S1), `API
 | `--dur-fast` | 120 ms | Hover, basma |
 | `--dur-base` | 200 ms | Panel açılma ve kapanma |
 | `--dur-slow` | 400 ms | Değer geçişleri |
+| `--dur-sweep` | 600 ms | Tek seferlik radar taraması |
+| `--ease-out` | `cubic-bezier(0, 0, 0, 1)` | Windows'un yavaşlayan eğrisi; tüm geçişler |
 
-- `prefers-reduced-motion` tercihine tam uyulur: geçişler anlık olur, tarama efekti oynamaz.
+- `prefers-reduced-motion` tercihine tam uyulur: tüm süre token'ları 0 ms olur, tarama ve busy nabzı hiç oynamaz. Windows'ta "Animasyon efektleri" kapalıysa WebView2 bunu `reduce` olarak bildirir.
+- Tarama ilk görüntülemede oynamaz; yalnızca değer değiştiğinde. Busy noktası durum busy'ye geçtiğinde iki kez atar. Adım 09'da ölçüldü: değişimden 2 sn sonra `document.getAnimations()` boştur.
 - Panel açılışında 8 px yukarı kayma ve opaklık geçişi uygulanır. Kapanışta efekt yoktur, panel anında kapanır.
 
 ## 7. Erişilebilirlik
