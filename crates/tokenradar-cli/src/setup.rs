@@ -47,7 +47,8 @@ pub fn install(
         return Ok(());
     };
     println!("{}", plan.diff());
-    if let Some(prev) = &previous_command
+    // Only a chained command keeps running, so only then is its quoting worth a word.
+    if let Some(prev) = previous_command.as_ref().filter(|_| chain)
         && shell.mangles(prev)
     {
         println!(
