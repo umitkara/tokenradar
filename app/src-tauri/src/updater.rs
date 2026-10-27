@@ -175,19 +175,27 @@ pub fn setting_changed(app: &AppHandle) {
     }
 }
 
+/// The state, with the stored check time until this run checks (so About shows the last check
+/// after a restart or an update).
 pub fn view(app: &AppHandle) -> UpdateView {
-    app.state::<Updates>().view()
+    let mut view = app.state::<Updates>().view();
+    if view.checked_at.is_none() {
+        view.checked_at = kv_checked_at(app);
+    }
+    view
 }
 
-/// The stored check time; the in-memory one while the core is not running.
-fn stored_checked_at(app: &AppHandle) -> Option<i64> {
+fn kv_checked_at(app: &AppHandle) -> Option<i64> {
     let mut value = None;
     core_bridge::with_core(app, |core| {
         value = core.store().kv_get(KV_CHECKED_AT).ok().flatten();
     });
-    value
-        .and_then(|v| v.parse().ok())
-        .or_else(|| view(app).checked_at)
+    value.and_then(|v| v.parse().ok())
+}
+
+/// The stored check time; the in-memory one while the core is not running.
+fn stored_checked_at(app: &AppHandle) -> Option<i64> {
+    kv_checked_at(app).or_else(|| app.state::<Updates>().view().checked_at)
 }
 
 fn store_checked_at(app: &AppHandle, at: i64) {
