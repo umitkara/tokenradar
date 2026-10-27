@@ -11,6 +11,7 @@ import {
   events,
   type PrefsView,
   type StorageView,
+  type UpdateView,
 } from "../../lib/ipc/bindings";
 import { subscribeCoreEvents } from "../../lib/ipc/core-events";
 import { inTauri } from "../../lib/ipc/runtime";
@@ -23,9 +24,10 @@ export const store = $state<{
   sources: DataSourcesView | null;
   storage: StorageView | null;
   about: AboutView | null;
+  update: UpdateView | null;
   /** `null` while unknown or unreadable. */
   autostart: boolean | null;
-}>({ prefs: null, sources: null, storage: null, about: null, autostart: null });
+}>({ prefs: null, sources: null, storage: null, about: null, update: null, autostart: null });
 
 let lastSources = 0;
 
@@ -52,9 +54,14 @@ async function loadAutostart(): Promise<void> {
 /** Everything; called on start and whenever the window becomes visible. */
 export async function loadAll(): Promise<void> {
   if (!inTauri()) return;
-  const [prefs, about] = await Promise.all([commands.getPrefs(), commands.getAbout()]);
+  const [prefs, about, update] = await Promise.all([
+    commands.getPrefs(),
+    commands.getAbout(),
+    commands.getUpdate(),
+  ]);
   store.prefs = prefs;
   store.about = about;
+  store.update = update;
   await Promise.all([loadSources(), loadStorage(), loadAutostart()]);
 }
 
@@ -70,9 +77,13 @@ export function startSettings(): () => void {
   const offPrefs = events.prefsChanged.listen((e) => {
     store.prefs = e.payload;
   });
+  const offUpdate = events.updateChanged.listen((e) => {
+    store.update = e.payload;
+  });
   return () => {
     offCore();
     void offPrefs.then((off) => off());
+    void offUpdate.then((off) => off());
   };
 }
 

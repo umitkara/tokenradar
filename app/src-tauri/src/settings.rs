@@ -22,6 +22,8 @@ pub enum SettingsSection {
     /// Consent for the usage API.
     Api,
     Diagnostics,
+    /// About: a found update and "Install and restart".
+    Updates,
 }
 
 impl SettingsSection {
@@ -32,6 +34,7 @@ impl SettingsSection {
             Self::Statusline => "statusline",
             Self::Api => "api",
             Self::Diagnostics => "diagnostics",
+            Self::Updates => "updates",
         }
     }
 }

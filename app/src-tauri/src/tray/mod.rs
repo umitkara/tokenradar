@@ -27,7 +27,7 @@ use tokenradar_core::limits::PanelSnapshot;
 use tokenradar_core::notifier::KV_MUTED_UNTIL;
 use tokenradar_core::paths::Paths;
 use tokenradar_core::store::Store;
-use tokenradar_i18n::{Domain, Locale, Localizer};
+use tokenradar_i18n::{Arg, Domain, Locale, Localizer};
 
 use crate::ipc::MuteChanged;
 use crate::{onboarding, panel, settings};
@@ -42,6 +42,7 @@ const MENU_MUTE: &str = "mute";
 const MENU_SETTINGS: &str = "settings";
 const MENU_ONBOARDING: &str = "onboarding";
 const MENU_ABOUT: &str = "about";
+const MENU_UPDATE: &str = "update";
 const MENU_QUIT: &str = "quit";
 #[cfg(debug_assertions)]
 const MENU_GALLERY: &str = "gallery";
@@ -64,6 +65,8 @@ pub enum TrayMsg {
     MutedUntil(Option<Timestamp>),
     /// The UI language changed: settings window, "Delete all data" and the `cycle` scenario.
     Locale(Locale),
+    /// A newer release was found (its version) or is no longer offered (`None`).
+    Update(Option<String>),
     /// Theme, scale or high contrast may have changed.
     Environment,
 }
@@ -103,7 +106,7 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
     let now = Timestamp::now();
     let model = TrayModel::default();
     let tip = tooltip::tooltip(&model, &l10n, &SystemClock, now);
-    let (menu, mute_item) = build_menu(app, &l10n, false)?;
+    let (menu, mute_item) = build_menu(app, &l10n, false, None)?;
 
     let tray = TrayIconBuilder::with_id(TRAY_ID)
         .icon(icon_image(visual, env))
@@ -114,6 +117,10 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
             MENU_OPEN_PANEL => panel::report(panel::show(app)),
             MENU_MUTE => send(app, TrayMsg::ToggleMute),
             MENU_SETTINGS | MENU_ABOUT => panel::report(settings::show(app, None)),
+            MENU_UPDATE => panel::report(settings::show(
+                app,
+                Some(settings::SettingsSection::Updates),
+            )),
             MENU_ONBOARDING => panel::report(onboarding::show(app)),
             MENU_QUIT => app.exit(0),
             #[cfg(debug_assertions)]
@@ -151,7 +158,11 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
     let presenter = Presenter {
         icon: Some((visual, env)),
         tooltip: Some(tip),
-        menu: Some((l10n.locale(), false)),
+        menu: Some(MenuKey {
+            locale: l10n.locale(),
+            muted: false,
+            update: None,
+        }),
     };
     let sink = TauriSink {
         app: app.clone(),
@@ -169,6 +180,7 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
                 l10n: Localizer::new(locale, &[Domain::Tray]),
                 env,
                 store: None,
+                update: None,
                 presenter,
                 sink,
             };
@@ -186,6 +198,7 @@ fn build_menu(
     app: &AppHandle,
     l10n: &Localizer,
     muted: bool,
+    update: Option<&str>,
 ) -> tauri::Result<(Menu<Wry>, MenuItem<Wry>)> {
     let item = |id: &str, key: &str| MenuItem::with_id(app, id, l10n.msg(key), true, None::<&str>);
     let mute = item(MENU_MUTE, mute_key(muted))?;
@@ -205,6 +218,14 @@ fn build_menu(
     // Development builds only: the component gallery (Step 09).
     #[cfg(debug_assertions)]
     menu.insert(&item(MENU_GALLERY, "tray-menu-gallery")?, 6)?;
+    // A found update goes first, so it is seen without being in the way (Step 12).
+    if let Some(version) = update {
+        let text = l10n.fmt("tray-menu-update", &[("version", Arg::Str(version))]);
+        menu.prepend_items(&[
+            &MenuItem::with_id(app, MENU_UPDATE, text, true, None::<&str>)?,
+            &PredefinedMenuItem::separator(app)?,
+        ])?;
+    }
     Ok((menu, mute))
 }
 
@@ -222,13 +243,22 @@ struct Frame {
     env: Environment,
     tooltip: String,
     muted: bool,
+    update: Option<String>,
+}
+
+/// What the menu was built for; a change of language or update rebuilds it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct MenuKey {
+    locale: Locale,
+    muted: bool,
+    update: Option<String>,
 }
 
 /// Where frames go: Tauri in the app, a recorder in tests.
 trait Sink {
     fn set_icon(&mut self, visual: TrayVisual, env: Environment);
     fn set_tooltip(&mut self, text: &str);
-    fn rebuild_menu(&mut self, l10n: &Localizer, muted: bool);
+    fn rebuild_menu(&mut self, l10n: &Localizer, muted: bool, update: Option<&str>);
     fn set_mute_label(&mut self, l10n: &Localizer, muted: bool);
     /// The user muted or unmuted; the core's notifier must know.
     fn mute_changed(&mut self, until: Option<Timestamp>);
@@ -239,7 +269,7 @@ trait Sink {
 struct Presenter {
     icon: Option<(TrayVisual, Environment)>,
     tooltip: Option<String>,
-    menu: Option<(Locale, bool)>,
+    menu: Option<MenuKey>,
 }
 
 impl Presenter {
@@ -253,15 +283,19 @@ impl Presenter {
             sink.set_tooltip(&frame.tooltip);
             self.tooltip = Some(frame.tooltip);
         }
-        match self.menu {
-            Some((locale, muted)) if locale == l10n.locale() => {
-                if muted != frame.muted {
+        match &self.menu {
+            Some(key) if key.locale == l10n.locale() && key.update == frame.update => {
+                if key.muted != frame.muted {
                     sink.set_mute_label(l10n, frame.muted);
                 }
             }
-            _ => sink.rebuild_menu(l10n, frame.muted),
+            _ => sink.rebuild_menu(l10n, frame.muted, frame.update.as_deref()),
         }
-        self.menu = Some((l10n.locale(), frame.muted));
+        self.menu = Some(MenuKey {
+            locale: l10n.locale(),
+            muted: frame.muted,
+            update: frame.update,
+        });
     }
 }
 
@@ -296,8 +330,8 @@ impl Sink for TauriSink {
         }
     }
 
-    fn rebuild_menu(&mut self, l10n: &Localizer, muted: bool) {
-        match build_menu(&self.app, l10n, muted) {
+    fn rebuild_menu(&mut self, l10n: &Localizer, muted: bool, update: Option<&str>) {
+        match build_menu(&self.app, l10n, muted, update) {
             Ok((menu, mute_item)) => {
                 if let Err(error) = self.tray.set_menu(Some(menu)) {
                     tracing::warn!(%error, "could not replace the tray menu");
@@ -327,6 +361,8 @@ struct Driver<S: Sink> {
     l10n: Localizer,
     env: Environment,
     store: Option<Store>,
+    /// The newer release the menu offers.
+    update: Option<String>,
     presenter: Presenter,
     sink: S,
 }
@@ -406,6 +442,7 @@ impl<S: Sink> Driver<S> {
             #[cfg(any(debug_assertions, test, feature = "spike"))]
             TrayMsg::MutedUntil(until) => self.model.muted_until = until,
             TrayMsg::Locale(locale) => self.set_locale(locale),
+            TrayMsg::Update(version) => self.update = version,
             TrayMsg::Environment => self.env = system::environment(),
         }
     }
@@ -416,6 +453,7 @@ impl<S: Sink> Driver<S> {
             env: self.env,
             tooltip: tooltip::tooltip(&self.model, &self.l10n, &SystemClock, now),
             muted: self.model.is_muted(now),
+            update: self.update.clone(),
         };
         self.presenter.present(frame, &self.l10n, &mut self.sink);
     }

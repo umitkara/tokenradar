@@ -15,7 +15,10 @@ use tokenradar_core::paths::Paths;
 
 use crate::core_bridge;
 
-const REPO: &str = "https://github.com/umitkara/TokenRadar";
+const REPO: &str = "https://github.com/umitkara/tokenradar";
+/// Written by scripts/third-party-notices.mjs; the installer and the portable zip put it next
+/// to the app.
+const THIRD_PARTY_NOTICES: &str = "THIRD-PARTY-NOTICES.txt";
 
 #[derive(Debug, Clone, Serialize, Type)]
 pub struct StorageView {
@@ -30,6 +33,8 @@ pub struct StorageView {
 pub struct AboutView {
     pub version: String,
     pub repo_url: String,
+    /// Whether the third-party license list ships with this copy (release builds).
+    pub third_party_notices: bool,
 }
 
 /// The only pages the app opens (ADR-013: no other destination).
@@ -40,15 +45,19 @@ pub enum Link {
     Releases,
     Issues,
     License,
+    /// The local third-party license list, opened in the default text editor.
+    ThirdPartyNotices,
 }
 
 impl Link {
-    fn url(self) -> String {
+    /// The web page; `None` for the local file.
+    fn url(self) -> Option<String> {
         match self {
-            Self::Repo => REPO.to_owned(),
-            Self::Releases => format!("{REPO}/releases"),
-            Self::Issues => format!("{REPO}/issues"),
-            Self::License => format!("{REPO}/blob/main/LICENSE"),
+            Self::Repo => Some(REPO.to_owned()),
+            Self::Releases => Some(format!("{REPO}/releases")),
+            Self::Issues => Some(format!("{REPO}/issues")),
+            Self::License => Some(format!("{REPO}/blob/main/LICENSE")),
+            Self::ThirdPartyNotices => None,
         }
     }
 }
@@ -88,17 +97,29 @@ pub fn storage() -> Result<StorageView, String> {
     })
 }
 
+fn third_party_notices() -> Option<std::path::PathBuf> {
+    let exe = std::env::current_exe().ok()?;
+    let path = exe.parent()?.join(THIRD_PARTY_NOTICES);
+    path.is_file().then_some(path)
+}
+
 pub fn about() -> AboutView {
     AboutView {
         version: env!("CARGO_PKG_VERSION").to_owned(),
         repo_url: REPO.to_owned(),
+        third_party_notices: third_party_notices().is_some(),
     }
 }
 
 pub fn open_link(app: &AppHandle, link: Link) -> Result<(), String> {
-    app.opener()
-        .open_url(link.url(), None::<&str>)
-        .map_err(|e| e.to_string())
+    let opener = app.opener();
+    let result = if let Some(url) = link.url() {
+        opener.open_url(url, None::<&str>)
+    } else {
+        let path = third_party_notices().ok_or("the third-party notices are not installed")?;
+        opener.open_path(path.display().to_string(), None::<&str>)
+    };
+    result.map_err(|e| e.to_string())
 }
 
 /// Deletes the database, spool and logs and resets `config.toml`, keeping only the

@@ -7,6 +7,7 @@ import type {
   PickError,
   SettingsSection,
   StatuslineError,
+  UpdateView,
 } from "../../lib/ipc/bindings";
 
 export type Tab = "general" | "sources" | "notifications" | "privacy" | "about";
@@ -31,6 +32,7 @@ const TARGETS: Record<SettingsSection, Target> = {
   statusline: { tab: "sources", anchor: "statusline" },
   api: { tab: "sources", anchor: "api" },
   diagnostics: { tab: "privacy", anchor: "diagnostics" },
+  updates: { tab: "about", anchor: "updates" },
 };
 
 /** The target of a URL fragment (`settings.html#api`) or a `settings-section-requested` event. */
@@ -157,4 +159,58 @@ export function pickErrorKey(error: PickError): string {
     case "io":
       return "sources-pick-failed";
   }
+}
+
+/** What About's "Updates" card shows: status lines and which buttons are live. */
+export interface UpdateUi {
+  lines: Message[];
+  /** "Install and restart": an installed copy with a found update. */
+  install: boolean;
+  /** A portable copy with a found update: the releases page is the way to get it. */
+  download: boolean;
+  /** Checking or installing: both buttons wait. */
+  busy: boolean;
+}
+
+export function updateUi(u: UpdateView, now: number): UpdateUi {
+  const lines: Message[] = [];
+  const s = u.status;
+  const busy = s.kind === "checking" || s.kind === "installing";
+  switch (s.kind) {
+    case "idle":
+      break;
+    case "checking":
+      lines.push({ key: "about-update-checking" });
+      break;
+    case "up_to_date":
+      lines.push({ key: "about-update-current" });
+      break;
+    case "found":
+      break;
+    case "installing":
+      lines.push(
+        s.percent === null
+          ? { key: "about-update-downloading" }
+          : { key: "about-update-downloading-pct", args: { pct: s.percent } },
+      );
+      break;
+    case "failed":
+      lines.push({
+        key: s.stage === "check" ? "about-update-check-failed" : "about-update-install-failed",
+      });
+      break;
+  }
+  if (u.available) {
+    lines.unshift({ key: "about-update-available", args: { version: u.available.version } });
+    if (!u.can_install) lines.push({ key: "about-update-portable" });
+  }
+  if (u.checked_at !== null && !busy) {
+    lines.push({ key: "about-update-checked", args: { ms: Math.max(0, now - u.checked_at) } });
+  }
+  return {
+    lines,
+    install: u.available !== null && u.can_install && s.kind !== "installing",
+    download: u.available !== null && !u.can_install,
+    busy,
+  };
 }

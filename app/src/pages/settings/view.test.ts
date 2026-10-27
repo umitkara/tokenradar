@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { ApiConsentView } from "../../lib/ipc/bindings";
+import type { ApiConsentView, UpdateView } from "../../lib/ipc/bindings";
 import {
   addThreshold,
   apiStatus,
@@ -10,6 +10,7 @@ import {
   removeThreshold,
   sizeMessage,
   targetFor,
+  updateUi,
 } from "./view";
 
 describe("targetFor", () => {
@@ -18,6 +19,7 @@ describe("targetFor", () => {
     expect(targetFor("statusline")).toEqual({ tab: "sources", anchor: "statusline" });
     expect(targetFor("accounts")).toEqual({ tab: "sources", anchor: "dirs" });
     expect(targetFor("diagnostics")).toEqual({ tab: "privacy", anchor: "diagnostics" });
+    expect(targetFor("updates")).toEqual({ tab: "about", anchor: "updates" });
   });
 
   it("falls back to General for anything else", () => {
@@ -97,5 +99,75 @@ describe("apiStatus", () => {
     expect(consentAge(base, now)).toBe(3_600_000);
     expect(consentAge({ ...base, granted_at: "nonsense" }, now)).toBeNull();
     expect(consentAge({ ...base, granted: false }, now)).toBeNull();
+  });
+});
+
+describe("updateUi", () => {
+  const NOW = 1_800_000_000_000;
+  const base: UpdateView = {
+    status: { kind: "idle" },
+    available: null,
+    current_version: "0.1.0",
+    checked_at: null,
+    can_install: true,
+  };
+  const found = { version: "0.1.1", notes: "Fixes", date: "2026-11-02" };
+
+  it("shows nothing before the first check", () => {
+    expect(updateUi(base, NOW)).toEqual({
+      lines: [],
+      install: false,
+      download: false,
+      busy: false,
+    });
+  });
+
+  it("says when the last check was", () => {
+    const ui = updateUi({ ...base, status: { kind: "up_to_date" }, checked_at: NOW - 60_000 }, NOW);
+    expect(ui.lines).toEqual([
+      { key: "about-update-current" },
+      { key: "about-update-checked", args: { ms: 60_000 } },
+    ]);
+  });
+
+  it("offers the install only to an installed copy", () => {
+    const installed = updateUi({ ...base, status: { kind: "found" }, available: found }, NOW);
+    expect(installed.install).toBe(true);
+    expect(installed.download).toBe(false);
+    expect(installed.lines[0]).toEqual({
+      key: "about-update-available",
+      args: { version: "0.1.1" },
+    });
+
+    const portable = updateUi(
+      { ...base, status: { kind: "found" }, available: found, can_install: false },
+      NOW,
+    );
+    expect(portable.install).toBe(false);
+    expect(portable.download).toBe(true);
+    expect(portable.lines).toContainEqual({ key: "about-update-portable" });
+  });
+
+  it("waits while checking or installing", () => {
+    const installing = updateUi(
+      { ...base, status: { kind: "installing", percent: 40 }, available: found, checked_at: NOW },
+      NOW,
+    );
+    expect(installing.busy).toBe(true);
+    expect(installing.install).toBe(false);
+    expect(installing.lines).toEqual([
+      { key: "about-update-available", args: { version: "0.1.1" } },
+      { key: "about-update-downloading-pct", args: { pct: 40 } },
+    ]);
+    expect(updateUi({ ...base, status: { kind: "checking" } }, NOW).busy).toBe(true);
+  });
+
+  it("keeps a found update after a failed install", () => {
+    const ui = updateUi(
+      { ...base, status: { kind: "failed", stage: "install" }, available: found },
+      NOW,
+    );
+    expect(ui.install).toBe(true);
+    expect(ui.lines).toContainEqual({ key: "about-update-install-failed" });
   });
 });

@@ -21,6 +21,7 @@ use crate::sources::{
     self, DataSourcesView, PickError, StatuslineAction, StatuslineError, StatuslinePlanView,
 };
 use crate::tray_pin::{self, TrayPinState};
+use crate::updater::{self, UpdateChanged, UpdateView};
 use crate::{core_bridge, notify, onboarding, panel, tray};
 
 /// Relative to the `app/src-tauri` crate. Release builds never write the bindings.
@@ -65,6 +66,9 @@ pub fn builder() -> Builder<tauri::Wry> {
             create_diagnostics,
             get_about,
             open_link,
+            get_update,
+            check_for_update,
+            install_update,
             panel_ready,
             panel_resize,
             panel_painted,
@@ -84,6 +88,7 @@ pub fn builder() -> Builder<tauri::Wry> {
             PrefsChanged,
             MuteChanged,
             SettingsSectionRequested,
+            UpdateChanged,
             panel::PanelShown
         ])
         // Ids, timestamps and money are `i64` but stay far below 2^53 (Step 03).
@@ -312,6 +317,26 @@ async fn get_about() -> AboutView {
 #[specta::specta]
 async fn open_link(app: AppHandle, link: Link) -> Result<(), String> {
     privacy::open_link(&app, link)
+}
+
+#[tauri::command]
+#[specta::specta]
+async fn get_update(app: AppHandle) -> UpdateView {
+    updater::view(&app)
+}
+
+/// "Check now": asks GitHub Releases at once, whatever the daily setting says.
+#[tauri::command]
+#[specta::specta]
+async fn check_for_update(app: AppHandle) -> UpdateView {
+    updater::check(&app).await
+}
+
+/// "Install and restart": on success the app exits and the installer takes over.
+#[tauri::command]
+#[specta::specta]
+async fn install_update(app: AppHandle) -> Result<(), String> {
+    updater::install(&app).await
 }
 
 /// The panel rendered its first snapshot; `height` is its content height in CSS pixels.

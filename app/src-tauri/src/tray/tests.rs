@@ -11,7 +11,7 @@ use super::*;
 struct Recorder {
     icons: usize,
     tooltips: Vec<String>,
-    menus: Vec<(Locale, bool)>,
+    menus: Vec<(Locale, bool, Option<String>)>,
     labels: Vec<bool>,
     /// Mute changes told to the core: `true` muted.
     mutes: Vec<bool>,
@@ -24,8 +24,9 @@ impl Sink for Recorder {
     fn set_tooltip(&mut self, text: &str) {
         self.tooltips.push(text.to_owned());
     }
-    fn rebuild_menu(&mut self, l10n: &Localizer, muted: bool) {
-        self.menus.push((l10n.locale(), muted));
+    fn rebuild_menu(&mut self, l10n: &Localizer, muted: bool, update: Option<&str>) {
+        self.menus
+            .push((l10n.locale(), muted, update.map(str::to_owned)));
     }
     fn set_mute_label(&mut self, _l10n: &Localizer, muted: bool) {
         self.labels.push(muted);
@@ -54,11 +55,16 @@ fn driver() -> (Driver<Recorder>, Sender<TrayMsg>) {
                 &SystemClock,
                 Timestamp::now(),
             )),
-            menu: Some((Locale::En, false)),
+            menu: Some(MenuKey {
+                locale: Locale::En,
+                muted: false,
+                update: None,
+            }),
         },
         l10n,
         env: ENV,
         store: None,
+        update: None,
         sink: Recorder::default(),
     };
     (driver, tx)
@@ -131,12 +137,28 @@ fn tray_locale_change_rebuilds_menu_and_tooltip() {
     let (mut d, _tx) = driver();
     d.handle(TrayMsg::Locale(Locale::Tr));
     d.present(NOW);
-    assert_eq!(d.sink.menus, vec![(Locale::Tr, false)]);
+    assert_eq!(d.sink.menus, vec![(Locale::Tr, false, None)]);
     assert_eq!(
         d.sink.tooltips,
         vec!["TokenRadar\nHenüz limit verisi yok".to_owned()]
     );
     assert_eq!(d.sink.icons, 0, "the icon has no text");
+}
+
+#[test]
+fn tray_found_update_rebuilds_the_menu_once() {
+    let (mut d, _tx) = driver();
+    d.handle(TrayMsg::Update(Some("0.1.1".to_owned())));
+    d.present(NOW);
+    d.present(NOW);
+    assert_eq!(
+        d.sink.menus,
+        vec![(Locale::En, false, Some("0.1.1".to_owned()))]
+    );
+    d.handle(TrayMsg::Update(None));
+    d.present(NOW);
+    assert_eq!(d.sink.menus.len(), 2, "the item goes away again");
+    assert_eq!(d.sink.icons, 0);
 }
 
 #[test]

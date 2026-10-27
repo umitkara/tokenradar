@@ -20,6 +20,7 @@ mod sources;
 mod spike;
 mod tray;
 mod tray_pin;
+mod updater;
 
 use tauri::RunEvent;
 
@@ -47,6 +48,8 @@ fn main() {
         // Used from Rust only; no window has a dialog or opener permission.
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
+        // Rust only (updater.rs): checks and installs only when the user asks or once a day.
+        .plugin(tauri_plugin_updater::Builder::new().build())
         // The HKCU `Run` entry is written only when the user turns autostart on (Step 11).
         .plugin(
             tauri_plugin_autostart::Builder::new()
@@ -61,6 +64,7 @@ fn main() {
             prefs::init(app.handle());
             sources::init(app.handle());
             notify::init(app.handle());
+            updater::init(app.handle());
             // Fake limits replace the core entirely, so tray measurements never touch real data.
             #[cfg(any(debug_assertions, feature = "spike"))]
             let fake = tray::fake::mode();

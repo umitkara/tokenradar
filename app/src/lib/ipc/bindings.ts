@@ -49,6 +49,11 @@ export const commands = {
 	createDiagnostics: () => typedError<string | null, string>(__TAURI_INVOKE("create_diagnostics")),
 	getAbout: () => __TAURI_INVOKE<AboutView>("get_about"),
 	openLink: (link: Link) => typedError<null, string>(__TAURI_INVOKE("open_link", { link })),
+	getUpdate: () => __TAURI_INVOKE<UpdateView>("get_update"),
+	/**  "Check now": asks GitHub Releases at once, whatever the daily setting says. */
+	checkForUpdate: () => __TAURI_INVOKE<UpdateView>("check_for_update"),
+	/**  "Install and restart": on success the app exits and the installer takes over. */
+	installUpdate: () => typedError<null, string>(__TAURI_INVOKE("install_update")),
 	/**  The panel rendered its first snapshot; `height` is its content height in CSS pixels. */
 	panelReady: (height: number | null) => __TAURI_INVOKE<void>("panel_ready", { height }),
 	/**  The panel's content height changed. */
@@ -82,12 +87,15 @@ export const events = {
 	prefsChanged: makeEvent<PrefsChanged, PrefsChanged>("prefs-changed"),
 	settingsChanged: makeEvent<SettingsChanged, SettingsChanged>("settings-changed"),
 	settingsSectionRequested: makeEvent<SettingsSectionRequested, SettingsSectionRequested>("settings-section-requested"),
+	updateChanged: makeEvent<UpdateChanged, UpdateChanged>("update-changed"),
 };
 
 /* Types */
 export type AboutView = {
 	version: string,
 	repo_url: string,
+	/**  Whether the third-party license list ships with this copy (release builds). */
+	third_party_notices: boolean,
 };
 
 /**  Row id in `accounts`. */
@@ -140,6 +148,14 @@ export type ApiState =
 export type ApiStatusView = {
 	state: ApiState,
 	diagnostics: PollDiagnostics,
+};
+
+export type AvailableUpdate = {
+	version: string,
+	/**  Release notes from `latest.json` (Markdown, shown as plain text). */
+	notes: string | null,
+	/**  Publication date as `YYYY-MM-DD`. */
+	date: string | null,
 };
 
 /**  One Claude Code directory the app watches. */
@@ -234,6 +250,8 @@ export type EstimateReason =
 /**  `resets_at` passed without a new reading: assumed 0 %. */
 "reset";
 
+export type FailedStage = "check" | "install";
+
 export type Freshness = 
 /**  Under 10 minutes old. */
 "fresh" | 
@@ -306,7 +324,9 @@ export type LimitView = {
 };
 
 /**  The only pages the app opens (ADR-013: no other destination). */
-export type Link = "repo" | "releases" | "issues" | "license";
+export type Link = "repo" | "releases" | "issues" | "license" | 
+/**  The local third-party license list, opened in the default text editor. */
+"third_party_notices";
 
 /**  A Claude Code process that is running right now. */
 export type LiveSession = {
@@ -499,7 +519,9 @@ export type SettingsSection = "general" |
 /**  Installing the statusline bridge. */
 "statusline" | 
 /**  Consent for the usage API. */
-"api" | "diagnostics";
+"api" | "diagnostics" | 
+/**  About: a found update and "Install and restart". */
+"updates";
 
 /**
  *  Sent to an open settings window that should switch to `0`. A new window reads the section
@@ -591,6 +613,32 @@ export type TrayPinState =
 
 /**  The resolved UI language: `system` already applied. */
 export type UiLocale = "en" | "tr";
+
+/**  Sent to visible windows whenever [`UpdateView`] changes. */
+export type UpdateChanged = UpdateView;
+
+export type UpdateStatus = 
+/**  Not checked since the app started. */
+{ kind: "idle" } | { kind: "checking" } | 
+/**  The last check found nothing newer. */
+{ kind: "up_to_date" } | 
+/**  The last check found [`UpdateView::available`]. */
+{ kind: "found" } | 
+/**  Downloading; the installer takes over at 100 %. */
+{ kind: "installing"; percent: number | null } | 
+/**  The last check or install failed. A found update stays available. */
+{ kind: "failed"; stage: FailedStage };
+
+export type UpdateView = {
+	status: UpdateStatus,
+	/**  The newer release once a check found one; kept until a check finds none. */
+	available: AvailableUpdate | null,
+	current_version: string,
+	/**  Last check, in Unix milliseconds. */
+	checked_at: number | null,
+	/**  `false` for portable copies and development builds: no installer to run. */
+	can_install: boolean,
+};
 
 /* Tauri Specta runtime */
 async function typedError<T, E>(result: Promise<T>): Promise<{ status: "ok"; data: T } | { status: "error"; error: E }> {

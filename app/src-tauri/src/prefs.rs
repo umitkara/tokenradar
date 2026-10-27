@@ -287,7 +287,9 @@ pub fn set_data(app: &AppHandle, data: DataConfig) -> Result<PrefsView, String> 
     with_config(|path| config::save_data(path, &data))?;
     let days = data.raw_retention_days;
     crate::core_bridge::with_core(app, |core| core.set_retention_days(days));
-    Ok(changed(app, |p| p.data = data))
+    let view = changed(app, |p| p.data = data);
+    crate::updater::setting_changed(app);
+    Ok(view)
 }
 
 pub fn set_log_level(app: &AppHandle, level: LogLevel) -> Result<PrefsView, String> {
