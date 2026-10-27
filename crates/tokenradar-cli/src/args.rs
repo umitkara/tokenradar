@@ -29,6 +29,10 @@ pub enum Command {
     Sessions {
         json: bool,
     },
+    /// A diagnostics bundle; `out` defaults to a stamped name in the current directory.
+    Doctor {
+        out: Option<PathBuf>,
+    },
 }
 
 #[derive(Default)]
@@ -41,6 +45,7 @@ struct Flags {
     no_chain: bool,
     yes: bool,
     config_dir: Option<PathBuf>,
+    out: Option<PathBuf>,
 }
 
 pub fn parse(mut parser: lexopt::Parser) -> Result<Command, lexopt::Error> {
@@ -57,6 +62,7 @@ pub fn parse(mut parser: lexopt::Parser) -> Result<Command, lexopt::Error> {
             Long("no-chain") => f.no_chain = true,
             Short('y') | Long("yes") => f.yes = true,
             Long("config-dir") => f.config_dir = Some(parser.value()?.into()),
+            Short('o') | Long("out") => f.out = Some(parser.value()?.into()),
             Value(v) if words.len() < 2 => words.push(v.string()?),
             _ => return Err(arg.unexpected()),
         }
@@ -88,6 +94,7 @@ pub fn parse(mut parser: lexopt::Parser) -> Result<Command, lexopt::Error> {
         ["status"] => Command::Status { json: f.json },
         ["limits"] => Command::Limits { json: f.json },
         ["sessions"] => Command::Sessions { json: f.json },
+        ["doctor"] => Command::Doctor { out: f.out.take() },
         [..] => return Err(format!("unknown command '{}'", words.join(" ")).into()),
     };
     check_flags(&command, &f)?;
@@ -96,13 +103,14 @@ pub fn parse(mut parser: lexopt::Parser) -> Result<Command, lexopt::Error> {
 
 /// Rejects flags the command does not take, so a typo is not silently ignored.
 fn check_flags(command: &Command, f: &Flags) -> Result<(), lexopt::Error> {
-    let (json, chain, no_chain, yes, dir) = match command {
-        Command::Statusline { .. } => (false, true, false, false, false),
-        Command::Install { .. } => (false, true, true, true, true),
-        Command::Uninstall { .. } => (false, false, false, true, true),
+    let (json, chain, no_chain, yes, dir, out) = match command {
+        Command::Statusline { .. } => (false, true, false, false, false, false),
+        Command::Install { .. } => (false, true, true, true, true, false),
+        Command::Uninstall { .. } => (false, false, false, true, true, false),
         Command::Status { .. } | Command::Limits { .. } | Command::Sessions { .. } => {
-            (true, false, false, false, false)
+            (true, false, false, false, false, false)
         }
+        Command::Doctor { .. } => (false, false, false, false, false, true),
         Command::Help | Command::Version => return Ok(()),
     };
     let used = [
@@ -111,6 +119,7 @@ fn check_flags(command: &Command, f: &Flags) -> Result<(), lexopt::Error> {
         (f.no_chain && !no_chain, "--no-chain"),
         (f.yes && !yes, "--yes"),
         (f.config_dir.is_some() && !dir, "--config-dir"),
+        (f.out.is_some() && !out, "--out"),
     ];
     match used.iter().find(|(bad, _)| *bad) {
         Some((_, flag)) => Err(format!("{flag} does not apply to this command").into()),
@@ -173,6 +182,13 @@ mod tests {
             parse_args(&["limits", "--json"]),
             Ok(Command::Limits { json: true })
         );
+        assert_eq!(parse_args(&["doctor"]), Ok(Command::Doctor { out: None }));
+        assert_eq!(
+            parse_args(&["doctor", "--out", "D:/x.zip"]),
+            Ok(Command::Doctor {
+                out: Some("D:/x.zip".into())
+            })
+        );
     }
 
     #[test]
@@ -183,5 +199,7 @@ mod tests {
         assert!(parse_args(&["statusline", "install", "--chain", "--no-chain"]).is_err());
         assert!(parse_args(&["status", "extra", "words"]).is_err());
         assert!(parse_args(&["--frobnicate"]).is_err());
+        assert!(parse_args(&["status", "--out", "x.zip"]).is_err());
+        assert!(parse_args(&["doctor", "--json"]).is_err());
     }
 }

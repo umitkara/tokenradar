@@ -45,3 +45,9 @@ codegen-units = 1
 strip = true
 panic = "abort"
 # Step 02 measures size vs. speed; `opt-level = "s"` is the alternative to evaluate.
+
+# The CLI is size-bound (≤ 3 MB) and its hot path is short (statusline p95 < 30 ms), so it is
+# built for size: `cargo build --profile release-cli -p tokenradar-cli` (Step 11b).
+[profile.release-cli]
+inherits = "release"
+opt-level = "s"

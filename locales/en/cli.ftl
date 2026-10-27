@@ -68,6 +68,8 @@ settings-invalid = { $path } is not a valid JSON object; nothing was changed.
 
 ## Errors and help
 
+doctor-done = Diagnostics bundle written: { $path }
+    It holds no token, conversation content or readable path. Open it and check before sharing.
 error = error: { $message }
 cli-help =
     TokenRadar - usage limits for AI coding agents
@@ -79,6 +81,7 @@ cli-help =
       statusline [--chain]                Claude Code statusline (reads JSON from stdin)
       statusline install [--chain|--no-chain] [--yes] [--config-dir <DIR>]
       statusline uninstall [--yes] [--config-dir <DIR>]
+      doctor [--out <ZIP>]                Diagnostics bundle to share when reporting a problem
     Options:
       -h, --help       Print help
       -V, --version    Print version

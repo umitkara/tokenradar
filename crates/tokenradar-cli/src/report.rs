@@ -41,7 +41,7 @@ pub fn run(ctx: &Context, report: Report, json: bool) -> Result<String, String> 
 }
 
 /// The app's full status; `None` when it does not run or does not answer.
-fn from_app(ctx: &Context) -> Option<StatusReply> {
+pub fn from_app(ctx: &Context) -> Option<StatusReply> {
     let name = ctx.pipe_name.as_deref()?;
     let mut client = Client::connect(name, CONNECT_TIMEOUT).ok()?;
     let requests = [

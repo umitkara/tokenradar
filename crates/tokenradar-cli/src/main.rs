@@ -5,9 +5,11 @@
 //! - `status`, `limits` and `sessions` ask the app, or read its database when it is closed.
 //! - `statusline install|uninstall` edit Claude Code's `settings.json`, with a diff and the
 //!   user's yes.
+//! - `doctor` writes a diagnostics bundle the user can read and share.
 
 mod args;
 mod context;
+mod doctor;
 mod render;
 mod report;
 mod setup;
@@ -78,6 +80,7 @@ fn run(ctx: &Context, command: Command) -> ExitCode {
         Command::Status { json } => print_report(ctx, Report::Status, json),
         Command::Limits { json } => print_report(ctx, Report::Limits, json),
         Command::Sessions { json } => print_report(ctx, Report::Sessions, json),
+        Command::Doctor { out } => exit(doctor::run(ctx, out)),
     }
 }
 

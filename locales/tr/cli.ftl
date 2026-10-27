@@ -68,6 +68,8 @@ settings-invalid = { $path } geçerli bir JSON nesnesi değil; hiçbir şey değ
 
 ## Hatalar ve yardım
 
+doctor-done = Tanılama paketi yazıldı: { $path }
+    Token, konuşma içeriği veya okunabilir yol içermez. Paylaşmadan önce açıp kontrol edin.
 error = hata: { $message }
 cli-help =
     TokenRadar - yapay zekâ kodlama ajanları için kullanım limitleri
@@ -79,6 +81,7 @@ cli-help =
       statusline [--chain]                Claude Code statusline'ı (JSON'u stdin'den okur)
       statusline install [--chain|--no-chain] [--yes] [--config-dir <DİZİN>]
       statusline uninstall [--yes] [--config-dir <DİZİN>]
+      doctor [--out <ZIP>]                Sorun bildirirken paylaşılacak tanılama paketi
     Seçenekler:
       -h, --help       Yardımı göster
       -V, --version    Sürümü göster

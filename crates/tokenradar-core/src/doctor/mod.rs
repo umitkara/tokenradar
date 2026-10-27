@@ -18,6 +18,8 @@ use toml_edit::{DocumentMut, Item, value};
 
 use crate::config::AppConfig;
 use crate::domain::Timestamp;
+use crate::ipc::StatusReply;
+use crate::limits::PanelSnapshot;
 use crate::paths::Paths;
 use crate::providers::claude;
 use crate::store::ReadOnlyStore;
@@ -102,6 +104,59 @@ pub fn write(out: &Path, input: &Input<'_>) -> Result<PathBuf, DoctorError> {
     }
     crate::fsutil::atomic_write(out, &buf).map_err(io)?;
     Ok(out.to_path_buf())
+}
+
+/// The running app's state as the CLI sees it over IPC. Limits without names; no session.
+pub fn live_from_status(s: &StatusReply) -> Value {
+    let limits: Vec<Value> = s
+        .limits
+        .iter()
+        .map(|l| {
+            json!({
+                "kind": l.kind,
+                "scope": l.scope,
+                "percent": l.percent,
+                "source": l.source,
+                "freshness": l.freshness,
+                "observed_at": l.observed_at,
+            })
+        })
+        .collect();
+    json!({
+        "origin": "ipc",
+        "api_state": s.api_state,
+        "statusline_last_seen": s.statusline_last_seen,
+        "live_sessions": s.live_sessions.len(),
+        "limits": limits,
+    })
+}
+
+/// The app's own state, richer than [`live_from_status`]: poll counters, index progress and
+/// schema drift. Session names, titles and projects are left out.
+pub fn live_from_snapshot(s: &PanelSnapshot) -> Value {
+    let limits: Vec<Value> = s
+        .limits
+        .iter()
+        .map(|l| {
+            json!({
+                "kind": l.kind,
+                "scope": l.scope,
+                "percent": l.percent,
+                "source": l.source,
+                "freshness": l.freshness,
+                "observed_at": l.observed_at,
+                "projection": l.projection,
+            })
+        })
+        .collect();
+    json!({
+        "origin": "app",
+        "api": s.api,
+        "statusline_last_seen": s.statusline.last_seen,
+        "index": s.index_state,
+        "live_sessions": s.live_sessions.len(),
+        "limits": limits,
+    })
 }
 
 /// `tokenradar-doctor-20261027-213358.zip`.

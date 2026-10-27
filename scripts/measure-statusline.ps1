@@ -23,8 +23,11 @@ Unmeasured calls before each mode. Default 10.
 .PARAMETER Mode
 both (default), on or off.
 
+.PARAMETER Profile
+Cargo profile of the CLI: release-cli (default, the shipped size-optimized build) or release.
+
 .PARAMETER NoBuild
-Use the existing release binaries.
+Use the existing binaries.
 
 .EXAMPLE
 .\scripts\measure-statusline.ps1
@@ -36,6 +39,7 @@ param(
     [int]$Runs = 200,
     [int]$Warmup = 10,
     [ValidateSet('both', 'on', 'off')][string]$Mode = 'both',
+    [ValidateSet('release-cli', 'release')][string]$Profile = 'release-cli',
     [switch]$NoBuild
 )
 
@@ -44,12 +48,12 @@ $inv = [Globalization.CultureInfo]::InvariantCulture
 $root = Split-Path -Parent $PSScriptRoot
 
 if (-not $NoBuild) {
-    cargo build --release -q -p tokenradar-cli
+    cargo build --profile $Profile -q -p tokenradar-cli
     if ($LASTEXITCODE) { throw 'cargo build -p tokenradar-cli failed' }
     cargo build --release -q -p tokenradar-core --example ipc_serve
     if ($LASTEXITCODE) { throw 'cargo build --example ipc_serve failed' }
 }
-$cli = Join-Path $root 'target\release\tokenradar.exe'
+$cli = Join-Path $root "target\$Profile\tokenradar.exe"
 $serveExe = Join-Path $root 'target\release\examples\ipc_serve.exe'
 
 $tmp = Join-Path ([IO.Path]::GetTempPath()) ('tokenradar-measure-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
