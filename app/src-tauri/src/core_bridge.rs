@@ -20,7 +20,7 @@ use tokenradar_core::runtime::{
 
 use crate::tray::system::SystemClock;
 use crate::tray::{self, TrayMsg};
-use crate::{ipc, notify};
+use crate::{ipc, notify, onboarding};
 
 /// The running core, once it has started.
 #[derive(Default)]
@@ -42,11 +42,14 @@ pub fn start(app: &AppHandle) {
             Ok(handle) => {
                 let sub = handle.subscribe();
                 tray::send(&app, TrayMsg::CoreReady(handle.store().clone()));
+                let store = handle.store().clone();
                 if let Some(limits) = handle.status().limits {
                     tray::send(&app, TrayMsg::Snapshot(Box::new(limits)));
                 }
                 *state.lock().unwrap_or_else(PoisonError::into_inner) = Some(handle);
-                tauri::async_runtime::spawn(forward(app, sub, state));
+                tauri::async_runtime::spawn(forward(app.clone(), sub, state));
+                // After the handle is stored: closing the window records itself through it.
+                onboarding::on_core_started(&app, &store);
             }
             Err(error) => {
                 tracing::error!(%error, "could not start the core");

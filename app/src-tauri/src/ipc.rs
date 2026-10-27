@@ -20,7 +20,8 @@ use crate::settings::{self, SettingsSection, SettingsSectionRequested};
 use crate::sources::{
     self, DataSourcesView, PickError, StatuslineAction, StatuslineError, StatuslinePlanView,
 };
-use crate::{core_bridge, notify, panel, tray};
+use crate::tray_pin::{self, TrayPinState};
+use crate::{core_bridge, notify, onboarding, panel, tray};
 
 /// Relative to the `app/src-tauri` crate. Release builds never write the bindings.
 #[cfg(debug_assertions)]
@@ -71,7 +72,11 @@ pub fn builder() -> Builder<tauri::Wry> {
             refresh_limits,
             get_muted,
             toggle_mute,
-            open_settings
+            open_settings,
+            get_tray_pin,
+            pin_tray_icon,
+            open_taskbar_settings,
+            finish_onboarding
         ])
         .events(collect_events![
             CoreEventEmitted,
@@ -362,6 +367,34 @@ async fn toggle_mute(app: AppHandle) {
 #[specta::specta]
 async fn open_settings(app: AppHandle, section: SettingsSection) -> Result<(), String> {
     settings::show(&app, Some(section)).map_err(|e| e.to_string())
+}
+
+/// Whether the tray icon is on the taskbar or in the overflow flyout (Windows 11).
+#[tauri::command]
+#[specta::specta]
+async fn get_tray_pin() -> TrayPinState {
+    blocking(tray_pin::state).await
+}
+
+/// "Always show the icon": the user clicked it; answers with the state read back.
+#[tauri::command]
+#[specta::specta]
+async fn pin_tray_icon() -> TrayPinState {
+    blocking(tray_pin::pin).await
+}
+
+/// The fallback when the icon could not be promoted: the taskbar settings page.
+#[tauri::command]
+#[specta::specta]
+async fn open_taskbar_settings(app: AppHandle) -> Result<(), String> {
+    tray_pin::open_taskbar_settings(&app)
+}
+
+/// "Finish" in onboarding: closes the window, which records it as done.
+#[tauri::command]
+#[specta::specta]
+async fn finish_onboarding(app: AppHandle) {
+    onboarding::finish(&app);
 }
 
 #[cfg(test)]

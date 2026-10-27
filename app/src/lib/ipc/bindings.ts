@@ -64,6 +64,14 @@ export const commands = {
 	toggleMute: () => __TAURI_INVOKE<void>("toggle_mute"),
 	/**  Opens the settings window on `section`. */
 	openSettings: (section: SettingsSection) => typedError<null, string>(__TAURI_INVOKE("open_settings", { section })),
+	/**  Whether the tray icon is on the taskbar or in the overflow flyout (Windows 11). */
+	getTrayPin: () => __TAURI_INVOKE<TrayPinState>("get_tray_pin"),
+	/**  "Always show the icon": the user clicked it; answers with the state read back. */
+	pinTrayIcon: () => __TAURI_INVOKE<TrayPinState>("pin_tray_icon"),
+	/**  The fallback when the icon could not be promoted: the taskbar settings page. */
+	openTaskbarSettings: () => typedError<null, string>(__TAURI_INVOKE("open_taskbar_settings")),
+	/**  "Finish" in onboarding: closes the window, which records it as done. */
+	finishOnboarding: () => __TAURI_INVOKE<void>("finish_onboarding"),
 };
 
 /** Events */
@@ -569,6 +577,17 @@ export type ThemePref = "system" | "light" | "dark";
 
 /**  Milliseconds since the Unix epoch, UTC. */
 export type Timestamp = number;
+
+/**  Where the tray icon is shown. */
+export type TrayPinState = 
+/**  Always on the taskbar. */
+"shown" | 
+/**  In the overflow flyout (the default for a new icon). */
+"hidden" | 
+/**  Windows has no entry for this exe yet, or it could not be read. */
+"unknown" | 
+/**  Not Windows 11: only the settings page and the instructions are offered. */
+"unsupported";
 
 /**  The resolved UI language: `system` already applied. */
 export type UiLocale = "en" | "tr";

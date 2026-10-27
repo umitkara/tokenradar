@@ -9,6 +9,7 @@ import type {
   PanelSnapshot,
   SessionShareView,
 } from "../../lib/ipc/bindings";
+import { indexPercent } from "../../lib/progress";
 
 /** Live sessions listed before "+N more". */
 export const MAX_LIVE = 5;
@@ -115,9 +116,11 @@ export function notices(snapshot: PanelSnapshot): Notice[] {
   const out: Notice[] = [];
   const index = snapshot.index_state;
   if (!index.initial_scan_done && index.progress) {
-    const { bytes_done, bytes_total } = index.progress;
-    const pct = bytes_total > 0 ? Math.min(100, (bytes_done / bytes_total) * 100) : 0;
-    out.push({ type: "indexing", pct: Math.floor(pct), recentReady: index.recent_ready });
+    out.push({
+      type: "indexing",
+      pct: indexPercent(index.progress),
+      recentReady: index.recent_ready,
+    });
   }
   const api = snapshot.api.state.state;
   if (api === "token_stale") out.push({ type: "token-stale" });

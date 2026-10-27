@@ -8,9 +8,10 @@ import Card from "../../lib/components/Card.svelte";
 import { t } from "../../lib/i18n/i18n.svelte";
 import { commands } from "../../lib/ipc/bindings";
 import { clock } from "../../lib/time/clock.svelte";
+import ApiConsent from "./ApiConsent.svelte";
 import StatuslineDialog from "./StatuslineDialog.svelte";
 import { loadSources, store } from "./state.svelte";
-import { apiStatus, consentAge, pickErrorKey } from "./view";
+import { pickErrorKey } from "./view";
 
 let { onerror }: { onerror: (key: string | null) => void } = $props();
 
@@ -23,9 +24,6 @@ const statusline = $derived(sources?.statusline ?? null);
 const currentCommand = $derived(
   statusline?.state === "not_installed" ? statusline.current_command : null,
 );
-const api = $derived(sources?.api ?? null);
-const apiLines = $derived(api ? apiStatus(api, clock.now) : []);
-const allowedAgo = $derived(api ? consentAge(api, clock.now) : null);
 
 async function pick() {
   busy = true;
@@ -56,18 +54,6 @@ async function dialogDone(result: { backup: string | null } | null) {
   if (!result) return;
   notice = result.backup ? t("statusline-done", { path: result.backup }) : null;
   await loadSources();
-}
-
-async function setConsent(granted: boolean) {
-  busy = true;
-  const r = await commands.setApiConsent(granted);
-  busy = false;
-  if (r.status === "ok") {
-    store.sources = r.data;
-    onerror(null);
-  } else {
-    onerror("settings-save-failed");
-  }
 }
 </script>
 
@@ -183,35 +169,7 @@ async function setConsent(granted: boolean) {
 <section id="api" tabindex="-1">
   <Card title={t("api-title")}>
     <p class="hint">{t("api-hint")}</p>
-    <dl class="consent">
-      <dt>{t("api-what-label")}</dt>
-      <dd>{t("api-what")}</dd>
-      <dt>{t("api-reads-label")}</dt>
-      <dd>{t("api-reads")}</dd>
-      <dt>{t("api-never-label")}</dt>
-      <dd>{t("api-never")}</dd>
-      <dt>{t("api-where-label")}</dt>
-      <dd>{t("api-where")}</dd>
-    </dl>
-    <p class="meta">{t("api-revoke")}</p>
-    {#if api}
-      {#if api.outdated}
-        <p class="note warn">{t("api-outdated")}</p>
-      {/if}
-      {#if api.granted}
-        {#if allowedAgo !== null}<p class="state">{t("api-allowed", { ms: allowedAgo })}</p>{/if}
-        {#each apiLines as line (line.key)}
-          <p class="meta">{t(line.key, line.args)}</p>
-        {/each}
-      {/if}
-      <div class="actions">
-        {#if api.granted}
-          <Button disabled={busy} onclick={() => setConsent(false)}>{t("api-turn-off")}</Button>
-        {:else}
-          <Button disabled={busy} onclick={() => setConsent(true)}>{t("api-allow")}</Button>
-        {/if}
-      </div>
-    {/if}
+    <ApiConsent {onerror} />
   </Card>
 </section>
 
@@ -268,19 +226,6 @@ async function setConsent(granted: boolean) {
     border-radius: var(--radius-pill);
     border: 1px solid var(--stroke);
     color: var(--text-2);
-  }
-  .consent {
-    display: grid;
-    grid-template-columns: max-content 1fr;
-    gap: var(--space-1) var(--space-3);
-    margin: 0 0 var(--space-2);
-  }
-  .consent dt {
-    font-weight: 600;
-  }
-  .consent dd {
-    margin: 0;
-    color: var(--text-1);
   }
   .actions {
     display: flex;

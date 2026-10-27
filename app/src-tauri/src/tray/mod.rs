@@ -30,7 +30,7 @@ use tokenradar_core::store::Store;
 use tokenradar_i18n::{Domain, Locale, Localizer};
 
 use crate::ipc::MuteChanged;
-use crate::{panel, settings};
+use crate::{onboarding, panel, settings};
 #[cfg(test)]
 use render::Theme;
 use system::{Environment, SystemClock};
@@ -40,6 +40,7 @@ const TRAY_ID: &str = "main";
 const MENU_OPEN_PANEL: &str = "open-panel";
 const MENU_MUTE: &str = "mute";
 const MENU_SETTINGS: &str = "settings";
+const MENU_ONBOARDING: &str = "onboarding";
 const MENU_ABOUT: &str = "about";
 const MENU_QUIT: &str = "quit";
 #[cfg(debug_assertions)]
@@ -113,6 +114,7 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
             MENU_OPEN_PANEL => panel::report(panel::show(app)),
             MENU_MUTE => send(app, TrayMsg::ToggleMute),
             MENU_SETTINGS | MENU_ABOUT => panel::report(settings::show(app, None)),
+            MENU_ONBOARDING => panel::report(onboarding::show(app)),
             MENU_QUIT => app.exit(0),
             #[cfg(debug_assertions)]
             MENU_GALLERY => panel::report(crate::gallery::show(app)),
@@ -194,6 +196,7 @@ fn build_menu(
             &mute,
             &PredefinedMenuItem::separator(app)?,
             &item(MENU_SETTINGS, "tray-menu-settings")?,
+            &item(MENU_ONBOARDING, "tray-menu-onboarding")?,
             &item(MENU_ABOUT, "tray-menu-about")?,
             &PredefinedMenuItem::separator(app)?,
             &item(MENU_QUIT, "tray-menu-quit")?,
@@ -201,7 +204,7 @@ fn build_menu(
     )?;
     // Development builds only: the component gallery (Step 09).
     #[cfg(debug_assertions)]
-    menu.insert(&item(MENU_GALLERY, "tray-menu-gallery")?, 5)?;
+    menu.insert(&item(MENU_GALLERY, "tray-menu-gallery")?, 6)?;
     Ok((menu, mute))
 }
 

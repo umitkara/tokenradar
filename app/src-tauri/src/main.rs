@@ -10,6 +10,7 @@ mod gallery;
 mod ipc;
 mod logging;
 mod notify;
+mod onboarding;
 mod panel;
 mod prefs;
 mod privacy;
@@ -18,6 +19,7 @@ mod sources;
 #[cfg(any(debug_assertions, feature = "spike"))]
 mod spike;
 mod tray;
+mod tray_pin;
 
 use tauri::RunEvent;
 

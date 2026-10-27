@@ -34,6 +34,7 @@ tray-menu-open-panel = Paneli aç
 tray-menu-mute = Bildirimleri 1 saat sustur
 tray-menu-unmute = Susturmayı kaldır
 tray-menu-settings = Ayarlar…
+tray-menu-onboarding = Başlangıç rehberi…
 tray-menu-about = TokenRadar hakkında
 # Yalnızca geliştirme derlemelerinde.
 tray-menu-gallery = Bileşen galerisi (geliştirme)

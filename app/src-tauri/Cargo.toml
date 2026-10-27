@@ -43,9 +43,11 @@ webview2-com = "0.39"
 windows-core = "0.62"
 # Tray: local time, icon size (DPI), taskbar theme, high contrast and the change watcher window.
 # Panel: monitor work area, taskbar edge and rounded corners.
+# Tray pin helper: the notification-icon registry keys and known folders (Step 11c).
 windows-sys = { version = "0.61", features = [
     "Win32_Foundation",
     "Win32_Globalization",
+    "Win32_System_Com",
     "Win32_Graphics_Dwm",
     "Win32_Graphics_Gdi",
     "Win32_System_LibraryLoader",
