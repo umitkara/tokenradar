@@ -6,6 +6,8 @@ pub mod domain;
 pub mod indexer;
 pub mod ipc;
 pub mod limits;
+pub mod paths;
 pub mod pricing;
 pub mod providers;
+pub mod secret;
 pub mod store;

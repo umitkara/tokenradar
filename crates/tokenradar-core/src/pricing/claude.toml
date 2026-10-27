@@ -1,0 +1,170 @@
+# Claude API list prices used for API-equivalent cost (architecture §9.1, ADR-008, ADR-025).
+#
+# Source:   https://platform.claude.com/docs/en/about-claude/pricing
+# Verified: 2026-10-27 (first-party Claude API, global routing, standard tier)
+#
+# Prices are USD per million tokens, which equals micro-dollars per token.
+# Bump `version` whenever a number changes; stored costs are not recomputed retroactively.
+#
+# Matching: a model name matches an entry when it equals `id`, or `id` followed by a date
+# (`-20251001`), a version (`-v1:0`) or `@`/`[` suffix. Platform prefixes such as
+# `us.anthropic.` are stripped first. Within a family, the first entry is the newest; an
+# unknown model of a known family is priced as that entry, and anything else as `fallback`.
+
+schema = 1
+version = "2026-10-27"
+fallback = "claude-opus-5-5"
+
+[defaults]
+cache_write_5m_mult = 1.25
+cache_write_1h_mult = 2.0
+# 0.1x is the standard; newer models override it below.
+cache_read_mult = 0.10
+# Fast mode is offered on Opus 5.5, Opus 5 and Opus 4.8, each at 2x the standard price.
+# Prompt-caching multipliers stack on top of it.
+fast_mult = 2.0
+# Web search: $10 per 1,000 searches = 10,000 micro-dollars per search. Web fetch is free.
+web_search_micro_usd = 10000
+
+# --- Fable / Mythos -------------------------------------------------------------------------
+
+[[model]]
+id = "claude-fable-5-1"
+family = "fable"
+input = 10.0
+output = 50.0
+cache_read_mult = 0.025
+
+[[model]]
+id = "claude-fable-5"
+family = "fable"
+input = 10.0
+output = 50.0
+
+[[model]]
+id = "claude-mythos-5-1"
+family = "mythos"
+input = 10.0
+output = 50.0
+cache_read_mult = 0.025
+
+[[model]]
+id = "claude-mythos-5"
+family = "mythos"
+input = 10.0
+output = 50.0
+
+# --- Opus -----------------------------------------------------------------------------------
+
+[[model]]
+id = "claude-opus-5-5"
+family = "opus"
+input = 4.0
+output = 20.0
+cache_read_mult = 0.05
+
+[[model]]
+id = "claude-opus-5"
+family = "opus"
+input = 5.0
+output = 25.0
+
+[[model]]
+id = "claude-opus-4-8"
+family = "opus"
+input = 5.0
+output = 25.0
+
+[[model]]
+id = "claude-opus-4-7"
+family = "opus"
+input = 5.0
+output = 25.0
+
+[[model]]
+id = "claude-opus-4-6"
+family = "opus"
+input = 5.0
+output = 25.0
+
+[[model]]
+id = "claude-opus-4-5"
+family = "opus"
+input = 5.0
+output = 25.0
+
+[[model]]
+id = "claude-opus-4-1"
+family = "opus"
+input = 15.0
+output = 75.0
+
+[[model]]
+id = "claude-opus-4"
+family = "opus"
+input = 15.0
+output = 75.0
+
+# --- Sonnet ---------------------------------------------------------------------------------
+
+[[model]]
+id = "claude-sonnet-5-5"
+family = "sonnet"
+input = 2.0
+output = 10.0
+cache_read_mult = 0.05
+
+[[model]]
+id = "claude-sonnet-5"
+family = "sonnet"
+input = 2.0
+output = 10.0
+
+[[model]]
+id = "claude-sonnet-4-6"
+family = "sonnet"
+input = 3.0
+output = 15.0
+
+[[model]]
+id = "claude-sonnet-4-5"
+family = "sonnet"
+input = 3.0
+output = 15.0
+
+[[model]]
+id = "claude-sonnet-4"
+family = "sonnet"
+input = 3.0
+output = 15.0
+
+# --- Haiku ----------------------------------------------------------------------------------
+
+[[model]]
+id = "claude-haiku-5-5"
+family = "haiku"
+input = 0.10
+output = 0.50
+# Prompts over 100,000 tokens (input + cache reads + cache writes) pay these base prices.
+long_context = { threshold = 100000, input = 0.50, output = 2.50 }
+
+[[model]]
+id = "claude-haiku-4-5"
+family = "haiku"
+input = 1.0
+output = 5.0
+
+[[model]]
+id = "claude-3-5-haiku"
+family = "haiku"
+input = 0.80
+output = 4.0
+
+# --- Not billed -----------------------------------------------------------------------------
+
+# Claude Code writes `<synthetic>` for messages it creates locally (for example API errors).
+[[model]]
+id = "<synthetic>"
+family = "synthetic"
+input = 0.0
+output = 0.0
