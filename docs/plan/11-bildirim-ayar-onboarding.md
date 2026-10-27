@@ -2,7 +2,7 @@
 
 | Sürüm | Bağımlılık | Tahmini süre | Durum |
 |---|---|---|---|
-| v0.1 | 10 | 2 oturum | ⬜ |
+| v0.1 | 10 | 2 oturum | 🟨 11a ✅ · 11b ⬜ |
 
 > Bu adım büyük. Gerekirse **11a (bildirimler + ayarlar altyapısı)** ve **11b (ayarlar UI + onboarding + doctor)** olarak iki oturuma bölün. Bölünürse devir notu her iki parça için ayrı ayrı yazılır.
 
@@ -44,22 +44,22 @@ v0.1'i kullanıcıya hazır hale getirmek:
 
 ### Bildirimler
 
-- [ ] Kural motoru (`notifier.rs`). Girdi olarak `LimitEngine` olaylarını alır.
+- [x] Kural motoru (`notifier.rs`). Girdi olarak `LimitEngine` olaylarını alır.
   - **Eşik kuralları:** Her limit türü için ayrı bir eşik listesi tutulur (varsayılan `[75, 90, 100]`). Bir eşik, **pencere başına bir kez** tetiklenir. Tekilleştirme anahtarı: `rule:kind:scope:resets_at:threshold`. Yeni pencere başlayınca kurallar yeniden silahlanır.
   - **Projeksiyon kuralı:** `will_hit_before_reset && eta_100 ≤ 60 dk && confidence ≥ orta` koşulunda tetiklenir. Pencere başına en fazla 1 kez. Ancak eta 15 dakikanın altına düşerse ikinci bir "son uyarı" verilebilir (ayarlanabilir).
   - **Reset kuralı:** Yalnızca o pencerede tepe değer ≥ `reset_notify_min` olduysa (varsayılan %80) veya limite takılındıysa tetiklenir. Böylece her 5 saatte bir anlamsız bildirim gelmez.
   - **Haftalık limitler:** Aynı kurallar uygulanır, ama metinler ve eşikler ayrıdır.
   - **Susturma ve sessiz saatler:** Bu sürelerde tetiklenen bildirimler kaydedilir ama gösterilmez. Susturma bitince yalnızca **hâlâ geçerli** olanlar tek bir özet bildirim olarak gösterilir.
-- [ ] Bildirim metinleri (EN/TR `.ftl`). Örnekler:
+- [x] Bildirim metinleri (EN/TR `.ftl`). Örnekler:
   - "5 saatlik pencere %90'a ulaştı — 1 sa 12 dk sonra yenilenir"
   - "Bu hızla 38 dk içinde dolacak, reset 1 sa 52 dk sonra"
   - "5 saatlik pencere yenilendi — tam kapasite"
-- [ ] Windows toast notları: Bildirimlerin uygulama adı ve ikonuyla görünmesi için AppUserModelID gerekir; installer (Adım 12) Başlat menüsü kısayolunu bu ID ile oluşturur. Geliştirme modunda başlık "PowerShell" veya benzeri olabilir; bunu belgele. Portable mod için de davranışı belgele.
-- [ ] Testler (sahte saat): Eşik geçişi; pencere başına tek tetikleme; yeni pencerede yeniden silahlanma; projeksiyon histerezisi; susturma sonrası özet; reset filtresi.
+- [x] Windows toast notları: Bildirimlerin uygulama adı ve ikonuyla görünmesi için AppUserModelID gerekir; installer (Adım 12) Başlat menüsü kısayolunu bu ID ile oluşturur. Geliştirme modunda başlık "PowerShell" veya benzeri olabilir; bunu belgele. Portable mod için de davranışı belgele.
+- [x] Testler (sahte saat): Eşik geçişi; pencere başına tek tetikleme; yeni pencerede yeniden silahlanma; projeksiyon histerezisi; susturma sonrası özet; reset filtresi.
 
 ### Config ve ayarlar
 
-- [ ] `config.toml` şeması:
+- [x] `config.toml` şeması:
   - `schema_version`
   - `[general]`: `locale` (system/en/tr), `theme`, `autostart`, `panel_warm_ttl`
   - `[[accounts]]`: provider, config_dir, label, `api_consent { granted, granted_at, consent_version }`, `statusline { installed, previous_command, chain, chain_position }`
@@ -137,4 +137,72 @@ pnpm dev
 
 ## Devir notu
 
-_(Oturum sonunda doldurulur: yapılanlar · sapmalar · açık konular · sonraki adıma notlar)_
+### 11a — Bildirimler ve ayar altyapısı
+
+**Tarih:** 2026-10-27 · **Dal:** `step/11a-notifier-config` · **Karar:** ADR-033
+
+#### Yapılanlar
+- **Notifier (`crates/tokenradar-core/src/notifier/`):**
+  - Duruma dayalı çalışır (ADR-033): her snapshot'ta `evaluate`, reset için `on_reset`. Saf bir yapıdır; ne gösterileceğini ve ne kaydedileceğini döndürür.
+  - Kurallar: eşik (5 saatlik ve haftalık için ayrı listeler, pencere başına bir kez, ±5 dk `resets_at` toleransı), projeksiyon (ETA ≤ 60 dk, güven `Low` değil), son uyarı (`final_warning_min`), reset (`reset_notify_min` filtresi). Tahmin kaynaklı limitler bildirim üretmez.
+  - Birden çok eşik aynı anda geçilirse yalnızca en yüksek eşik gösterilir, diğerleri sessizce kaydedilir.
+  - Susturma ve sessiz saatler (gece yarısını geçebilir): bildirimler bekletilir. İkisi de bitince hâlâ geçerli olanlar güncel sayılarla gösterilir; birden fazlaysa tek özet bildirim olur.
+  - `prefs.rs`: `NotifyPrefs` ve `QuietHours`, `normalized()` (eşikler 1–100, sıralı, tekil, en fazla 5; `final_warning_min` ≤ 59; `HH:MM` biçimi).
+  - Metinler: `locales/{en,tr}/notify.ftl` (`Domain::Notify`). TR ekleri `TR_SUFFIX` ile yazılır: "%90'a", "Cum 10:59'da".
+- **Runtime:**
+  - `CoreConfig.notify: Option<NotifySetup { prefs, locale, clock }>`. Notifier `core-limits` thread'inin içinde kurulur: Fluent bundle `Send` değil, bu yüzden `LimitsCtx` de thread içinde oluşturuluyor.
+  - Açılışta notifier son 8 günün `notification_log` kayıtlarını ve `kv.notify_snoozed_until`'ı okur. `CoreEvent::Notify(Notice)` yayınlar. `limits_loop`, susturmanın veya sessiz saatlerin bitişinde uyanır.
+  - `CoreHandle::set_notify_prefs`, `set_notify_locale`, `set_muted_until`, `set_retention_days` (`RetentionScheduler` artık `AtomicU32` tutuyor).
+  - `store/notifications.rs`: `notifications_since` ve `record_notifications` (`ON CONFLICT DO NOTHING`, 30 günden eski kayıtları siler).
+- **Config v2 (`config.rs`):**
+  - Bölümler: `[notifications]`, `[data]`, `[advanced]`, `[general].panel_warm_ttl`, `[[accounts]].api_consent`. Her bölüm hoşgörülü okunur.
+  - Yazıcılar: `save_notifications`, `save_data`, `save_advanced`, `save_panel_warm_ttl`, `save_api_consent(dir, …)`. Hepsi normalize eder ve bilinmeyen anahtarları korur.
+  - `migrate(path, primary_dir)`: v1 → v2, eski `[api_consent]` birincil hesaba taşınır.
+  - `api_consent_granted(dir)` artık hesaba göre çalışıyor (imza değişti).
+- **Saat:** `LocalClock`, `LocalTime` ve `UtcClock` core'daki `clock.rs`'ye taşındı. Tray'in `SystemClock`'u bu trait'i uygular.
+- **Uygulama:**
+  - `notify.rs`: toast gösterir; tıklama (`tap`) paneli açar.
+  - `logging.rs`: `<data>/logs/tokenradar.YYYY-MM-DD.log`, günlük döner, 7 dosya, açılışta 20 MB sınırı, seviye canlı değişir.
+  - Autostart: `tauri-plugin-autostart`, değer adı `TokenRadar`.
+  - `core_bridge`: açılışta migration çalışır; birincil hesabın onayı, saklama süresi ve `NotifySetup` core'a geçirilir. `with_core` yardımcısı eklendi.
+  - `prefs.rs`: `PrefsView` / `PrefsChanged` / `get_prefs` (notifications, data, log_level, panel_warm_ttl_s). `SettingsView` yalnızca görünüm alanlarıyla kaldı.
+  - Komutlar: `set_notification_prefs`, `set_data_prefs`, `set_log_level`, `set_panel_warm_ttl`, `get_autostart`, `set_autostart`, `send_test_notification`. `set_locale` notifier'ın dilini de değiştirir.
+  - Tray susturma değişikliğini `Sink::mute_changed` ile core'a iletir. Panelin `warm_ttl` değeri ayardan gelir.
+- **Testler:** core 237 (notifier 24, config 15, runtime'da 2 yeni: yeniden başlatmada tekrar yok, kayıtlı susturma bekletir ve kaldırınca bırakır), app 46 + 2 ignored (log budama testi), CLI 17, i18n 16 + 6, frontend 53. `svelte-check` 0 hata.
+
+#### Gerçek doğrulama (2026-10-27)
+- **Toast:** `pnpm tauri dev` ile, `target\debug\portable` işaretiyle çalıştırıldı (veri `target\debug\data`'da kaldı, gerçek `config.toml`'ye dokunulmadı). `send_test_notification` CDP üzerinden çağrıldı ve kullanıcı toast'u ekranda gördüğünü doğruladı ("Windows PowerShell" adıyla). Toast'a tıklayınca panelin açılması elle denenmedi.
+- **Autostart:** CDP ile `get_autostart` → `false`, `set_autostart(true)` → `true` (HKCU `Run`'a `TokenRadar` değeri yazıldı), `set_autostart(false)` → `false` (değer silindi). `auto-launch`'ın `StartupApproved\Run` altına yazdığı ve kapatınca silmediği `TokenRadar` değeri elle kaldırıldı. Kayıt defteri test öncesindeki haline döndü.
+- **Migration:** Portable veri dizinindeki eski bir v1 dosyası v2'ye geçirildi (log: "config.toml migrated to schema v2").
+- **Log dosyası:** Oluşuyor. İlk sürümde appender dizin yokken eski dosyaları budamaya çalışıp hata yazıyordu; dizin artık önceden oluşturuluyor.
+- **Boyut:** `tokenradar-app.exe` release 11.868.672 B (11,32 MiB); Adım 10'da 11.074.048 B idi (+776 KiB: bildirim, autostart, tracing-appender). Bütçe ≤ 15 MB ✅.
+
+#### Sapmalar
+- Adım 11a ve 11b olarak bölündü.
+- Notifier olaylarla değil, durumla besleniyor. Pencere eşleşmesinde ±5 dk tolerans var. Aynı anda birden çok eşik geçilirse yalnızca en yüksek eşik gösteriliyor. (ADR-033)
+- `[general].autostart` alanı yok; gerçeğin kaynağı işletim sistemi (ADR-033).
+- Ayarlar iki görünüme ayrıldı: `SettingsView` (görünüm, açılış betiği) ve `PrefsView` (ayarlar penceresi).
+- Planın doğrulama komutu `cargo test -p tokenradar-core notifier config` geçersiz (cargo tek filtre alıyor). Bunun yerine `cargo test -p tokenradar-core notifier` ve `cargo test -p tokenradar-core config` ayrı ayrı çalıştırıldı.
+- "Test bildirimi" susturmayı ve sessiz saatleri yok sayar (bilinçli: kullanıcı açıkça istedi).
+
+#### 11b için notlar
+- **Kapsam:**
+  - Ayarlar penceresinin sekmeleri (komutlar ve `PrefsView` hazır)
+  - Onboarding
+  - Tray sabitleme yardımcısı
+  - `tokenradar doctor` ve "Tanılama paketi" butonu (son 200 log satırı `logging.rs`'nin dosyasından gelir)
+  - API onayı UI'ı (`config::save_api_consent` + `CoreHandle::set_api_consent`)
+  - Statusline kurulum diyaloğu
+- **Bir günlük gürültü değerlendirmesi:**
+  - Uygulamayı **`target\release` içinden** çalıştırın. Portable kopya veya başka bir konum uygulama kimliğini kullanır; bu kimlik kayıtlı olmadığı için Windows toast'u hata vermeden göstermeyebilir ve test yanlışlıkla "bildirim yok" sonucu verir.
+  - Önce "Test bildirimi gönder" ile görünürlüğü doğrulayın.
+  - Tetiklenen bildirimler log dosyasında `notification` satırları olarak (`rule=…`) ve `notification_log` tablosunda bulunur. Listeyi oradan çıkarın; toplamları ve yolları commit etmeyin.
+- **Toast tıklaması:** Panelin açıldığı elle doğrulanmalı. Bildirim Merkezi'nden tıklama Adım 12'ye kadar çalışmaz.
+- **Log kapsamı:** Uygulamada hâlâ çok sayıda `eprintln!` var. Bunlar log dosyasına düşmüyor. Doctor için önemli olanlar `tracing`'e taşınmalı.
+- **Bellek:** Yeni eklentiler ve log thread'i boşta tray belleğini (≤ 25 MB bütçe) etkileyebilir. Gerçek boşta ölçümü kullanıcı yapmalı (agent oturumu transcript yazar). 11b'de `measure-memory.ps1` ile ölçün.
+- **Çoklu hesap:** Tüm poller'lar birincil hesabın onayını kullanıyor; hesap başına onay Adım 19'da bağlanacak.
+- **Eklenti izinleri:** Bildirim ve autostart eklentilerinin JS komutlarına capability verilmedi; frontend yalnızca bizim komutlarımızı kullanır.
+
+### 11b — Ayarlar UI, onboarding ve doctor
+
+_(Oturum sonunda doldurulur)_

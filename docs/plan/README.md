@@ -35,7 +35,7 @@
 | 08 | [Tray: dinamik ikili halka ve menü](08-tray.md) | 06 | ✅ |
 | 09 | [Frontend temeli: token'lar, tema, i18n, tipli köprü](09-frontend-temeli.md) | 02, 03 | ✅ |
 | 10 | [Tray paneli](10-tray-paneli.md) | 07, 08, 09 | ✅ |
-| 11 | [Bildirimler, ayarlar ve onboarding](11-bildirim-ayar-onboarding.md) | 10 | ⬜ |
+| 11 | [Bildirimler, ayarlar ve onboarding](11-bildirim-ayar-onboarding.md) | 10 | 🟨 (11a ✅) |
 | 12 | [Paketleme, güncelleme ve v0.1 sürümü](12-paketleme-ve-v0.1.md) | 11 | ⬜ |
 
 ### v0.2 — Analitik ve Atıf

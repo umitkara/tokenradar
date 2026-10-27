@@ -390,3 +390,44 @@
   - Pencereyi ekran dışında görünür tutarak GPU yüzeyini önceden kurmak (odak, Alt+Tab ve örtülme hesabıyla karmaşık; bellek kazancı yok).
   - WebView2 tarayıcı sürecini `warm_ttl` sonrası canlı tutmak (soğuk açılış kalkar ama boşta bellek bütçesi ≤ 30 MB aşılır; ADR-023).
   - Soğuk açılış bütçesini 450 ms'ye çekmek (kullanıcı bütçeyi korumayı seçti).
+
+### ADR-033 — Bildirimler: duruma dayalı notifier, config şeması v2, hesap başına API onayı, OS'ta autostart, log dosyası
+**Durum:** Kabul (2026-10-27, Adım 11a)
+- **Bağlam:**
+  - Plan notifier'ı `LimitEngine` olaylarıyla beslemeyi öngörüyordu. Ancak motorun `ThresholdCrossed` olayı sabit `[75, 90, 100]` eşikleriyle çalışıyor; kullanıcının eşik listesi farklı olabilir. Ayrıca olaylar yalnızca geçiş anında geliyor: yeniden başlatma, eşik listesinin değişmesi ya da tek okumada iki eşiğin birden aşılması olayla doğru ifade edilemiyor.
+  - Usage API'nin `resets_at` değeri mikrosaniye düzeyinde kayıyor, statusline'ınki saniye hassasiyetinde (ADR-028). Tekilleştirme anahtarı (`rule:kind:scope:resets_at:threshold`) birebir eşleşmeyle aynı pencereyi iki kez sayabilir.
+  - `tauri-plugin-notification` 2.7, Windows'ta tıklamayı yalnızca toast ekrandayken bildiriyor. Bildirim Merkezi'ndeki bir toast'a tıklama, COM activator kaydı olmayan bir uygulamaya hiç ulaşmıyor.
+  - Toast'un gönderen adı AppUserModelID'den gelir. Eklenti exe `target\debug` veya `target\release` içindeyse PowerShell'in kimliğini kullanır; başka her yerde uygulama kimliğini (`identifier`) kullanır. Bu kimliği yalnızca installer'ın Başlat menüsü kısayolu kaydeder (Adım 12).
+  - Plan şeması `[[accounts]]` altında hesap başına `api_consent` istiyordu; v1 dosyalarında onay en üstte `[api_consent]` tablosundaydı.
+  - Planın `[general].autostart` alanı, kullanıcı autostart'ı Görev Yöneticisi'nden kapattığında gerçeği yansıtmaz.
+  - Uygulamanın log dosyası yoktu (`tracing` çıktısı hiçbir yere yazılmıyordu); doctor (11b) ve log seviyesi ayarı buna dayanıyor.
+  - Fluent terimleri (`-limit`) yalnızca sabit argüman alabiliyor; `-limit(limit: $limit)` biçimi çözümlenmiyor.
+- **Karar (kullanıcıyla kararlaştırıldı):**
+  - **Bölme:** Adım 11, 11a (notifier, toast gönderimi, config v2 + migration, log dosyası, autostart, ayar komutları) ve 11b (ayarlar UI, onboarding, tray sabitleme yardımcısı, doctor, bir günlük gürültü değerlendirmesi) olarak iki oturuma bölündü.
+  - **Duruma dayalı notifier:** `core-limits`, oluşturduğu her `PanelSnapshot` için `Notifier::evaluate` çağırır. Notifier saftır: ne gösterileceğini ve ne kaydedileceğini döndürür; runtime kayıtları `notification_log`'a yazar ve `CoreEvent::Notify(Notice)` yayınlar. Reset bir kenar olduğu için motorun `LimitEvent::Reset` olayından gelir (`on_reset`). Açılışta son 8 günün kayıtları okunur (`HISTORY_MS`); kayıtlar 30 gün tutulur.
+  - **Pencere eşleşmesi:** İki `resets_at` değeri ±5 dk içindeyse aynı pencere sayılır (`SAME_WINDOW_MS`). Anahtar biçimi değişmedi: `rule:kind:scope|-:resets_ms:threshold|-`.
+  - **Birden çok eşik:** Açılışta veya bir sıçramada birden çok eşik aynı anda yeni geçilmişse yalnızca en yüksek eşik gösterilir, düşükler sessizce kaydedilir. Susturma bittiğinde de aynı kural geçerlidir. Öncelik sırası: dolu (%100) > son uyarı > projeksiyon > diğer eşikler, sonra eşik değeri.
+  - **Projeksiyon:** `projection` açık, yüzde < 100, `will_hit_before_reset`, güven `Low` değil ve ETA ≤ 60 dk. ETA `final_warning_min` (varsayılan 15) altına inerse bir kez "son uyarı" verilir; son uyarı tetiklendiğinde projeksiyon sessizce kaydedilir. Tahmin kaynaklı (`Source::Estimate`) limitler bildirim üretmez.
+  - **Susturma ve sessiz saatler:** Bu sürelerde bildirimler kaydedilir ama bekletilir. İkisi de bitince yalnızca hâlâ geçerli olanlar, güncel sayılarla yeniden yazılarak gösterilir: tek bildirim olduğu gibi, birden çok bildirim tek bir özet halinde. `limits_loop` uyanma zamanına susturmanın veya sessiz saatlerin bitişi eklenir. Susturmanın tek kaynağı `kv.notify_snoozed_until`'dır (`notifier::KV_MUTED_UNTIL`). Tray yazar ve `CoreHandle::set_muted_until` ile bildirir; runtime açılışta okur.
+  - **Saat:** `LocalClock` trait'i core'a taşındı (`clock.rs`). Uygulama Windows saatini (`SystemClock`) enjekte eder; core'a saat dilimi veritabanı girmez. Testler `UtcClock` kullanır.
+  - **Metinler:** `locales/{en,tr}/notify.ftl`. Limit adı ayrı bir `notify-limit` mesajı olarak Rust'ta biçimlenir ve `$what` argümanıyla geçirilir (Fluent terimlerine değişken geçirilemez). 5 saatlik pencerede "N dk sonra yenilenir", haftalık pencerede "Cum 10:59'da yenilenir" yazılır.
+  - **Toast tıklaması:** Sınır kabul edildi. Toast ekrandayken tıklanırsa panel açılır; Bildirim Merkezi'nden tıklama hiçbir şey yapmaz. COM activator Adım 12'nin installer'ına bırakıldı.
+  - **AppUserModelID:** `target\debug` ve `target\release` içinden çalışan build'lerin toast'ları "Windows PowerShell" adıyla görünür; bu davranış doğrulandı. Portable kopya ve kurulmamış başka bir konum uygulama kimliğini kullanır. Bu kimlik kayıtlı olmadığı için Windows toast'u **hata vermeden göstermeyebilir**. Bu nedenle gerçek kullanım testleri `target\release` içinden yapılır ve görünürlük önce "Test bildirimi gönder" ile doğrulanır.
+  - **Config şeması v2:** `schema_version = 2`; yeni bölümler `[notifications]`, `[data]` (`raw_retention_days`, `update_check`) ve `[advanced]` (`log_level`); `[general].panel_warm_ttl` (0–600 s). Bölümler hoşgörülü okunur: bozuk bir bölüm varsayılana döner ve diğer bölümler (özellikle onay) kaybolmaz. Yazımlar `toml_edit` ile bilinmeyen anahtarları korur ve değerleri normalize eder (eşikler 1–100 arası, sıralı, tekil, en fazla 5; saat biçimi `HH:MM`).
+  - **Hesap başına API onayı ve migration:** `[[accounts]]` altında `api_consent { granted, granted_at, consent_version }`. v1 → v2 geçişi en üstteki `[api_consent]` tablosunu birincil hesaba (ilk keşfedilen) taşır; birincil hesap yoksa tablo yerinde kalır ve okumada hesabı olmayan her hesaba uygulanır. Dosya yoksa oluşturulmaz, daha yeni şemalara dokunulmaz. Çoklu hesap UI'ı gelene kadar (Adım 19) tüm poller'lar birincil hesabın onayını kullanır.
+  - **Autostart:** `tauri-plugin-autostart` (HKCU `Run`, değer adı `TokenRadar`). Gerçeğin kaynağı işletim sistemidir; `config.toml`'de `autostart` alanı yoktur. `get_autostart` / `set_autostart` komutları OS'un bildirdiği durumu döndürür. Kayıt yalnızca kullanıcı açınca yazılır.
+  - **Log dosyası:** `<data>/logs/tokenradar.YYYY-MM-DD.log`, günlük döner, son 7 dosya kalır. Açılışta toplam 20 MB'ı aşan en eski dosyalar silinir. Seviye `advanced.log_level`'dan gelir (varsayılan `info`) ve yeniden başlatmadan değişir (`reload` katmanı). `env-filter` özelliği regex bağımlılığı getirdiği için kullanılmadı.
+  - **Ayar köprüsü:** `SettingsView` yalnızca her sayfanın ilk boyamadan önce ihtiyaç duyduklarını taşır (dil, tema, OS, saat biçimi). Diğer ayarlar ayrı `PrefsView` / `get_prefs` / `PrefsChanged` ile taşınır; böylece panelin açılış betiği büyümez. Setter komutları: `set_notification_prefs`, `set_data_prefs`, `set_log_level`, `set_panel_warm_ttl`, `send_test_notification`. Değişiklikler core'a canlı iletilir; saklama süresi ise bir sonraki günlük çalışmada uygulanır.
+- **Bedel:**
+  - Notifier her snapshot'ta (en sık 2 s'de bir) tüm limitleri değerlendirir; maliyeti birkaç limitlik bir döngüdür.
+  - ±5 dk tolerans, 5 dk'dan kısa aralıkla art arda gelen iki pencereyi (pratikte yok) tek pencere sayar.
+  - Bildirim Merkezi'ndeki toast'a tıklama Adım 12'ye kadar işe yaramaz.
+  - Portable modda toast görünmeyebilir.
+  - Autostart ayarı kayıt defterinde tutulur; `auto-launch` ayrıca `StartupApproved\Run` altına bir değer yazar ve kapatınca silmez (zararsız, Görev Yöneticisi'nin durum bilgisi).
+  - Log boyut sınırı yalnızca açılışta uygulanır; çok gürültülü (`trace`) uzun bir oturum sınırı geçici olarak aşabilir.
+- **Alternatifler:**
+  - Olay tabanlı notifier, motorun eşiklerini kullanıcının listesiyle yapılandırarak (yeniden başlatma ve liste değişimi yine ayrı ele alınmak zorunda).
+  - `resets_at`'i dakikaya yuvarlayarak anahtar üretmek (dakika sınırında bölünüyor).
+  - Toast için kendi COM activator'ımızı şimdi kaydetmek (kurulumsuz kayıt, portable'da kalıntı bırakır; installer işi).
+  - `config.toml`'de `autostart` alanı tutmak (OS ile ayrışabilir).
+  - Ayarların tamamını `SettingsView`'a koymak (her pencerenin açılış betiği büyür).
