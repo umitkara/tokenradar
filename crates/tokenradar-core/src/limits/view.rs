@@ -6,6 +6,7 @@ use specta::Type;
 
 use super::rate::Projection;
 use crate::domain::{AccountId, LimitKind, MicroUsd, Scope, SessionId, Source, Timestamp};
+use crate::indexer::IndexProgress;
 use crate::live_sessions::LiveStatus;
 use crate::providers::claude::usage_api::{ApiState, PollDiagnostics};
 
@@ -125,6 +126,20 @@ pub struct SessionShareView {
 pub struct IndexState {
     pub initial_scan_done: bool,
     pub last_indexed_at: Option<Timestamp>,
+    /// The first scan's latest progress; `None` before it reported and after it finished.
+    pub progress: Option<IndexProgress>,
+    /// The current window and this week are indexed (`IndexMilestone::RecentReady`).
+    pub recent_ready: bool,
+    /// Records the parser could not use since the app started; the format may have changed.
+    pub drift: Option<SchemaDriftView>,
+}
+
+/// Unusable records seen since start, summed over indexing passes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Type)]
+pub struct SchemaDriftView {
+    pub unknown_count: u64,
+    /// The latest pass that reported some.
+    pub last_at: Timestamp,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Type)]

@@ -39,9 +39,12 @@ use crate::clock::SystemClock;
 use crate::domain::{AccountId, AccountSpec, LimitObservation, Provider, Timestamp};
 use crate::events::{CoreEvent, DriftSource, EventBus, Subscription};
 use crate::indexer::{
-    self, IndexEvent, IndexMilestone, IndexReport, Indexer, IndexerConfig, RetentionScheduler,
+    self, IndexEvent, IndexMilestone, IndexProgress, IndexReport, Indexer, IndexerConfig,
+    RetentionScheduler,
 };
-use crate::limits::{AccountMeta, IndexState, LimitEngine, LimitEvent, PanelSnapshot, VisibleKey};
+use crate::limits::{
+    AccountMeta, IndexState, LimitEngine, LimitEvent, PanelSnapshot, SchemaDriftView, VisibleKey,
+};
 use crate::live_sessions::{self, LiveSession, LiveSessionTracker};
 use crate::providers::claude::credentials::{self, CREDENTIALS_FILE};
 use crate::providers::claude::usage_api::{
@@ -145,6 +148,32 @@ pub struct CoreStatus {
     pub incremental_passes: u64,
     /// The latest panel view model; `None` until the limit engine has built one.
     pub limits: Option<PanelSnapshot>,
+    /// The first scan's latest progress; cleared when every account finished it.
+    pub index_progress: Option<IndexProgress>,
+    /// Some account reached [`IndexMilestone::RecentReady`] in its first scan.
+    pub recent_ready: bool,
+    /// Unusable records seen since start.
+    pub schema_drift: Option<SchemaDriftView>,
+}
+
+impl CoreStatus {
+    /// The panel's view model with the indexing state as of now. The limit engine copies that
+    /// state only when it rebuilds, which a long first scan does not trigger.
+    pub fn panel_snapshot(&self) -> Option<PanelSnapshot> {
+        let mut snapshot = self.limits.clone()?;
+        snapshot.index_state = self.index_state();
+        Some(snapshot)
+    }
+
+    fn index_state(&self) -> IndexState {
+        IndexState {
+            initial_scan_done: self.initial_scan_done,
+            last_indexed_at: self.last_indexed_at,
+            progress: self.index_progress,
+            recent_ready: self.recent_ready,
+            drift: self.schema_drift,
+        }
+    }
 }
 
 /// Entry point.
@@ -577,12 +606,19 @@ fn run_pass(ctx: &mut IndexCtx, work: Pending, initial: bool) {
     let account = ctx.account;
     let bus = ctx.bus.clone();
     let full = work.full;
+    let status = Arc::clone(&ctx.status);
     let mut on_event = |e: IndexEvent| match e {
         // Progress is for long scans; incremental passes would only add noise.
         IndexEvent::Progress(progress) if full => {
+            if initial {
+                lock(&status).index_progress = Some(progress);
+            }
             bus.publish(CoreEvent::IndexProgress { account, progress });
         }
         IndexEvent::Milestone(milestone) if initial => {
+            if milestone == IndexMilestone::RecentReady {
+                lock(&status).recent_ready = true;
+            }
             bus.publish(CoreEvent::IndexMilestone { account, milestone });
         }
         _ => {}
@@ -635,6 +671,13 @@ fn publish_report(ctx: &IndexCtx, report: &IndexReport, initial: bool) {
     let p = &report.parse;
     let unknown = p.unknown() + p.prefilter_misses + p.oversized_suspect;
     if unknown > 0 {
+        let mut status = lock(&ctx.status);
+        let total = status.schema_drift.map_or(0, |d| d.unknown_count) + unknown;
+        status.schema_drift = Some(SchemaDriftView {
+            unknown_count: total,
+            last_at: Timestamp::now(),
+        });
+        drop(status);
         ctx.bus.publish(CoreEvent::SchemaDrift {
             source: DriftSource::ClaudeJsonl,
             unknown_count: unknown,
@@ -658,7 +701,10 @@ fn finish_initial(ctx: &IndexCtx) {
         milestone: IndexMilestone::Complete,
     });
     if ctx.pending_initial.fetch_sub(1, Ordering::AcqRel) == 1 {
-        lock(&ctx.status).initial_scan_done = true;
+        let mut status = lock(&ctx.status);
+        status.initial_scan_done = true;
+        status.index_progress = None;
+        drop(status);
         let _ = ctx.limits_tx.send(LimitsMsg::Indexed);
     }
 }
@@ -1025,10 +1071,7 @@ impl LimitsCtx {
     fn rebuild(&mut self, now: Timestamp, last: &mut Option<VisibleKey>) {
         {
             let status = lock(&self.status);
-            self.engine.set_index_state(IndexState {
-                initial_scan_done: status.initial_scan_done,
-                last_indexed_at: status.last_indexed_at,
-            });
+            self.engine.set_index_state(status.index_state());
         }
         let (snapshot, events) = self.engine.snapshot(now);
         self.publish_all(events);

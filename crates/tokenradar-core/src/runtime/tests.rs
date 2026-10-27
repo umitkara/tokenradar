@@ -159,7 +159,15 @@ fn an_appended_line_is_indexed_within_the_latency_budget() {
     let handle = CoreRuntime::start(&env.config()).expect("start");
     let rx = events(&handle);
     wait_initial(&rx);
-    assert!(handle.status().initial_scan_done);
+    let status = handle.status();
+    assert!(status.initial_scan_done);
+    // The panel reads the indexing state from the status, not from the events it missed.
+    assert!(status.recent_ready);
+    assert_eq!(status.index_progress, None);
+    if let Some(snapshot) = status.panel_snapshot() {
+        assert!(snapshot.index_state.initial_scan_done);
+        assert!(snapshot.index_state.recent_ready);
+    }
 
     let written = Instant::now();
     append(&env.alpha_main(), &assistant_line(41));

@@ -14,6 +14,6 @@ pub use rate::{Confidence, Projection, RateMethod};
 pub use share::{RootUsage, shares};
 pub use view::{
     AccountView, ApiStatusView, CRIT_AT, EstimateReason, Freshness, IndexState, LimitEvent,
-    LimitView, PanelSnapshot, SessionShareView, Severity, StatuslineState, THRESHOLDS, VisibleKey,
-    WARN_AT,
+    LimitView, PanelSnapshot, SchemaDriftView, SessionShareView, Severity, StatuslineState,
+    THRESHOLDS, VisibleKey, WARN_AT,
 };
