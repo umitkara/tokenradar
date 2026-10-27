@@ -17,13 +17,25 @@ tokenradar-core.workspace = true
 tokenradar-i18n.workspace = true
 tauri.workspace = true
 tauri-plugin-single-instance.workspace = true
+tiny-skia = { version = "0.12", default-features = false, features = ["std", "simd"] }
 
 # Raw WebView2 access for the Step 02 lifecycle spike. Same versions as wry's, so the COM types match.
 [target.'cfg(windows)'.dependencies]
 webview2-com = "0.39"
 windows-core = "0.62"
-# Local time for the temporary Step 05 tray tooltip.
-windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Time"] }
+# Tray: local time, icon size (DPI), taskbar theme, high contrast and the change watcher window.
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_Globalization",
+    "Win32_Graphics_Gdi",
+    "Win32_System_LibraryLoader",
+    "Win32_System_Registry",
+    "Win32_System_Threading",
+    "Win32_System_Time",
+    "Win32_UI_Accessibility",
+    "Win32_UI_HiDpi",
+    "Win32_UI_WindowsAndMessaging",
+] }
 
 [features]
 # Compiles the Step 02 measurement scenario (`TOKENRADAR_SPIKE`) into release builds.
@@ -31,3 +43,6 @@ spike = []
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+tiny-skia = { version = "0.12", default-features = false, features = ["std", "simd", "png-format"] }

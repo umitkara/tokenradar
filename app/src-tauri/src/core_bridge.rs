@@ -18,7 +18,7 @@ use tokenradar_core::runtime::{
     CoreConfig, CoreHandle, CoreRuntime, CoreStatus, IpcConfig, SHUTDOWN_TIMEOUT,
 };
 
-use crate::tray;
+use crate::tray::{self, TrayMsg};
 
 /// The running core, once it has started.
 #[derive(Default)]
@@ -34,16 +34,17 @@ pub fn start(app: &AppHandle) {
         .spawn(move || match open() {
             Ok(handle) => {
                 let sub = handle.subscribe();
-                let status = handle.status();
+                tray::send(&app, TrayMsg::CoreReady(handle.store().clone()));
+                if let Some(limits) = handle.status().limits {
+                    tray::send(&app, TrayMsg::Snapshot(Box::new(limits)));
+                }
                 *state.lock().unwrap_or_else(PoisonError::into_inner) = Some(handle);
-                let view = DebugView {
-                    live: status.live_sessions.len(),
-                    last_index: status.last_indexed_at,
-                };
-                tray::set_debug_status(&app, view.live, view.last_index);
-                tauri::async_runtime::spawn(forward(app, sub, view, state));
+                tauri::async_runtime::spawn(forward(app, sub, state));
             }
-            Err(error) => eprintln!("TokenRadar: could not start the core: {error}"),
+            Err(error) => {
+                eprintln!("TokenRadar: could not start the core: {error}");
+                tray::send(&app, TrayMsg::CoreFailed);
+            }
         });
     if let Err(error) = spawned {
         eprintln!("TokenRadar: could not start the core thread: {error}");
@@ -97,42 +98,25 @@ fn open() -> Result<CoreHandle, Box<dyn std::error::Error>> {
     Ok(CoreRuntime::start(&config)?)
 }
 
-/// What the temporary tray tooltip shows (Step 05 debug aid; Step 08 replaces it).
-struct DebugView {
-    live: usize,
-    /// End of the last indexing pass that stored something.
-    last_index: Option<Timestamp>,
-}
-
-async fn forward(
-    app: AppHandle,
-    mut sub: Subscription,
-    mut view: DebugView,
-    state: Arc<Mutex<Option<CoreHandle>>>,
-) {
+/// Hands the core's limit snapshots to the tray.
+async fn forward(app: AppHandle, mut sub: Subscription, state: Arc<Mutex<Option<CoreHandle>>>) {
     let log = std::env::var_os("TOKENRADAR_DEBUG_EVENTS").is_some();
     while let Some(delivery) = sub.recv().await {
         if log {
             log_delivery(&delivery);
         }
         match delivery {
-            Delivery::Event(CoreEvent::LiveSessionsChanged(list)) => view.live = list.len(),
-            Delivery::Event(CoreEvent::UsageAppended { .. } | CoreEvent::IndexMilestone { .. }) => {
-                // The core stamps the pass; reading it keeps one source of truth.
-                if let Some(status) = status(&state) {
-                    view.last_index = status.last_indexed_at;
-                }
+            Delivery::Event(CoreEvent::LimitsUpdated(snapshot)) => {
+                tray::send(&app, TrayMsg::Snapshot(snapshot));
             }
-            Delivery::Event(_) => continue,
+            Delivery::Event(_) => {}
             // Missed events: rebuild from the full state instead of patching.
             Delivery::Resync { .. } => {
-                if let Some(status) = status(&state) {
-                    view.live = status.live_sessions.len();
-                    view.last_index = status.last_indexed_at;
+                if let Some(limits) = status(&state).and_then(|s| s.limits) {
+                    tray::send(&app, TrayMsg::Snapshot(Box::new(limits)));
                 }
             }
         }
-        tray::set_debug_status(&app, view.live, view.last_index);
     }
 }
 

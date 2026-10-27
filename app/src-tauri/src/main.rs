@@ -5,6 +5,7 @@
 
 mod core_bridge;
 mod panel;
+mod settings;
 #[cfg(any(debug_assertions, feature = "spike"))]
 mod spike;
 mod tray;
@@ -25,7 +26,16 @@ fn main() {
         .setup(|app| {
             // Tray first, so it shows within its 300 ms budget; the core starts behind it.
             tray::create(app.handle())?;
-            core_bridge::start(app.handle());
+            // Fake limits replace the core entirely, so tray measurements never touch real data.
+            #[cfg(any(debug_assertions, feature = "spike"))]
+            let fake = tray::fake::mode();
+            #[cfg(not(any(debug_assertions, feature = "spike")))]
+            let fake: Option<String> = None;
+            match fake {
+                #[cfg(any(debug_assertions, feature = "spike"))]
+                Some(mode) => tray::fake::start(app.handle(), &mode),
+                _ => core_bridge::start(app.handle()),
+            }
             #[cfg(any(debug_assertions, feature = "spike"))]
             spike::start(app.handle());
             Ok(())
