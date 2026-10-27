@@ -220,3 +220,21 @@
   - Advisor tüketimini yok saymak (eksik sayım) veya üst düzey toplama eklemek (model yanlış atanır).
   - Tamamen arka plan önceliği (bütçeyi aşıyor) veya tamamen normal öncelik (eski veri için kullanıcıyla gereksiz yarış).
   - Eşitlikte "ilk yazılan kalır" (yine sıraya bağımlı).
+
+### ADR-027 — Çekirdek runtime'ı: std thread'ler + `tokio::sync`; taşmaya karşı sıcak dosya taraması
+**Durum:** Kabul (2026-10-27, Adım 05)
+- **Bağlam:**
+  - Plan, `CoreRuntime` için bir Tokio runtime'ı (gerekirse Tauri'ninki) öngörüyordu. Oysa Adım 03-04'te yazılan store yazıcısı, indeksleyici worker'ları ve retention zamanlayıcısı tamamen bloklayan, `std::thread` tabanlı kod.
+  - Plan, `ReadDirectoryChangesW` buffer'ı taşınca `notify`'ın bir "rescan" olayı üreteceğini varsayıyordu. `notify` 8.2.1'in Windows backend'i (`windows.rs`, `handle_event`) ise tamamlanan isteğin bayt sayısına hiç bakmıyor. Taşmada Windows "başarılı, 0 bayt" döner; `notify` sıfırlı buffer'ı `Action = 0` olarak okur ve sessizce atar. Yani **Windows'ta taşma bildirilmez.** Buffer 16 KiB'tır; tipik bir transcript yoluyla bu ~65 olay eder.
+- **Karar (kullanıcıyla kararlaştırıldı):**
+  - **Runtime:** Çekirdek bir async runtime'a bağlı değildir. Her görev adlandırılmış bir `std::thread`'dir: `core-watch`, hesap başına `core-index-<id>`, `retention` ve `store-writer`. `EventBus` yalnızca `tokio`'nun `sync` özelliğini kullanır (`broadcast`, runtime gerektirmez). Yayınlama senkron yapılır; Tauri tarafı `recv().await` ile, düz thread'ler `blocking_recv()` ile alır. `CoreHandle::shutdown(timeout)` her thread'e durma sinyali verir ve iptal bayrağını kaldırır: indeksleyici o anki dosyayı bitirip durur, bu sırada transaction tutarlılığı korunur. Ardından thread'leri join eder ve zamanında bitmeyenleri raporlar.
+  - **Taşma:** 10 dakikalık güvenlik taramasına ek olarak bir **sıcak dosya kümesi** tutulur. Son 15 dakikada değişen transcript'ler, küme boş değilken 30 s'de bir `stat` edilir. Boyutu veya mtime'ı olay gelmeden değişen dosya indeksleyiciye gönderilir. Küme boşken zamanlayıcı yoktur; boşta CPU bütçesi etkilenmez. Diğer platformlarda `notify`'ın `need_rescan()` işareti ve hata olayları tam taramayı tetikler.
+  - **Debounce penceresi sabittir:** İlk olay 750 ms'lik bir pencere açar ve olay geldikçe uzamaz. Claude Code akış sırasında saniyede birkaç kez yazdığı için kayan bir pencere hiç kapanmazdı; sabit pencerede gecikme ≤ 750 ms + indeksleme süresiyle sınırlı kalır.
+- **Bedel:**
+  - Kaçırılan bir olay, aktif dosyalar için en fazla ~30 s gecikir; 15 dakikadan uzun süre sessiz kalmış bir dosya için en fazla 10 dakika.
+  - Thread sayısı runtime task'larından fazladır: hesap başına bir thread artı sabit dört thread. Hepsi zamanlayıcı veya kanal üzerinde bekler, boşta uyanmaz.
+  - `notify`'ın taşma davranışı ileride düzeltilirse sıcak dosya taraması gereksiz hale gelir; o zaman kaldırılabilir.
+- **Alternatifler:**
+  - Tokio runtime + `spawn_blocking` (bloklayan kodu sarmalamak gerekir, kapanışta blocking pool'u izlemek zorlaşır).
+  - Yalnızca 10 dakikalık güvenlik ağı (aktif bir dosyanın son yazması 10 dakika gecikebilir).
+  - Kendi `ReadDirectoryChangesW` sarmalayıcımızı yazmak (taşmayı doğru yakalar, ama ~300 satır unsafe FFI ve bakım yükü getirir).

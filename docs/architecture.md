@@ -119,7 +119,7 @@ Sürümler uygulama anında güncel stable olarak seçilir ve lock dosyalarıyla
 | `Store` | SQLite bağlantı havuzu: tek yazar thread + okuyucular. Migration'lar, tipli sorgular, saklama ve sıkıştırma işleri. |
 | `Discovery` | Hesapları ve kaynak köklerini bulur: `~/.claude`, `CLAUDE_CONFIG_DIR`, kullanıcı tanımlı dizinler, çalışan WSL dağıtımları (v0.3). |
 | `Indexer` | Artımlı JSONL okuma (offset), ön filtre, seçici parse, tekilleştirme (UPSERT, "max output kazanır"; eşitlikte sıra bağımsız kural, ADR-026), 5 dakikalık rollup, oturum ve proje çözümleme. Worker'lar parse eder ve parça içinde tekilleştirir; tek yazıcı oturumları, olayları ve `source_files` offset'lerini aynı transaction'da yazar. Son 7 günün dosyaları normal, eskileri arka plan önceliğinde işlenir. |
-| `Watcher` | `notify` olaylarını debounce eder (≥ 750 ms) ve indeksleyiciye "kirli dosya" kuyruğu olarak verir. |
+| `Watcher` | `notify` olaylarını sabit bir pencereyle debounce eder (750 ms) ve indeksleyiciye "kirli dosya" kuyruğu olarak verir. Windows'ta `notify` buffer taşmasını bildirmediği için yakın zamanda değişen dosyalar 30 s'de bir `stat` edilir; ayrıca 10 dakikada bir tam tarama yapılır (ADR-027). |
 | `LiveSessions` | `sessions/*.json` dosyalarını okur, pid canlılığını doğrular, `busy`/`idle` durumunu izler. |
 | `LimitEngine` | Kaynakları (S1/S2/tahmin) birleştirir. Snapshot'ları ve pencereleri yönetir, burn rate ve projeksiyon hesaplar. |
 | `UsageApiPoller` | S2 istemcisi: onay kapısı, token'ı salt-okunur kullanma, adaptif zamanlama, geri çekilme. |
@@ -128,7 +128,8 @@ Sürümler uygulama anında güncel stable olarak seçilir ve lock dosyalarıyla
 | `Attributor` (v0.2) | Δ%'yi oturumlara dağıtır, "Diğer" kovasını yönetir. |
 | `Notifier` | Eşik, projeksiyon ve reset kurallarını uygular. Histerezis ve tekilleştirme yapar, sessiz saatlere uyar. |
 | `IpcServer` | CLI ve statusline protokolünü sunar (§11). |
-| `EventBus` | `tokio::sync::broadcast<CoreEvent>`. Tauri katmanı olayları yalnızca açık pencerelere iletir. |
+| `EventBus` | `tokio::sync::broadcast<CoreEvent>` (kapasite 256, runtime gerektirmez). Geride kalan alıcı `Resync` alır ve tam durumu `CoreHandle::status()` ile yeniden yükler. Tauri katmanı olayları yalnızca açık pencerelere iletir. |
+| `CoreRuntime` | Bileşenleri adlandırılmış `std::thread`'lerde başlatır (`core-watch`, `core-index-<hesap>`, `retention`, `store-writer`) ve `shutdown(timeout)` ile durdurur (ADR-027). |
 | `Pricing` | Uygulamaya gömülü, sürümlü fiyat tablosu: model → $/MTok, modele özgü cache okuma çarpanı, uzun istem kademesi, fast mode çarpanı, web search ücreti. Bilinmeyen model aile yedeğiyle fiyatlanır (ADR-025). |
 
 **UI'da hesaplama yapılmaz.** Tauri komutları önceden agregasyonu yapılmış görünüm modelleri döner (`get_panel_snapshot`, `get_overview(range)`, `list_sessions(filter, page)` …). Frontend yalnızca çizer.

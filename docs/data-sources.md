@@ -226,6 +226,13 @@ projects/
 - Süreç çöktüğünde dosya geride kalabilir. Bu yüzden **pid canlılığı** (ve mümkünse `procStart` eşleşmesi) doğrulanmalı.
 - `.key` dosyaları ve `messagingSocketPath` Claude Code'un iç IPC mekanizmasıdır; **dokunulmaz**.
 
+**Adım 05 bulguları (Claude Code 2.1.311, gerçek veri):**
+- `procStart`, **ondalık string** olarak yazılmış bir FILETIME'dır (100 ns, 1601 tabanlı; ör. `"134375564581785791"`). Değer, `GetProcessTimes` ile alınan süreç oluşturma zamanına **tik tik eşit** çıktı. Parser sayı ve string biçimini birlikte kabul eder; karşılaştırmada 1 ms tolerans vardır. `procStart` yoksa oluşturma zamanının `startedAt`'ten en fazla 10 dakika önce olması aranır (gözlenen fark ~1,7 s).
+- Planda olmayan alanlar: `procStart`, `pidDomain` (`win32:<kullanıcı>`), `peerProtocol`, `peerFeatures`, `nameSince`. `pidDomain` yerel platform önekiyle (`win32`) başlamıyorsa dosya atlanır; başka bir ad alanının pid'i yerelde doğrulanamaz (WSL, v0.3). Kullanıcı adı kısmı okunmaz ve saklanmaz.
+- Çıkmış ama başka bir sürecin handle'ı yüzünden hâlâ açılabilen süreçler `GetExitCodeProcess` ile ayıklanır (`STILL_ACTIVE` değilse ölüdür).
+- Normal kapanışta Claude Code dosyayı siler; watcher bunu anında görür. Çökme sonrası kalan dosyalar, liste boş değilken 15 s'de bir yapılan canlılık kontrolüyle düşer.
+- `name` alanı, `nameSource: "derived"` ile cwd'den türetilmiş kısa bir ad taşır; `LiveSession.name` olarak gösterilir. Başlık önceliğine (`TitleSource`) eklenmedi.
+
 ## S5 — Kimlik bilgisi meta verisi
 
 `.credentials.json` → `claudeAiOauth`: `accessToken`, `refreshToken`, `expiresAt`, `refreshTokenExpiresAt`, `scopes`, `subscriptionType` (örneğin `max`), `subscriptionTypeSource`, `rateLimitTier` (örneğin `default_claude_max_20x`).
