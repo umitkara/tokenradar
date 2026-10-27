@@ -174,3 +174,22 @@
   - `simd-json` **reddedildi.** Gerçek veride C ile farkı gürültü düzeyinde. Buna karşılık ek bir bağımlılık, satır başına kopya ve thread başına +8-20 MiB tepe bellek getiriyor.
 - **Bedel:** C'nin ön filtresi kompakt JSON biçimine (`"type":"assistant"`, boşluksuz) dayanır. Claude Code biçimi değiştirirse filtre her satırı reddeder. Adım 04'te bunu yakalayan bir test (fixture + "hiç olay yok" uyarısı) yazılmalı.
 - **Alternatifler:** B (ön filtresiz, ~%6 daha yavaş ama biçimden bağımsız), D (yukarıda). Ölçülen ilk indeksleme süresi yalnızca parse içindir. SQLite yazma maliyeti Adım 04'te ölçülür.
+
+### ADR-025 — Fiyat tablosu model bazında; cache okuma çarpanı modele göre değişir
+**Durum:** Kabul (2026-10-27, Adım 03)
+- **Bağlam:** Plan (architecture.md §5, §9.1) fiyatları aile bazında (opus/sonnet/haiku…) tutmayı ve cache okuma çarpanını sabit `0.10` almayı öngörüyordu. Resmî fiyat sayfası (https://platform.claude.com/docs/en/about-claude/pricing, 2026-10-27 tarihinde okundu) farklı bir tablo gösteriyor:
+  - **Aynı ailede farklı fiyatlar var.** Opus 5.5 $4/$20, Opus 5 ve 4.x $5/$25, Opus 4/4.1 $15/$75 per MTok. Sonnet 5.x $2/$10, Sonnet 4.x $3/$15.
+  - **Cache okuma çarpanı sabit değil.** Fable 5.1 ve Mythos 5.1'de 0,025; Opus 5.5 ve Sonnet 5.5'te 0,05; diğerlerinde 0,1.
+  - **Haiku 5.5 kademeli fiyatlanıyor.** İstem 100.000 token'ı aşarsa (girdi + cache okuma + cache yazma) taban fiyatlar $0,10/$0,50'den $0,50/$2,50'ye çıkıyor.
+  - Fast mode, sunulduğu üç modelde (Opus 5.5, Opus 5, Opus 4.8) 2× fiyatla geliyor ve cache çarpanları bunun üzerine ekleniyor. Web search arama başına $0,01, web fetch ücretsiz.
+- **Karar (kullanıcıyla kararlaştırıldı):**
+  - `pricing/claude.toml` **model başına** bir satır içerir: `input`, `output`, isteğe bağlı `cache_read_mult`, `fast_mult` ve `long_context` (eşik + taban fiyatlar). Ortak çarpanlar `[defaults]` bölümündedir.
+  - **Model eşleme:** Ad, `id` ile birebir aynıysa veya `id`'nin sonunda tarih (`-20251001`), sürüm (`-v1:0`), `@` ya da `[` eki varsa eşleşir. `us.anthropic.` gibi platform önekleri atılır. Düz önek eşleşmesi kabul edilmez: `claude-opus-5`, `claude-opus-5-5` ile eşleşmez.
+  - **Bilinmeyen model:** Ailesi desenle bulunur (`family_of`). Aile biliniyorsa o ailenin tablodaki en yeni modelinin fiyatı, bilinmiyorsa `fallback` modelinin (`claude-opus-5-5`) fiyatı kullanılır. `Priced::model_known = false` döner ve model başına bir kez uyarı loglanır.
+  - **Aile yalnızca gruplama ve kalibrasyondaki aile katsayısı (`α_f`) için tutulur.** Fiyat hesabında kullanılmaz.
+  - **Web search maliyete dahildir.** §9.1 formülüne `+ web_search × $0,01` terimi eklendi.
+  - `inference_geo: "us"` 1,1× çarpanı **uygulanmaz** (bkz. "Bedel").
+- **Bedel:**
+  - Yeni bir model çıktığında tablo satırı elle eklenir. O zamana kadar model aile yedeğiyle fiyatlanır ve `model_known = false` olarak işaretlenir.
+  - `inference_geo` alanı JSONL'de bulunuyor, ama varsayılan değer `global`. US-only kullanan bir kullanıcıda maliyet %10 düşük çıkar. Kalibrasyon (k) oransal olduğu için limit tahminini etkilemez, yalnızca "API karşılığı $" gösterimini etkiler. Gerekirse Adım 04'te alan okunup çarpan eklenebilir.
+- **Alternatifler:** Plandaki aile bazlı tablo. Reddedildi: aynı ailede %25-200 fiyat farkı var.

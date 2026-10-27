@@ -129,13 +129,20 @@ Sürümler uygulama anında güncel stable olarak seçilir ve lock dosyalarıyla
 | `Notifier` | Eşik, projeksiyon ve reset kurallarını uygular. Histerezis ve tekilleştirme yapar, sessiz saatlere uyar. |
 | `IpcServer` | CLI ve statusline protokolünü sunar (§11). |
 | `EventBus` | `tokio::sync::broadcast<CoreEvent>`. Tauri katmanı olayları yalnızca açık pencerelere iletir. |
-| `Pricing` | Uygulamaya gömülü fiyat tablosu (model ailesi → $/MTok, cache çarpanları, fast mode çarpanı). |
+| `Pricing` | Uygulamaya gömülü, sürümlü fiyat tablosu: model → $/MTok, modele özgü cache okuma çarpanı, uzun istem kademesi, fast mode çarpanı, web search ücreti. Bilinmeyen model aile yedeğiyle fiyatlanır (ADR-025). |
 
 **UI'da hesaplama yapılmaz.** Tauri komutları önceden agregasyonu yapılmış görünüm modelleri döner (`get_panel_snapshot`, `get_overview(range)`, `list_sessions(filter, page)` …). Frontend yalnızca çizer.
 
-## 6. Veri modeli (SQLite şeması v1 — taslak)
+## 6. Veri modeli (SQLite şeması v1)
 
 Tüm zamanlar **UTC epoch milisaniye** (`INTEGER`) olarak saklanır. Para birimi **mikro-USD** (`INTEGER`) olarak tutulur.
+
+> **Kanonik şema:** `crates/tokenradar-core/src/store/migrations/0001_init.sql`. Aşağıdaki özet okumayı kolaylaştırır. Adım 03'te taslağa şunlar eklendi:
+> - Tüm ilişkilere `FOREIGN KEY`.
+> - `usage_5m` ve `notification_log` sütunlarına `NOT NULL`.
+> - İndeksler: `ix_sessions_root`, `ix_sessions_project`, `ix_sessions_last`, `ix_5m_acct_bucket`, `ix_calib`.
+> - `kv` tablosu `WITHOUT ROWID` oldu.
+> - Yeni veritabanında `auto_vacuum = INCREMENTAL`.
 
 ```sql
 CREATE TABLE accounts (
@@ -220,6 +227,10 @@ ON CONFLICT (account_id, msg_key) DO UPDATE SET ... WHERE excluded.output >= usa
 ```
 Bir olay güncellendiğinde `usage_5m` satırına **fark** uygulanır: eski değer çıkarılır, yeni değer eklenir. Bu, aynı transaction içinde yapılır.
 
+- Olayın kovası, oturumu veya modeli değişmişse eski değer eski satırdan çıkarılır, yeni değer yeni satıra eklenir. Boşalan satır (`events = 0`) silinir.
+- Eşit `output` değerinde son görülen satır kazanır.
+- **Saklama filigranı:** Saklama işi, hesap başına `kv` tablosuna `retention.pruned_before.<account_id>` kaydını yazar. Bu zamandan eski bir anahtar yeniden gelirse (ör. offset sıfırlanınca eski dosya yeniden okunursa) eklenmez, çünkü `usage_5m` onu zaten sayıyor. Filigrandan sonra eklenen hesaplar geçmişlerini normal biçimde indeksler.
+
 **Hacim tahmini:** Tekilleştirme sonrası ayda ~150 bin olay, yani ~25 MB/ay (indeksler dahil). Ham olaylar 90 gün saklanır (ayarlanabilir), `usage_5m` süresiz tutulur. Ayrıntılar [performance-budget.md](performance-budget.md) içinde.
 
 ## 7. Limit modeli ve kaynak füzyonu
@@ -256,9 +267,16 @@ struct LimitObservation {
 Her olay için şu değer hesaplanır:
 
 ```
-C = speed_mult × [ p_in(m) × (input + 1.25·cache_w5m + 2.0·cache_w1h + 0.10·cache_read)
-                 + p_out(m) × output ]          (p: $/token, gömülü fiyat tablosundan)
+C = speed_mult(m) × [ p_in(m) × (input + 1.25·cache_w5m + 2.0·cache_w1h + r(m)·cache_read)
+                    + p_out(m) × output ]
+  + web_search × $0,01                         (p: $/token, gömülü fiyat tablosundan)
 ```
+
+- `r(m)` cache okuma çarpanıdır: varsayılan 0,10; Fable 5.1 ve Mythos 5.1'de 0,025; Opus 5.5 ve Sonnet 5.5'te 0,05.
+- `speed_mult` fast mode'da 2,0'dır. Cache çarpanları bunun üzerine eklenir.
+- **Uzun istem kademesi:** Haiku 5.5'te istem (`input + cache_read + cache_w5m + cache_w1h`) 100.000 token'ı aşarsa `p_in` ve `p_out` daha yüksek kademeden alınır.
+- `thinking` token'ları `output` içinde sayılır, ayrıca fiyatlanmaz.
+- Fiyatlar model bazındadır (ADR-025). `$1/MTok` = 1 mikro-USD/token olduğu için sonuç doğrudan `MicroUsd` olarak yuvarlanır.
 
 `cache_creation` kırılımı yoksa `cache_creation_input_tokens` değeri 5 dakikalık cache yazımı olarak kabul edilir. Çarpanlar ve fiyatlar `Pricing` tablosunda sürümlenir.
 
