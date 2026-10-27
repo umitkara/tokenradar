@@ -8,6 +8,7 @@
 //!
 //! [general]
 //! locale = "tr"          # system | en | tr
+//! theme = "dark"         # system | light | dark
 //!
 //! [api_consent]
 //! granted = true
@@ -28,7 +29,8 @@
 
 use std::path::{Path, PathBuf};
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
+use specta::Type;
 use tokenradar_i18n::Locale;
 
 use crate::statusline::same_dir;
@@ -57,14 +59,73 @@ pub struct AppConfig {
 pub struct GeneralConfig {
     /// `system`, `en` or `tr`; anything else means `system`.
     pub locale: Option<String>,
+    /// `system`, `light` or `dark`; anything else means `system`.
+    pub theme: Option<String>,
 }
 
 impl GeneralConfig {
     /// The UI language: the configured one, or the operating system's.
     pub fn locale(&self) -> Locale {
+        match self.locale_pref() {
+            LocalePref::En => Locale::En,
+            LocalePref::Tr => Locale::Tr,
+            LocalePref::System => Locale::detect(),
+        }
+    }
+
+    pub fn locale_pref(&self) -> LocalePref {
         match self.locale.as_deref() {
-            Some(tag @ ("en" | "tr")) => Locale::from_tag(tag),
-            _ => Locale::detect(),
+            Some("en") => LocalePref::En,
+            Some("tr") => LocalePref::Tr,
+            _ => LocalePref::System,
+        }
+    }
+
+    pub fn theme_pref(&self) -> ThemePref {
+        match self.theme.as_deref() {
+            Some("light") => ThemePref::Light,
+            Some("dark") => ThemePref::Dark,
+            _ => ThemePref::System,
+        }
+    }
+}
+
+/// The user's language choice; `System` follows the operating system.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "snake_case")]
+pub enum LocalePref {
+    #[default]
+    System,
+    En,
+    Tr,
+}
+
+impl LocalePref {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::System => "system",
+            Self::En => "en",
+            Self::Tr => "tr",
+        }
+    }
+}
+
+/// The user's theme choice; `System` follows the operating system's app theme.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "snake_case")]
+pub enum ThemePref {
+    #[default]
+    System,
+    Light,
+    Dark,
+}
+
+impl ThemePref {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::System => "system",
+            Self::Light => "light",
+            Self::Dark => "dark",
         }
     }
 }
@@ -169,6 +230,34 @@ fn debug_consent_override() -> bool {
     cfg!(debug_assertions) && std::env::var_os(API_CONSENT_ENV).is_some_and(|v| v == "1")
 }
 
+/// Stores one `[general]` key (`locale`, `theme`). Every other key in the file is left as it was.
+pub fn save_general(path: &Path, key: &str, val: &str) -> Result<(), ConfigError> {
+    use toml_edit::{Item, Table, value};
+
+    let mut doc = read_document(path)?;
+    if !doc.get("general").is_some_and(Item::is_table) {
+        doc["general"] = Item::Table(Table::new());
+    }
+    doc["general"][key] = value(val);
+    crate::fsutil::atomic_write(path, doc.to_string().as_bytes())?;
+    Ok(())
+}
+
+/// `path` as an editable document: an empty one when the file is missing, with
+/// `schema_version` added to new files.
+fn read_document(path: &Path) -> Result<toml_edit::DocumentMut, ConfigError> {
+    let text = match std::fs::read_to_string(path) {
+        Ok(text) => text,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
+        Err(e) => return Err(e.into()),
+    };
+    let mut doc: toml_edit::DocumentMut = text.parse()?;
+    if !doc.contains_key("schema_version") {
+        doc["schema_version"] = toml_edit::value(SCHEMA_VERSION);
+    }
+    Ok(doc)
+}
+
 /// Stores the statusline state of the account at `config_dir`, creating the account entry
 /// if needed. Every other key in the file is left as it was.
 pub fn save_statusline(
@@ -176,17 +265,9 @@ pub fn save_statusline(
     config_dir: &Path,
     state: &StatuslineConfig,
 ) -> Result<(), ConfigError> {
-    use toml_edit::{ArrayOfTables, DocumentMut, Item, Table, value};
+    use toml_edit::{ArrayOfTables, Item, Table, value};
 
-    let text = match std::fs::read_to_string(path) {
-        Ok(text) => text,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
-        Err(e) => return Err(e.into()),
-    };
-    let mut doc: DocumentMut = text.parse()?;
-    if !doc.contains_key("schema_version") {
-        doc["schema_version"] = value(SCHEMA_VERSION);
-    }
+    let mut doc = read_document(path)?;
     if !doc.get("accounts").is_some_and(Item::is_array_of_tables) {
         doc["accounts"] = Item::ArrayOfTables(ArrayOfTables::new());
     }
@@ -287,6 +368,38 @@ mod tests {
         let cfg = AppConfig::load(&path).expect("load");
         assert_eq!(cfg.accounts.len(), 1);
         assert_eq!(cfg.account(&claude).map(|a| &a.statusline), Some(&cleared));
+    }
+
+    #[test]
+    fn general_keys_are_saved_without_touching_the_rest() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("config.toml");
+        save_general(&path, "theme", ThemePref::Dark.as_str()).expect("save new");
+        let cfg = AppConfig::load(&path).expect("load");
+        assert_eq!(cfg.schema_version, 1);
+        assert_eq!(cfg.general.theme_pref(), ThemePref::Dark);
+        assert_eq!(cfg.general.locale_pref(), LocalePref::System);
+
+        std::fs::write(
+            &path,
+            "# keep\nschema_version = 1\n[general]\nlocale = \"tr\"\nfuture = 1\n",
+        )
+        .expect("seed");
+        save_general(&path, "locale", LocalePref::En.as_str()).expect("save");
+        let text = std::fs::read_to_string(&path).expect("read");
+        assert!(text.starts_with("# keep\n"), "{text}");
+        assert!(text.contains("future = 1"), "{text}");
+        let cfg = AppConfig::load(&path).expect("load");
+        assert_eq!(cfg.general.locale_pref(), LocalePref::En);
+        assert_eq!(cfg.general.locale(), Locale::En);
+    }
+
+    #[test]
+    fn unknown_preferences_mean_system() {
+        let cfg =
+            AppConfig::parse("[general]\nlocale = \"de\"\ntheme = \"sepia\"\n").expect("parse");
+        assert_eq!(cfg.general.locale_pref(), LocalePref::System);
+        assert_eq!(cfg.general.theme_pref(), ThemePref::System);
     }
 
     #[test]
