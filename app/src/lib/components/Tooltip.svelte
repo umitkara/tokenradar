@@ -1,14 +1,16 @@
-<!-- A text tooltip for its children, on hover and keyboard focus; Esc hides it. The text is
-     also the trigger's description for screen readers. -->
+<!-- A text tooltip for its children, on hover and keyboard focus; Esc hides it (and only it:
+     the panel's own Esc handler skips a handled key). The text is also the trigger's
+     description for screen readers. `below` suits triggers at the top of a window. -->
 <script lang="ts">
 import type { Snippet } from "svelte";
 
 interface Props {
   text: string;
+  placement?: "above" | "below";
   children: Snippet;
 }
 
-let { text, children }: Props = $props();
+let { text, placement = "above", children }: Props = $props();
 const id = $props.id();
 let open = $state(false);
 let timer: ReturnType<typeof setTimeout> | undefined;
@@ -34,11 +36,14 @@ function hide() {
   onfocusin={() => show(0)}
   onfocusout={hide}
   onkeydown={(e) => {
-    if (e.key === "Escape") hide();
+    if (e.key === "Escape" && open) {
+      hide();
+      e.preventDefault();
+    }
   }}
 >
   {@render children()}
-  <span {id} role="tooltip" class="tip" class:open>{text}</span>
+  <span {id} role="tooltip" class="tip {placement}" class:open>{text}</span>
 </span>
 
 <style>
@@ -64,6 +69,16 @@ function hide() {
     opacity: 0;
     visibility: hidden;
     transition: opacity var(--dur-fast) var(--ease-out);
+  }
+  .tip.below {
+    bottom: auto;
+    top: calc(100% + var(--space-1));
+  }
+  /* Keep the tip inside narrow windows: anchored to the trigger's end instead of its middle. */
+  :global(.tip-end) .tip {
+    left: auto;
+    right: 0;
+    translate: none;
   }
   .tip.open {
     opacity: 1;

@@ -1,7 +1,10 @@
 <!--
-  One session's part in the 5-hour window (design-language.md §4):
-  "● name (project)   Busy   ≈9 % this window   12.4k tok/min".
-  A busy dot pulses twice when the session turns busy, then stays still (ADR-019).
+  One session's part in the 5-hour window (design-language.md §4), on two lines so it fits the
+  360 px panel (ADR-032):
+    ● name  project                ≈9 % this window
+      Busy · 12.4k tok/min
+  The name falls back to the transcript title, then the project. A busy dot pulses twice when
+  the session turns busy, then stays still (ADR-019). Sessions that are not running are dimmed.
 -->
 <script lang="ts">
 import { t } from "../i18n/i18n.svelte";
@@ -15,40 +18,53 @@ const STATUS_KEYS: Record<LiveStatus, string> = {
   unknown: "session-unknown",
 };
 
-const name = $derived(session.name ?? session.title ?? t("session-untitled"));
+const name = $derived(session.name ?? session.title ?? session.project ?? t("session-untitled"));
+/** The project, unless it already is the name. */
+const project = $derived(
+  session.project && (session.name ?? session.title) ? session.project : null,
+);
+const details = $derived(
+  [
+    session.status ? t(STATUS_KEYS[session.status]) : null,
+    session.tokens_per_min ? t("session-rate", { k: session.tokens_per_min / 1000 }) : null,
+  ].filter((d) => d != null),
+);
 </script>
 
-<div class="row">
+<div class="row" class:ended={!session.status}>
   {#key session.status}
     <span class="dot {session.status ?? 'ended'}" aria-hidden="true"></span>
   {/key}
   <span class="who">
     <span class="name">{name}</span>
-    {#if session.project}<span class="project">{session.project}</span>{/if}
+    {#if project}<span class="project">{project}</span>{/if}
   </span>
-  {#if session.status}<span class="status">{t(STATUS_KEYS[session.status])}</span>{/if}
   {#if session.share_percent != null}
     <span class="share">{t("session-share", { pct: session.share_percent })}</span>
   {/if}
-  {#if session.tokens_per_min != null}
-    <span class="rate">{t("session-rate", { k: session.tokens_per_min / 1000 })}</span>
+  {#if details.length > 0}
+    <span class="details">{details.join(" · ")}</span>
   {/if}
 </div>
 
 <style>
   .row {
-    display: flex;
+    display: grid;
+    grid-template-columns: 8px minmax(0, 1fr) auto;
+    column-gap: var(--space-2);
     align-items: baseline;
-    gap: var(--space-2);
     font: var(--type-body);
     color: var(--text-2);
     min-height: 24px;
   }
+  .ended {
+    opacity: 0.7;
+  }
   .dot {
-    flex: none;
     align-self: center;
     width: 8px;
     height: 8px;
+    box-sizing: border-box;
     border-radius: 50%;
     border: 1.5px solid var(--text-3);
   }
@@ -69,7 +85,6 @@ const name = $derived(session.name ?? session.title ?? t("session-untitled"));
     }
   }
   .who {
-    flex: 1;
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -84,12 +99,18 @@ const name = $derived(session.name ?? session.title ?? t("session-untitled"));
   .project {
     color: var(--text-3);
   }
-  .status,
   .share,
-  .rate {
-    flex: none;
+  .details {
     font: var(--type-caption);
     font-variant-numeric: tabular-nums;
+  }
+  .share {
+    color: var(--text-1);
+    white-space: nowrap;
+  }
+  .details {
+    grid-column: 2 / -1;
+    color: var(--text-3);
   }
   @media (prefers-reduced-motion: reduce) {
     .dot.busy {

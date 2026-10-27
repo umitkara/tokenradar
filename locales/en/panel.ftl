@@ -2,9 +2,49 @@
 
 panel-live-sessions = Running sessions
 panel-top-sessions = Largest this window
-panel-no-live-sessions = No Claude Code session is running.
+panel-no-live-sessions = No session is running right now.
 panel-open-settings = Settings
 panel-close = Close
+# Running Claude Code sessions, in the header.
+panel-active = { $count } active
+# $plan is a plan name such as "Max 20x"; $label is the account, e.g. "Claude".
+panel-account = { $label } · { $plan }
+# More rows than the list shows.
+panel-more = +{ $count } more
+panel-limits = Limits
+panel-sessions = Sessions
+panel-loading = Loading usage…
+panel-extra-usage = Extra usage is on: usage past a limit is billed separately.
+
+## Projection under the limits. $kind is "weekly" for the weekly limit, else "five_hour".
+
+# $eta is the time until 100 %, $reset the time until the window resets; $approx is "yes" when
+# the projection rests on few readings.
+panel-projection-will-hit = { $kind ->
+    [weekly] ▲ Weekly: at this rate, full in { $approx ->
+        [yes] ≈{ DUR($eta) }
+       *[no] { DUR($eta) }
+    }, resets in { DUR($reset) }
+   *[five_hour] ▲ At this rate, full in { $approx ->
+        [yes] ≈{ DUR($eta) }
+       *[no] { DUR($eta) }
+    }, resets in { DUR($reset) }
+}
+panel-projection-at-reset = { $kind ->
+    [weekly] Weekly: at this rate ≈{ PCT($pct) } by the reset
+   *[five_hour] At this rate ≈{ PCT($pct) } by the reset
+}
+panel-projection-idle = No usage right now
+# Shown as the projection's tooltip when it rests on few readings.
+panel-projection-low = Few readings so far; a rough estimate.
+
+## Footer
+
+panel-refresh = Refresh
+panel-refresh-wait = Refreshed less than a minute ago
+panel-refresh-blocked = Refresh is paused until the API is reachable again
+panel-mute = Mute notifications for 1 hour
+panel-unmute = Unmute notifications
 
 ## First start and missing data
 

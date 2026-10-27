@@ -1,7 +1,8 @@
 <!--
   One limit as a row (design-language.md §4): "[icon] Label ...... 72 % · 1h 48m" over a thin bar.
   Scoped limits ("Fable · weekly") are indented under their parent. Fill and ghost are clipped
-  rather than scaled, so the dashes of an estimate keep their length.
+  rather than scaled, so the dashes of an estimate keep their length. `stacked` moves the reset
+  under the bar, for narrow columns such as the panel's next to the ring.
 -->
 <script lang="ts">
 import type { LimitView } from "../ipc/bindings";
@@ -14,9 +15,10 @@ interface Props {
   limit: LimitView;
   /** `absolute` for resets days away: "Resets Wed 10:59". */
   countdown?: "relative" | "absolute";
+  layout?: "inline" | "stacked";
 }
 
-let { limit, countdown = "relative" }: Props = $props();
+let { limit, countdown = "relative", layout = "inline" }: Props = $props();
 
 const name = $derived(limitName(limit));
 const percent = $derived(arc(limit.percent));
@@ -38,7 +40,7 @@ const estimated = $derived(isEstimate(limit));
     <SeverityIcon severity={estimated ? "ok" : limit.severity} />
     <span class="name">{name}</span>
     <span class="readout pct">{valueText(limit)}</span>
-    {#if limit.resets_at != null}
+    {#if limit.resets_at != null && layout === "inline"}
       <span class="sep">·</span>
       <span class="when"><Countdown at={limit.resets_at} mode={countdown} /></span>
     {/if}
@@ -53,6 +55,11 @@ const estimated = $derived(isEstimate(limit));
     {/if}
     <span class="fill" style:clip-path="inset(0 {100 - percent}% 0 0)"></span>
   </div>
+  {#if limit.resets_at != null && layout === "stacked"}
+    <span class="when below" aria-hidden="true">
+      <Countdown at={limit.resets_at} mode={countdown} />
+    </span>
+  {/if}
 </div>
 
 <style>
@@ -90,6 +97,12 @@ const estimated = $derived(isEstimate(limit));
   .sep,
   .when {
     font: var(--type-caption);
+  }
+  .when.below {
+    color: var(--text-2);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .bar {

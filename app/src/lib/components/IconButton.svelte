@@ -6,13 +6,14 @@ import Tooltip from "./Tooltip.svelte";
 
 interface Props extends HTMLButtonAttributes {
   label: string;
+  placement?: "above" | "below";
   children: Snippet;
 }
 
-let { label, children, ...rest }: Props = $props();
+let { label, placement, children, ...rest }: Props = $props();
 </script>
 
-<Tooltip text={label}>
+<Tooltip text={label} {placement}>
   <button type="button" aria-label={label} {...rest}>{@render children()}</button>
 </Tooltip>
 
@@ -32,6 +33,9 @@ let { label, children, ...rest }: Props = $props();
   }
   button:hover:not(:disabled) {
     background: var(--surface-2);
+    color: var(--text-1);
+  }
+  button:focus-visible {
     color: var(--text-1);
   }
   button:disabled {

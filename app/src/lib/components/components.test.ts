@@ -63,13 +63,15 @@ describe("LimitBar", () => {
 });
 
 describe("SessionRow", () => {
-  it("falls back to the title, then to a placeholder", () => {
+  it("falls back to the title, the project, then a placeholder", () => {
     expect(render(SessionRow, { props: { session: untitledWithTitle } }).body).toContain(
       "Fix flaky watcher test",
     );
     const body = render(SessionRow, { props: { session: unnamed } }).body;
-    expect(body).toContain("Adsız oturum");
+    expect(body).toContain("scratch");
     expect(body).not.toContain("bu pencere");
+    const bare = { ...unnamed, project: null };
+    expect(render(SessionRow, { props: { session: bare } }).body).toContain("Adsız oturum");
   });
 });
 

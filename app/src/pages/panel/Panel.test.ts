@@ -9,6 +9,6 @@ describe("Panel", () => {
     initI18n(panelCatalog, "tr");
     const { body } = render(Panel);
     expect(body).toContain("TokenRadar");
-    expect(body).toContain("Yükleniyor");
+    expect(body).toContain("Kullanım yükleniyor");
   });
 });
