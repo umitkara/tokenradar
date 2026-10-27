@@ -35,7 +35,9 @@ use std::time::{Duration, Instant, SystemTime};
 use serde::Serialize;
 use specta::Type;
 
-use crate::clock::SystemClock;
+use tokenradar_i18n::Locale;
+
+use crate::clock::{LocalClock, SystemClock};
 use crate::domain::{AccountId, AccountSpec, LimitObservation, Provider, Timestamp};
 use crate::events::{CoreEvent, DriftSource, EventBus, Subscription};
 use crate::indexer::{
@@ -46,6 +48,7 @@ use crate::limits::{
     AccountMeta, IndexState, LimitEngine, LimitEvent, PanelSnapshot, SchemaDriftView, VisibleKey,
 };
 use crate::live_sessions::{self, LiveSession, LiveSessionTracker};
+use crate::notifier::{self, Fired, Notifier, NotifyPrefs, Outcome};
 use crate::providers::claude::credentials::{self, CREDENTIALS_FILE};
 use crate::providers::claude::usage_api::{
     HttpTransport, PollInputs, PollUpdate, PollerMsg, UsageApiPoller,
@@ -119,6 +122,26 @@ pub struct CoreConfig {
     pub ipc: Option<IpcConfig>,
     /// Statusline spool to import (see [`crate::paths::Paths::spool_dir`]); `None` skips it.
     pub spool_dir: Option<PathBuf>,
+    /// Desktop notifications; `None` runs without the notifier (tests, headless tools).
+    pub notify: Option<NotifySetup>,
+}
+
+/// What the notifier starts with; later changes arrive through [`CoreHandle`].
+#[derive(Clone)]
+pub struct NotifySetup {
+    pub prefs: NotifyPrefs,
+    pub locale: Locale,
+    /// The user's wall clock, for quiet hours and weekday texts.
+    pub clock: Arc<dyn LocalClock>,
+}
+
+impl std::fmt::Debug for NotifySetup {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("NotifySetup")
+            .field("prefs", &self.prefs)
+            .field("locale", &self.locale)
+            .finish_non_exhaustive()
+    }
 }
 
 impl CoreConfig {
@@ -132,6 +155,7 @@ impl CoreConfig {
             api_consent: false,
             ipc: None,
             spool_dir: None,
+            notify: None,
         }
     }
 }
@@ -249,16 +273,25 @@ impl CoreRuntime {
             .map(|(m, d)| (m.id, d.config_dir.clone()))
             .collect();
         let engine = LimitEngine::new(store.clone(), metas, config.api_consent, Timestamp::now())?;
-        let ctx = LimitsCtx {
-            engine,
-            pollers,
-            bus: bus.clone(),
-            status: status.clone(),
-            store: store.clone(),
-            spool_dir: config.spool_dir.clone(),
-            account_dirs: account_dirs.clone(),
-        };
-        threads.push(spawn("core-limits", move || limits_loop(ctx, &limits_rx))?);
+        let setup = config.notify.clone();
+        let (limits_bus, limits_status, limits_store) =
+            (bus.clone(), status.clone(), store.clone());
+        let (spool_dir, limits_dirs) = (config.spool_dir.clone(), account_dirs.clone());
+        threads.push(spawn("core-limits", move || {
+            // Built here: the notifier's Fluent bundle cannot move between threads.
+            let notifier = setup.map(|s| start_notifier(&limits_store, &s, Timestamp::now()));
+            let ctx = LimitsCtx {
+                engine,
+                notifier,
+                pollers,
+                bus: limits_bus,
+                status: limits_status,
+                store: limits_store,
+                spool_dir,
+                account_dirs: limits_dirs,
+            };
+            limits_loop(ctx, &limits_rx);
+        })?);
 
         let mut ipc_stop = None;
         if let Some(ipc) = &config.ipc {
@@ -305,6 +338,34 @@ impl CoreRuntime {
             ipc_stop,
         })
     }
+}
+
+/// The notifier with what `notification_log` and the mute in `kv` remember.
+fn start_notifier(store: &Store, setup: &NotifySetup, now: Timestamp) -> Notifier {
+    let since = now.saturating_sub_millis(notifier::HISTORY_MS);
+    let history: Vec<Fired> = store
+        .notifications_since(since)
+        .unwrap_or_else(|error| {
+            // Without history a threshold may be announced once more; not worth failing for.
+            tracing::warn!(%error, "could not read the notification log");
+            Vec::new()
+        })
+        .iter()
+        .filter_map(|(rule, key, at)| Fired::parse(rule, key, *at))
+        .collect();
+    let muted_until = store
+        .kv_get(notifier::KV_MUTED_UNTIL)
+        .ok()
+        .flatten()
+        .and_then(|v| v.parse().ok())
+        .map(Timestamp::from_millis);
+    Notifier::new(
+        setup.prefs.clone(),
+        setup.locale,
+        Arc::clone(&setup.clock),
+        history,
+        muted_until,
+    )
 }
 
 /// Starts `core-ipc`. A pipe that cannot be created (another instance owns it) is logged;
@@ -389,6 +450,29 @@ impl CoreHandle {
     /// Grants or withdraws consent for the usage API at runtime (settings, Step 11).
     pub fn set_api_consent(&self, granted: bool) {
         let _ = self.limits_tx.send(LimitsMsg::Consent(granted));
+    }
+
+    /// New notification settings; they apply from the next snapshot.
+    pub fn set_notify_prefs(&self, prefs: NotifyPrefs) {
+        let _ = self.limits_tx.send(LimitsMsg::NotifyPrefs(Box::new(prefs)));
+    }
+
+    /// The language of later notifications.
+    pub fn set_notify_locale(&self, locale: Locale) {
+        let _ = self.limits_tx.send(LimitsMsg::NotifyLocale(locale));
+    }
+
+    /// Notifications are muted until then (`None`: not muted). The caller keeps the value in
+    /// `kv` under [`notifier::KV_MUTED_UNTIL`], where the notifier finds it after a restart.
+    pub fn set_muted_until(&self, until: Option<Timestamp>) {
+        let _ = self.limits_tx.send(LimitsMsg::Muted(until));
+    }
+
+    /// Raw-event retention from the next daily run on. No effect if retention is disabled.
+    pub fn set_retention_days(&self, days: u32) {
+        if let Some(retention) = &self.retention {
+            retention.set_keep_days(days);
+        }
     }
 
     /// Stops every core thread and waits up to `timeout`. An indexing pass in progress stops
@@ -976,6 +1060,9 @@ enum LimitsMsg {
     CredentialsChanged(AccountId),
     PanelOpened,
     Consent(bool),
+    NotifyPrefs(Box<NotifyPrefs>),
+    NotifyLocale(Locale),
+    Muted(Option<Timestamp>),
     Stop,
 }
 
@@ -989,6 +1076,7 @@ struct PollerLink {
 
 struct LimitsCtx {
     engine: LimitEngine,
+    notifier: Option<Notifier>,
     pollers: Vec<PollerLink>,
     bus: EventBus,
     status: Arc<Mutex<CoreStatus>>,
@@ -1011,13 +1099,38 @@ impl LimitsCtx {
         report.ingested > 0
     }
 
-    /// Publishes the engine's signals; `true` if there were any.
-    fn publish_all(&self, events: Vec<LimitEvent>) -> bool {
+    /// Publishes the engine's signals; `true` if there were any. Resets also go to the
+    /// notifier.
+    fn publish_all(&mut self, events: Vec<LimitEvent>) -> bool {
         let any = !events.is_empty();
+        let now = Timestamp::now();
         for e in events {
+            if let Some(notifier) = &mut self.notifier {
+                let outcome = notifier.on_reset(&e, now);
+                self.deliver(outcome, now);
+            }
             self.bus.publish(CoreEvent::Limit(e));
         }
         any
+    }
+
+    /// Records what fired and publishes what is to be shown.
+    fn deliver(&self, outcome: Outcome, now: Timestamp) {
+        let Outcome { show, record } = outcome;
+        if !record.is_empty() {
+            let rows = record
+                .iter()
+                .map(|f| (f.rule.as_str().to_owned(), f.dedupe_key(), f.at))
+                .collect();
+            if let Err(error) = self.store.writer().record_notifications(rows, now) {
+                // Without the record a restart may repeat the notice once; not worth more.
+                tracing::warn!(%error, "could not record a notification");
+            }
+        }
+        for notice in show {
+            tracing::info!(rule = notice.rule.as_str(), "notification");
+            self.bus.publish(CoreEvent::Notify(notice));
+        }
     }
 
     fn sync_poll_inputs(&mut self) {
@@ -1063,6 +1176,21 @@ impl LimitsCtx {
             }
             LimitsMsg::PanelOpened => self.broadcast(&PollerMsg::PanelOpened),
             LimitsMsg::Consent(granted) => self.broadcast(&PollerMsg::Consent(granted)),
+            LimitsMsg::NotifyPrefs(prefs) => {
+                if let Some(n) = &mut self.notifier {
+                    n.set_prefs(*prefs);
+                }
+            }
+            LimitsMsg::NotifyLocale(locale) => {
+                if let Some(n) = &mut self.notifier {
+                    n.set_locale(locale);
+                }
+            }
+            LimitsMsg::Muted(until) => {
+                if let Some(n) = &mut self.notifier {
+                    n.set_muted_until(until);
+                }
+            }
         }
         true
     }
@@ -1075,6 +1203,10 @@ impl LimitsCtx {
         }
         let (snapshot, events) = self.engine.snapshot(now);
         self.publish_all(events);
+        if let Some(notifier) = &mut self.notifier {
+            let outcome = notifier.evaluate(&snapshot.limits, now);
+            self.deliver(outcome, now);
+        }
         let key = snapshot.visible_key();
         lock(&self.status).limits = Some(snapshot.clone());
         if last.as_ref() != Some(&key) {
@@ -1105,8 +1237,16 @@ fn limits_loop(mut ctx: LimitsCtx, rx: &mpsc::Receiver<LimitsMsg>) {
             next_build = Instant::now() + LIMITS_REBUILD_GAP;
         }
 
-        // Sleep until the engine's next reset or freshness step, or the pending rebuild.
-        let mut wait: Option<Duration> = ctx.engine.next_wake(now).map(|w| {
+        // Sleep until the engine's next reset or freshness step, the end of a mute or quiet
+        // hours that hold notices back, or the pending rebuild.
+        let wake = match (
+            ctx.engine.next_wake(now),
+            ctx.notifier.as_ref().and_then(|n| n.next_wake(now)),
+        ) {
+            (Some(a), Some(b)) => Some(a.min(b)),
+            (a, b) => a.or(b),
+        };
+        let mut wait: Option<Duration> = wake.map(|w| {
             Duration::from_millis(u64::try_from(w.as_millis() - now.as_millis()).unwrap_or(0))
         });
         if dirty {

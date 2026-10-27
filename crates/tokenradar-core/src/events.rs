@@ -14,6 +14,7 @@ use crate::domain::{AccountId, SessionId, Timestamp};
 use crate::indexer::{IndexMilestone, IndexProgress};
 use crate::limits::{LimitEvent, PanelSnapshot};
 use crate::live_sessions::LiveSession;
+use crate::notifier::Notice;
 
 /// Events buffered per subscriber before the oldest are dropped.
 pub const BUS_CAPACITY: usize = 256;
@@ -53,6 +54,8 @@ pub enum CoreEvent {
     LimitsUpdated(Box<PanelSnapshot>),
     /// A threshold, projection or reset signal for the notifier.
     Limit(LimitEvent),
+    /// A notification to show now; mute and quiet hours are already applied.
+    Notify(Notice),
 }
 
 /// Which parser reported [`CoreEvent::SchemaDrift`].

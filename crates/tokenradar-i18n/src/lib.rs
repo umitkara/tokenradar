@@ -58,10 +58,12 @@ pub enum Domain {
     Cli,
     /// The tray icon's tooltip and menu.
     Tray,
+    /// Desktop notifications.
+    Notify,
 }
 
 impl Domain {
-    pub const ALL: [Self; 2] = [Self::Cli, Self::Tray];
+    pub const ALL: [Self; 3] = [Self::Cli, Self::Tray, Self::Notify];
 
     /// Embedded Fluent source.
     pub const fn source(self, locale: Locale) -> &'static str {
@@ -70,6 +72,8 @@ impl Domain {
             (Self::Cli, Locale::Tr) => include_str!("../../../locales/tr/cli.ftl"),
             (Self::Tray, Locale::En) => include_str!("../../../locales/en/tray.ftl"),
             (Self::Tray, Locale::Tr) => include_str!("../../../locales/tr/tray.ftl"),
+            (Self::Notify, Locale::En) => include_str!("../../../locales/en/notify.ftl"),
+            (Self::Notify, Locale::Tr) => include_str!("../../../locales/tr/notify.ftl"),
         }
     }
 }

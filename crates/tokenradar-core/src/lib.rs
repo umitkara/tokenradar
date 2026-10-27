@@ -11,6 +11,7 @@ pub mod indexer;
 pub mod ipc;
 pub mod limits;
 pub mod live_sessions;
+pub mod notifier;
 pub mod paths;
 pub mod pricing;
 pub mod providers;

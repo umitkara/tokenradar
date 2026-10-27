@@ -13,6 +13,7 @@ mod events;
 mod index;
 mod kv;
 mod migrate;
+mod notifications;
 mod retention;
 mod snapshots;
 mod sql;
@@ -203,6 +204,14 @@ impl Store {
         self.read(|c| kv::get(c, key))
     }
 
+    /// `notification_log` rows `(rule, dedupe_key, fired_at)` fired at or after `since`.
+    pub fn notifications_since(
+        &self,
+        since: Timestamp,
+    ) -> Result<Vec<(String, String, Timestamp)>> {
+        self.read(|c| notifications::since(c, since))
+    }
+
     /// Read positions of all transcript files of an account, keyed by path.
     pub fn source_files(
         &self,
@@ -348,6 +357,16 @@ impl Writer {
 
     pub fn kv_delete(&self, key: String) -> Result<()> {
         self.call(move |conn| kv::delete(conn, &key))
+    }
+
+    /// Remembers fired notification rules `(rule, dedupe_key, fired_at)`; also forgets rows
+    /// older than 30 days.
+    pub fn record_notifications(
+        &self,
+        rows: Vec<(String, String, Timestamp)>,
+        now: Timestamp,
+    ) -> Result<()> {
+        self.call(move |conn| notifications::record(conn, &rows, now))
     }
 
     /// Deletes raw events older than `older_than`; `usage_5m` is untouched (ADR-020).

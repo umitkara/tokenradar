@@ -364,6 +364,109 @@ fn a_limit_reading_reaches_the_panel_snapshot() {
     handle.shutdown(SHUTDOWN_TIMEOUT);
 }
 
+fn session_reading(percent: f64, resets_at: Timestamp) -> LimitObservation {
+    use crate::domain::{LimitKind, Source};
+    let now = Timestamp::now();
+    LimitObservation {
+        account: AccountId(1),
+        kind: LimitKind::Session,
+        scope: None,
+        percent,
+        resets_at: Some(resets_at),
+        severity: None,
+        source: Source::Statusline,
+        session_uuid: None,
+        observed_at: now,
+    }
+}
+
+fn notify_config(env: &Env) -> CoreConfig {
+    let mut config = env.config();
+    let prefs = NotifyPrefs {
+        projection: false, // one reading has no rate; keep the test to thresholds
+        ..NotifyPrefs::default()
+    };
+    config.notify = Some(NotifySetup {
+        prefs,
+        locale: Locale::En,
+        clock: Arc::new(crate::clock::UtcClock),
+    });
+    config
+}
+
+/// A threshold is announced once per window, and the record survives a restart.
+#[test]
+fn a_crossed_threshold_is_notified_once_across_restarts() {
+    let env = Env::new();
+    let resets_at = Timestamp::from_millis(Timestamp::now().as_millis() + 3 * 3_600_000);
+
+    let handle = CoreRuntime::start(&notify_config(&env)).expect("start");
+    let rx = events(&handle);
+    handle.ingest_limit(session_reading(92.0, resets_at));
+    let notice = wait_for(&rx, Duration::from_secs(5), |e| match e {
+        CoreEvent::Notify(n) => Some(n.clone()),
+        _ => None,
+    })
+    .expect("Notify");
+    assert_eq!(notice.rule, notifier::Rule::Threshold);
+    assert_eq!(notice.title, "5-hour window reached 90%");
+    // 75 was recorded silently with 90.
+    let rows = handle
+        .store()
+        .notifications_since(Timestamp::from_millis(0))
+        .expect("log");
+    assert_eq!(rows.len(), 2, "{rows:?}");
+    handle.shutdown(SHUTDOWN_TIMEOUT);
+
+    let handle = CoreRuntime::start(&notify_config(&env)).expect("restart");
+    let rx = events(&handle);
+    handle.ingest_limit(session_reading(93.0, resets_at));
+    let next = wait_for(&rx, Duration::from_secs(5), |e| match e {
+        CoreEvent::Notify(n) => Some(Some(n.clone())),
+        CoreEvent::LimitsUpdated(s) if !s.limits.is_empty() => Some(None),
+        _ => None,
+    })
+    .expect("LimitsUpdated");
+    assert_eq!(next, None, "the restart repeated a notification");
+    handle.shutdown(SHUTDOWN_TIMEOUT);
+}
+
+/// A mute stored in `kv` holds notices back after a restart too.
+#[test]
+fn a_stored_mute_holds_notifications_back() {
+    let env = Env::new();
+    {
+        let store = Store::open(&env.db_path).expect("store");
+        let until = Timestamp::now().as_millis() + 3_600_000;
+        store
+            .writer()
+            .kv_set(notifier::KV_MUTED_UNTIL.into(), until.to_string())
+            .expect("kv");
+    }
+    let resets_at = Timestamp::from_millis(Timestamp::now().as_millis() + 3 * 3_600_000);
+    let handle = CoreRuntime::start(&notify_config(&env)).expect("start");
+    let rx = events(&handle);
+    handle.ingest_limit(session_reading(80.0, resets_at));
+    let next = wait_for(&rx, Duration::from_secs(5), |e| match e {
+        CoreEvent::Notify(n) => Some(Some(n.clone())),
+        CoreEvent::LimitsUpdated(s) if !s.limits.is_empty() => Some(None),
+        _ => None,
+    })
+    .expect("LimitsUpdated");
+    assert_eq!(next, None, "a muted notice was shown");
+
+    // Unmuting releases the held notice.
+    handle.set_muted_until(None);
+    handle.ingest_limit(session_reading(81.0, resets_at));
+    let notice = wait_for(&rx, Duration::from_secs(5), |e| match e {
+        CoreEvent::Notify(n) => Some(n.clone()),
+        _ => None,
+    })
+    .expect("Notify after unmute");
+    assert_eq!(notice.title, "5-hour window reached 75%");
+    handle.shutdown(SHUTDOWN_TIMEOUT);
+}
+
 #[test]
 fn shutdown_interrupts_the_startup_delay() {
     let env = Env::new();

@@ -1,23 +1,37 @@
 //! `config.toml`: the user's settings (architecture §14).
 //!
-//! Reading goes through serde. Writing goes through `toml_edit` and touches only the keys it
-//! sets, so unknown fields and comments survive (the settings window, Step 11, writes the rest).
+//! Reading goes through serde and never fails on one bad section: a malformed `[notifications]`,
+//! `[data]` or `[advanced]` table falls back to its defaults instead of discarding the whole
+//! file (and with it the API consent). Writing goes through `toml_edit` and touches only the
+//! keys it sets, so unknown fields and comments survive.
 //!
 //! ```toml
-//! schema_version = 1
+//! schema_version = 2
 //!
 //! [general]
 //! locale = "tr"          # system | en | tr
 //! theme = "dark"         # system | light | dark
+//! panel_warm_ttl = 60    # seconds a hidden panel stays ready
 //!
-//! [api_consent]
-//! granted = true
-//! granted_at = 2026-10-27T10:00:00Z
-//! version = 1
+//! [notifications]        # see `notifier::NotifyPrefs`
+//! five_hour_thresholds = [75, 90, 100]
+//!
+//! [data]
+//! raw_retention_days = 90
+//! update_check = true
+//!
+//! [advanced]
+//! log_level = "info"
 //!
 //! [[accounts]]
 //! provider = "claude"
 //! config_dir = 'C:\Users\Ada\.claude'
+//! label = "Work"
+//!
+//! [accounts.api_consent]
+//! granted = true
+//! granted_at = 2026-10-27T10:00:00Z
+//! consent_version = 1
 //!
 //! [accounts.statusline]
 //! installed = true
@@ -26,13 +40,19 @@
 //! chain = true
 //! chain_position = "before"
 //! ```
+//!
+//! Schema 1 kept one top-level `[api_consent]` (with `version`); [`migrate`] moves it into the
+//! primary account. Until then, reading still honours it for accounts without their own.
 
 use std::path::{Path, PathBuf};
 
-use serde::{Deserialize, Serialize};
+use serde::de::DeserializeOwned;
+use serde::{Deserialize, Deserializer, Serialize};
 use specta::Type;
 use tokenradar_i18n::Locale;
+use toml_edit::{ArrayOfTables, DocumentMut, Item, Table, value};
 
+use crate::notifier::NotifyPrefs;
 use crate::statusline::same_dir;
 
 /// Version of the consent text. Raising it asks every user again: a consent given for an
@@ -42,16 +62,47 @@ pub const API_CONSENT_VERSION: u32 = 1;
 /// Debug builds only: set to `1` to simulate consent without editing `config.toml`.
 pub const API_CONSENT_ENV: &str = "TOKENRADAR_API_CONSENT";
 
-/// Written into a new file; the settings window migrates older ones (Step 11).
-pub const SCHEMA_VERSION: i64 = 1;
+/// The schema this build writes; [`migrate`] brings older files up to it.
+pub const SCHEMA_VERSION: i64 = 2;
+
+/// Default seconds a hidden panel stays ready (architecture §2).
+pub const DEFAULT_PANEL_WARM_TTL_S: u32 = 60;
+/// Upper bound for `panel_warm_ttl`: longer keeps a `WebView` alive for little gain.
+pub const MAX_PANEL_WARM_TTL_S: u32 = 600;
+/// Default raw-event retention (ADR-020).
+pub const DEFAULT_RAW_RETENTION_DAYS: u32 = 90;
+/// Retention bounds: a week keeps the calibration window; ten years is "forever".
+pub const MIN_RAW_RETENTION_DAYS: u32 = 7;
+pub const MAX_RAW_RETENTION_DAYS: u32 = 3650;
 
 #[derive(Debug, Clone, Default, PartialEq, Deserialize)]
 #[serde(default)]
 pub struct AppConfig {
     pub schema_version: u32,
     pub general: GeneralConfig,
-    pub api_consent: ApiConsent,
+    #[serde(deserialize_with = "lenient")]
+    pub notifications: NotifyPrefs,
+    #[serde(deserialize_with = "lenient")]
+    pub data: DataConfig,
+    #[serde(deserialize_with = "lenient")]
+    pub advanced: AdvancedConfig,
     pub accounts: Vec<AccountConfig>,
+    /// Schema 1's single consent; applies to accounts that have none of their own.
+    #[serde(rename = "api_consent")]
+    pub legacy_api_consent: ApiConsent,
+}
+
+/// A section that does not parse is replaced by its defaults; the rest of the file still counts.
+fn lenient<'de, D, T>(de: D) -> Result<T, D::Error>
+where
+    D: Deserializer<'de>,
+    T: DeserializeOwned + Default,
+{
+    let raw = toml::Value::deserialize(de)?;
+    Ok(raw.try_into().unwrap_or_else(|error| {
+        tracing::warn!(%error, "config.toml: a section is malformed, its defaults apply");
+        T::default()
+    }))
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Deserialize)]
@@ -61,6 +112,8 @@ pub struct GeneralConfig {
     pub locale: Option<String>,
     /// `system`, `light` or `dark`; anything else means `system`.
     pub theme: Option<String>,
+    /// Seconds; see [`GeneralConfig::panel_warm_ttl_s`].
+    pub panel_warm_ttl: Option<i64>,
 }
 
 impl GeneralConfig {
@@ -87,6 +140,13 @@ impl GeneralConfig {
             Some("dark") => ThemePref::Dark,
             _ => ThemePref::System,
         }
+    }
+
+    /// How long a hidden panel stays ready, clamped to `0..=`[`MAX_PANEL_WARM_TTL_S`].
+    pub fn panel_warm_ttl_s(&self) -> u32 {
+        self.panel_warm_ttl.map_or(DEFAULT_PANEL_WARM_TTL_S, |s| {
+            u32::try_from(s.clamp(0, i64::from(MAX_PANEL_WARM_TTL_S))).unwrap_or(0)
+        })
     }
 }
 
@@ -130,6 +190,67 @@ impl ThemePref {
     }
 }
 
+/// `[data]`: what is kept and whether updates are looked for.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(default)]
+pub struct DataConfig {
+    /// Days raw usage events are kept; the 5-minute rollup stays forever (ADR-020).
+    pub raw_retention_days: u32,
+    /// Look for a new release on GitHub (Step 12).
+    pub update_check: bool,
+}
+
+impl Default for DataConfig {
+    fn default() -> Self {
+        Self {
+            raw_retention_days: DEFAULT_RAW_RETENTION_DAYS,
+            update_check: true,
+        }
+    }
+}
+
+impl DataConfig {
+    /// Retention within [`MIN_RAW_RETENTION_DAYS`]`..=`[`MAX_RAW_RETENTION_DAYS`].
+    #[must_use]
+    pub fn normalized(mut self) -> Self {
+        self.raw_retention_days = self
+            .raw_retention_days
+            .clamp(MIN_RAW_RETENTION_DAYS, MAX_RAW_RETENTION_DAYS);
+        self
+    }
+}
+
+/// `[advanced]`.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(default)]
+pub struct AdvancedConfig {
+    pub log_level: LogLevel,
+}
+
+/// How much goes into the log file. Never content or tokens, at any level.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "snake_case")]
+pub enum LogLevel {
+    Error,
+    Warn,
+    #[default]
+    Info,
+    Debug,
+    Trace,
+}
+
+impl LogLevel {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Error => "error",
+            Self::Warn => "warn",
+            Self::Info => "info",
+            Self::Debug => "debug",
+            Self::Trace => "trace",
+        }
+    }
+}
+
 /// The user's permission to call the OAuth usage API with Claude Code's token (ADR-006).
 #[derive(Debug, Clone, Default, PartialEq, Deserialize)]
 #[serde(default)]
@@ -137,23 +258,29 @@ pub struct ApiConsent {
     pub granted: bool,
     /// When it was given; kept for the settings page, not used in decisions.
     pub granted_at: Option<toml::value::Datetime>,
-    /// [`API_CONSENT_VERSION`] at the time of granting.
-    pub version: u32,
+    /// [`API_CONSENT_VERSION`] at the time of granting (`version` in schema 1).
+    #[serde(alias = "version")]
+    pub consent_version: u32,
 }
 
 impl ApiConsent {
     /// Granted for the current consent text.
     pub fn is_valid(&self) -> bool {
-        self.granted && self.version == API_CONSENT_VERSION
+        self.granted && self.consent_version == API_CONSENT_VERSION
     }
 }
 
-/// Per-account settings, keyed by the Claude Code config directory.
+/// Per-account settings, keyed by the Claude Code config directory. The list already holds
+/// several accounts; their UI arrives in Step 19.
 #[derive(Debug, Clone, Default, PartialEq, Deserialize)]
 #[serde(default)]
 pub struct AccountConfig {
     pub provider: String,
     pub config_dir: PathBuf,
+    /// A name the user chose; the UI shows the directory otherwise.
+    pub label: Option<String>,
+    /// `None`: this account has no consent entry (schema 1's top-level one may apply).
+    pub api_consent: Option<ApiConsent>,
     pub statusline: StatuslineConfig,
 }
 
@@ -196,6 +323,8 @@ pub enum ConfigError {
     Parse(#[from] toml::de::Error),
     #[error("the config file is not valid TOML: {0}")]
     Edit(#[from] toml_edit::TomlError),
+    #[error("a setting could not be written: {0}")]
+    Serialize(#[from] toml::ser::Error),
 }
 
 impl AppConfig {
@@ -212,10 +341,15 @@ impl AppConfig {
         Ok(toml::from_str(text)?)
     }
 
-    /// Whether the usage API may be called: valid consent in the file, or the
-    /// [`API_CONSENT_ENV`] override in a debug build.
-    pub fn api_consent_granted(&self) -> bool {
-        self.api_consent.is_valid() || debug_consent_override()
+    /// Whether the usage API may be called for the account at `config_dir`: its own valid
+    /// consent (or schema 1's top-level one if it has none), or the [`API_CONSENT_ENV`]
+    /// override in a debug build.
+    pub fn api_consent_granted(&self, config_dir: &Path) -> bool {
+        let consent = self
+            .account(config_dir)
+            .and_then(|a| a.api_consent.as_ref())
+            .unwrap_or(&self.legacy_api_consent);
+        consent.is_valid() || debug_consent_override()
     }
 
     /// The settings of the account whose config directory is `config_dir`.
@@ -230,32 +364,80 @@ fn debug_consent_override() -> bool {
     cfg!(debug_assertions) && std::env::var_os(API_CONSENT_ENV).is_some_and(|v| v == "1")
 }
 
-/// Stores one `[general]` key (`locale`, `theme`). Every other key in the file is left as it was.
-pub fn save_general(path: &Path, key: &str, val: &str) -> Result<(), ConfigError> {
-    use toml_edit::{Item, Table, value};
+// ---------------------------------------------------------------------------------------------
+// Writing
+// ---------------------------------------------------------------------------------------------
 
-    let mut doc = read_document(path)?;
-    if !doc.get("general").is_some_and(Item::is_table) {
-        doc["general"] = Item::Table(Table::new());
-    }
-    doc["general"][key] = value(val);
-    crate::fsutil::atomic_write(path, doc.to_string().as_bytes())?;
-    Ok(())
+/// Stores one `[general]` string key (`locale`, `theme`). Every other key is left as it was.
+pub fn save_general(path: &Path, key: &str, val: &str) -> Result<(), ConfigError> {
+    edit(path, |doc| {
+        table_mut(doc.as_table_mut(), "general")[key] = value(val);
+        Ok(())
+    })
 }
 
-/// `path` as an editable document: an empty one when the file is missing, with
-/// `schema_version` added to new files.
-fn read_document(path: &Path) -> Result<toml_edit::DocumentMut, ConfigError> {
-    let text = match std::fs::read_to_string(path) {
-        Ok(text) => text,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
-        Err(e) => return Err(e.into()),
+/// Stores `[general] panel_warm_ttl`, clamped like [`GeneralConfig::panel_warm_ttl_s`].
+pub fn save_panel_warm_ttl(path: &Path, seconds: u32) -> Result<(), ConfigError> {
+    let seconds = seconds.min(MAX_PANEL_WARM_TTL_S);
+    edit(path, |doc| {
+        table_mut(doc.as_table_mut(), "general")["panel_warm_ttl"] = value(i64::from(seconds));
+        Ok(())
+    })
+}
+
+/// Stores `[notifications]` (normalized); keys this build does not know are kept.
+pub fn save_notifications(path: &Path, prefs: &NotifyPrefs) -> Result<(), ConfigError> {
+    save_section(path, "notifications", &prefs.clone().normalized())
+}
+
+/// Stores `[data]` (normalized).
+pub fn save_data(path: &Path, data: &DataConfig) -> Result<(), ConfigError> {
+    save_section(path, "data", &data.clone().normalized())
+}
+
+/// Stores `[advanced]`.
+pub fn save_advanced(path: &Path, advanced: &AdvancedConfig) -> Result<(), ConfigError> {
+    save_section(path, "advanced", advanced)
+}
+
+fn save_section<T: Serialize>(path: &Path, name: &str, section: &T) -> Result<(), ConfigError> {
+    let toml::Value::Table(fields) = toml::Value::try_from(section)? else {
+        unreachable!("sections are structs");
     };
-    let mut doc: toml_edit::DocumentMut = text.parse()?;
-    if !doc.contains_key("schema_version") {
-        doc["schema_version"] = toml_edit::value(SCHEMA_VERSION);
+    edit(path, |doc| {
+        merge(table_mut(doc.as_table_mut(), name), &fields);
+        Ok(())
+    })
+}
+
+/// Writes `fields` into `table`, recursing into sub-tables so their unknown keys survive.
+fn merge(table: &mut Table, fields: &toml::Table) {
+    for (key, field) in fields {
+        match field {
+            toml::Value::Table(inner) => merge(table_mut(table, key), inner),
+            other => table[key.as_str()] = Item::Value(to_edit_value(other)),
+        }
     }
-    Ok(doc)
+}
+
+fn to_edit_value(v: &toml::Value) -> toml_edit::Value {
+    match v {
+        toml::Value::String(s) => s.as_str().into(),
+        toml::Value::Integer(i) => (*i).into(),
+        toml::Value::Float(f) => (*f).into(),
+        toml::Value::Boolean(b) => (*b).into(),
+        toml::Value::Datetime(d) => (*d).into(),
+        toml::Value::Array(items) => {
+            toml_edit::Value::Array(items.iter().map(to_edit_value).collect())
+        }
+        toml::Value::Table(t) => {
+            let mut inline = toml_edit::InlineTable::new();
+            for (k, v) in t {
+                inline.insert(k, to_edit_value(v));
+            }
+            toml_edit::Value::InlineTable(inline)
+        }
+    }
 }
 
 /// Stores the statusline state of the account at `config_dir`, creating the account entry
@@ -265,9 +447,127 @@ pub fn save_statusline(
     config_dir: &Path,
     state: &StatuslineConfig,
 ) -> Result<(), ConfigError> {
-    use toml_edit::{ArrayOfTables, Item, Table, value};
+    edit(path, |doc| {
+        let account = account_mut(doc, config_dir);
+        let sl = table_mut(account, "statusline");
+        sl["installed"] = value(state.installed);
+        for (key, v) in [
+            ("previous", &state.previous),
+            ("previous_command", &state.previous_command),
+        ] {
+            match v {
+                Some(v) => sl[key] = value(v.as_str()),
+                None => {
+                    sl.remove(key);
+                }
+            }
+        }
+        sl["chain"] = value(state.chain);
+        sl["chain_position"] = value(state.chain_position.as_str());
+        Ok(())
+    })
+}
 
-    let mut doc = read_document(path)?;
+/// Grants (with the current text version and time) or withdraws the API consent of the
+/// account at `config_dir`.
+pub fn save_api_consent(
+    path: &Path,
+    config_dir: &Path,
+    granted: bool,
+    at: toml::value::Datetime,
+) -> Result<(), ConfigError> {
+    edit(path, |doc| {
+        let consent = table_mut(account_mut(doc, config_dir), "api_consent");
+        consent["granted"] = value(granted);
+        if granted {
+            consent["granted_at"] = value(at);
+            consent["consent_version"] = value(i64::from(API_CONSENT_VERSION));
+        } else {
+            consent.remove("granted_at");
+            consent.remove("consent_version");
+        }
+        Ok(())
+    })
+}
+
+/// Brings `path` up to [`SCHEMA_VERSION`]; `true` if the file was rewritten. A missing file
+/// stays missing. Newer schemas are left alone.
+///
+/// 1 → 2: the top-level `[api_consent]` moves into the account at `primary_dir` (created if
+/// needed) as `consent_version`. Without a primary account it stays where it is; reading still
+/// applies it to every account without its own.
+pub fn migrate(path: &Path, primary_dir: Option<&Path>) -> Result<bool, ConfigError> {
+    let text = match std::fs::read_to_string(path) {
+        Ok(text) => text,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(e) => return Err(e.into()),
+    };
+    let mut doc: DocumentMut = text.parse()?;
+    let version = doc
+        .get("schema_version")
+        .and_then(Item::as_integer)
+        .unwrap_or(1);
+    if version >= SCHEMA_VERSION {
+        return Ok(false);
+    }
+    if let Some(dir) = primary_dir
+        && let Some(Item::Table(legacy)) = doc.remove("api_consent")
+    {
+        let account = account_mut(&mut doc, dir);
+        if !account.contains_key("api_consent") {
+            let mut consent = Table::new();
+            for (key, item) in &legacy {
+                let key = if key == "version" {
+                    "consent_version"
+                } else {
+                    key
+                };
+                consent[key] = item.clone();
+            }
+            account["api_consent"] = Item::Table(consent);
+        }
+    }
+    doc["schema_version"] = value(SCHEMA_VERSION);
+    crate::fsutil::atomic_write(path, doc.to_string().as_bytes())?;
+    Ok(true)
+}
+
+/// Reads `path` (an empty document when missing; `schema_version` added to new files), applies
+/// `f` and writes the result atomically.
+fn edit(
+    path: &Path,
+    f: impl FnOnce(&mut DocumentMut) -> Result<(), ConfigError>,
+) -> Result<(), ConfigError> {
+    let text = match std::fs::read_to_string(path) {
+        Ok(text) => text,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
+        Err(e) => return Err(e.into()),
+    };
+    let mut doc: DocumentMut = text.parse()?;
+    if !doc.contains_key("schema_version") {
+        doc["schema_version"] = value(SCHEMA_VERSION);
+    }
+    f(&mut doc)?;
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir)?;
+    }
+    crate::fsutil::atomic_write(path, doc.to_string().as_bytes())?;
+    Ok(())
+}
+
+/// The sub-table `key` of `parent`, created (or replacing a non-table value) if needed.
+fn table_mut<'a>(parent: &'a mut Table, key: &str) -> &'a mut Table {
+    if !parent.get(key).is_some_and(Item::is_table) {
+        parent[key] = Item::Table(Table::new());
+    }
+    match parent.get_mut(key) {
+        Some(Item::Table(t)) => t,
+        _ => unreachable!("set just above"),
+    }
+}
+
+/// The `[[accounts]]` entry for `config_dir`, appended if missing.
+fn account_mut<'a>(doc: &'a mut DocumentMut, config_dir: &Path) -> &'a mut Table {
     if !doc.get("accounts").is_some_and(Item::is_array_of_tables) {
         doc["accounts"] = Item::ArrayOfTables(ArrayOfTables::new());
     }
@@ -289,124 +589,8 @@ pub fn save_statusline(
     let Some(account) = accounts.get_mut(index) else {
         unreachable!("index is in range");
     };
-    if !account.get("statusline").is_some_and(Item::is_table) {
-        account["statusline"] = Item::Table(Table::new());
-    }
-    let Some(sl) = account["statusline"].as_table_mut() else {
-        unreachable!("set just above");
-    };
-    sl["installed"] = value(state.installed);
-    for (key, v) in [
-        ("previous", &state.previous),
-        ("previous_command", &state.previous_command),
-    ] {
-        match v {
-            Some(v) => sl[key] = value(v.as_str()),
-            None => {
-                sl.remove(key);
-            }
-        }
-    }
-    sl["chain"] = value(state.chain);
-    sl["chain_position"] = value(state.chain_position.as_str());
-    crate::fsutil::atomic_write(path, doc.to_string().as_bytes())?;
-    Ok(())
+    account
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn missing_file_means_no_consent() {
-        let dir = tempfile::tempdir().expect("tempdir");
-        let cfg = AppConfig::load(&dir.path().join("config.toml")).expect("load");
-        assert_eq!(cfg, AppConfig::default());
-        assert!(!cfg.api_consent.is_valid());
-    }
-
-    #[test]
-    fn reads_consent_and_ignores_unknown_fields() {
-        let cfg = AppConfig::parse(
-            "schema_version = 1\nfuture_setting = \"x\"\n\n[api_consent]\ngranted = true\n\
-             granted_at = 2026-10-27T10:00:00Z\nversion = 1\n\n[notifications]\nquiet = true\n",
-        )
-        .expect("parse");
-        assert_eq!(cfg.schema_version, 1);
-        assert!(cfg.api_consent.is_valid());
-        assert!(cfg.api_consent.granted_at.is_some());
-    }
-
-    #[test]
-    fn statusline_state_round_trips_and_keeps_unknown_content() {
-        let dir = tempfile::tempdir().expect("tempdir");
-        let path = dir.path().join("config.toml");
-        std::fs::write(
-            &path,
-            "# my comment\nschema_version = 1\nfuture = \"x\"\n\n[general]\nlocale = \"tr\"\n",
-        )
-        .expect("seed");
-        let claude = dir.path().join(".claude");
-        let state = StatuslineConfig {
-            installed: true,
-            previous: Some(r#"{"type": "command", "command": "py 's.py'"}"#.into()),
-            previous_command: Some("py 's.py'".into()),
-            chain: true,
-            chain_position: ChainPosition::Before,
-        };
-        save_statusline(&path, &claude, &state).expect("save");
-        let text = std::fs::read_to_string(&path).expect("read");
-        assert!(text.starts_with("# my comment\n"), "{text}");
-        assert!(text.contains("future = \"x\""));
-        let cfg = AppConfig::load(&path).expect("load");
-        assert_eq!(cfg.general.locale(), Locale::Tr);
-        assert_eq!(cfg.account(&claude).map(|a| &a.statusline), Some(&state));
-
-        // A second save updates the same entry instead of adding one.
-        let cleared = StatuslineConfig::default();
-        save_statusline(&path, &claude, &cleared).expect("save again");
-        let cfg = AppConfig::load(&path).expect("load");
-        assert_eq!(cfg.accounts.len(), 1);
-        assert_eq!(cfg.account(&claude).map(|a| &a.statusline), Some(&cleared));
-    }
-
-    #[test]
-    fn general_keys_are_saved_without_touching_the_rest() {
-        let dir = tempfile::tempdir().expect("tempdir");
-        let path = dir.path().join("config.toml");
-        save_general(&path, "theme", ThemePref::Dark.as_str()).expect("save new");
-        let cfg = AppConfig::load(&path).expect("load");
-        assert_eq!(cfg.schema_version, 1);
-        assert_eq!(cfg.general.theme_pref(), ThemePref::Dark);
-        assert_eq!(cfg.general.locale_pref(), LocalePref::System);
-
-        std::fs::write(
-            &path,
-            "# keep\nschema_version = 1\n[general]\nlocale = \"tr\"\nfuture = 1\n",
-        )
-        .expect("seed");
-        save_general(&path, "locale", LocalePref::En.as_str()).expect("save");
-        let text = std::fs::read_to_string(&path).expect("read");
-        assert!(text.starts_with("# keep\n"), "{text}");
-        assert!(text.contains("future = 1"), "{text}");
-        let cfg = AppConfig::load(&path).expect("load");
-        assert_eq!(cfg.general.locale_pref(), LocalePref::En);
-        assert_eq!(cfg.general.locale(), Locale::En);
-    }
-
-    #[test]
-    fn unknown_preferences_mean_system() {
-        let cfg =
-            AppConfig::parse("[general]\nlocale = \"de\"\ntheme = \"sepia\"\n").expect("parse");
-        assert_eq!(cfg.general.locale_pref(), LocalePref::System);
-        assert_eq!(cfg.general.theme_pref(), ThemePref::System);
-    }
-
-    #[test]
-    fn consent_for_an_older_text_does_not_count() {
-        let cfg = AppConfig::parse("[api_consent]\ngranted = true\nversion = 0\n").expect("parse");
-        assert!(!cfg.api_consent.is_valid());
-        let cfg = AppConfig::parse("[api_consent]\ngranted = false\nversion = 1\n").expect("parse");
-        assert!(!cfg.api_consent.is_valid());
-    }
-}
+mod tests;
