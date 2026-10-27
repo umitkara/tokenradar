@@ -1,12 +1,16 @@
 {
-  "$comment": "Shared i18n test vectors (architecture §12). Rust: crates/tokenradar-i18n/tests/vectors.rs. TypeScript: Step 09. Hand-written; never regenerate from either implementation.",
+  "$comment": "Shared i18n test vectors (architecture §12). Rust: crates/tokenradar-i18n/tests/vectors.rs. TypeScript: app/src/lib/i18n/vectors.test.ts. Hand-written; never regenerate from either implementation.",
   "schema": 1,
   "num": [
     {"locale": "tr", "n": 1234.5, "decimals": 1, "out": "1.234,5"},
     {"locale": "en", "n": 1234.5, "decimals": 1, "out": "1,234.5"},
     {"locale": "tr", "n": 12400, "decimals": 0, "out": "12.400"},
     {"locale": "en", "n": 1234567, "decimals": 0, "out": "1,234,567"},
-    {"locale": "tr", "n": -0.04, "decimals": 1, "out": "0,0"}
+    {"locale": "tr", "n": -0.04, "decimals": 1, "out": "0,0"},
+    {"locale": "en", "n": 0.125, "decimals": 2, "out": "0.12"},
+    {"locale": "tr", "n": 2.5, "decimals": 0, "out": "2"},
+    {"locale": "en", "n": 3.5, "decimals": 0, "out": "4"},
+    {"locale": "en", "n": 1.005, "decimals": 2, "out": "1.00"}
   ],
   "pct": [
     {"locale": "tr", "n": 0, "out": "%0"},
@@ -34,7 +38,15 @@
     {"locale": "tr", "ms": 6480000, "style": "compact", "out": "1sa48dk"},
     {"locale": "tr", "ms": 187140000, "style": "short", "out": "2 g 3 sa"},
     {"locale": "en", "ms": 187140000, "style": "short", "out": "2d 3h"},
-    {"locale": "tr", "ms": 187140000, "style": "compact", "out": "2g3sa"}
+    {"locale": "tr", "ms": 187140000, "style": "compact", "out": "2g3sa"},
+    {"locale": "tr", "ms": 6480000, "style": "long", "out": "1 saat 48 dakika"},
+    {"locale": "en", "ms": 6480000, "style": "long", "out": "1 hour 48 minutes"},
+    {"locale": "en", "ms": 3660000, "style": "long", "out": "1 hour 1 minute"},
+    {"locale": "tr", "ms": 60000, "style": "long", "out": "1 dakika"},
+    {"locale": "en", "ms": 59000, "style": "long", "out": "59 seconds"},
+    {"locale": "en", "ms": 86400000, "style": "long", "out": "1 day"},
+    {"locale": "tr", "ms": 187140000, "style": "long", "out": "2 gün 3 saat"},
+    {"locale": "en", "ms": 187140000, "style": "long", "out": "2 days 3 hours"}
   ],
   "clock": [
     {"locale": "tr", "weekday": 3, "hour": 10, "minute": 59, "hour12": true, "out": "Çar 10:59"},

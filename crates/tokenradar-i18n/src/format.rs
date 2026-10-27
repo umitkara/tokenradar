@@ -14,15 +14,17 @@ pub enum DurStyle {
     Short,
     /// No spaces, for tight places such as the statusline: `1sa48dk` / `1h48m`.
     Compact,
+    /// Words, for screen readers: `1 saat 48 dakika` / `1 hour 48 minutes`.
+    Long,
 }
 
 impl DurStyle {
     /// Fluent argument value; anything unknown falls back to [`DurStyle::Short`].
     pub fn parse(s: &str) -> Self {
-        if s == "compact" {
-            Self::Compact
-        } else {
-            Self::Short
+        match s {
+            "compact" => Self::Compact,
+            "long" => Self::Long,
+            _ => Self::Short,
         }
     }
 }
@@ -88,7 +90,7 @@ pub fn dur(locale: Locale, ms: i64, style: DurStyle) -> String {
     if let Some((n, unit)) = small
         && n > 0
     {
-        if style == DurStyle::Short {
+        if style != DurStyle::Compact {
             out.push(' ');
         }
         out.push_str(&part(locale, n, unit, style));
@@ -105,6 +107,25 @@ enum Unit {
 }
 
 fn part(locale: Locale, n: i64, unit: Unit, style: DurStyle) -> String {
+    if style == DurStyle::Long {
+        let word = match (locale, unit) {
+            (Locale::En, Unit::Day) => "day",
+            (Locale::En, Unit::Hour) => "hour",
+            (Locale::En, Unit::Min) => "minute",
+            (Locale::En, Unit::Sec) => "second",
+            (Locale::Tr, Unit::Day) => "gün",
+            (Locale::Tr, Unit::Hour) => "saat",
+            (Locale::Tr, Unit::Min) => "dakika",
+            (Locale::Tr, Unit::Sec) => "saniye",
+        };
+        // Turkish nouns stay singular after a number.
+        let plural = if locale == Locale::En && n != 1 {
+            "s"
+        } else {
+            ""
+        };
+        return format!("{n} {word}{plural}");
+    }
     let suffix = match (locale, unit) {
         (Locale::En, Unit::Day) => "d",
         (Locale::En, Unit::Hour) => "h",
