@@ -1,0 +1,38 @@
+1793116109075 mark baseline
+1793116109076 prewarm start
+1793116109431 phase built 355.4
+1793116109512 prewarm ready
+1793116109583 phase webview-shown 0.0
+1793116109584 phase laid-out 2.0
+1793116109585 phase window-shown 2.4
+1793116109585 phase focused 2.7
+1793116109586 phase emitted 3.1
+1793116109622 painted warm 39.5
+1793116119586 mark open1
+1793116179591 warm ttl over; destroying
+1793116189588 mark ttl1
+1793116189588 prewarm start
+1793116189856 phase built 267.9
+1793116189937 prewarm ready
+1793116190157 phase webview-shown 0.0
+1793116190162 phase laid-out 5.1
+1793116190163 phase window-shown 5.9
+1793116190163 phase focused 6.1
+1793116190164 phase emitted 6.5
+1793116190205 painted warm 48.2
+1793116200164 mark open2
+1793116259734 warm ttl over; destroying
+1793116270165 mark ttl2
+1793116270166 prewarm start
+1793116270424 phase built 258.5
+1793116270497 prewarm ready
+1793116271025 phase webview-shown 0.2
+1793116271030 phase laid-out 4.7
+1793116271030 phase window-shown 5.2
+1793116271031 phase focused 5.7
+1793116271031 phase emitted 6.0
+1793116271072 painted warm 46.3
+1793116281032 mark open3
+1793116341047 warm ttl over; destroying
+1793116351039 mark ttl3
+1793116351040 mark end
