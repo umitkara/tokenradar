@@ -431,3 +431,53 @@
   - Toast için kendi COM activator'ımızı şimdi kaydetmek (kurulumsuz kayıt, portable'da kalıntı bırakır; installer işi).
   - `config.toml`'de `autostart` alanı tutmak (OS ile ayrışabilir).
   - Ayarların tamamını `SettingsView`'a koymak (her pencerenin açılış betiği büyür).
+
+### ADR-034 — Ayarlar penceresi ve doctor: 11b/11c bölmesi, `release-cli` profili, birincil Claude dizini, veri silme, Rust'tan dialog/opener
+**Durum:** Kabul (2026-10-27, Adım 11b)
+- **Bağlam:**
+  - 11a'nın devir notu 11b'ye ayarlar UI'ını, onboarding'i, tray sabitleme yardımcısını, doctor'ı, bir günlük gürültü değerlendirmesini ve bellek ölçümünü bırakmıştı. Bunların hepsi tek oturuma sığmıyor.
+  - Doctor alt komutu eklenince `tokenradar.exe` (`--release`, `opt-level = 3`) 3.289.600 B'a (3,14 MiB) çıktı. Bu, ≤ 3 MB bütçesini aşıyor. Adım 07'de `opt-level = "s"` denenmiş, ama uygulanmamıştı.
+  - Plan "Claude dizini: … Değiştir… butonu" diyor; ancak birden çok dizin keşfediliyor (`~/.claude`, `CLAUDE_CONFIG_DIR`). Seçilen dizinin diğerlerini devre dışı bırakması, kullanıcının fark etmeden veri kaybetmesine yol açardı.
+  - "Tüm verileri sil" çalışan çekirdeğin açık SQLite bağlantılarıyla çakışıyor: Windows açık bir dosyayı silmeye izin vermiyor. Tray de kendi `Store` kopyasını tutuyor.
+  - `uninstall` statusline'ı geri alırken config'teki önceki komut kaydına ihtiyaç duyuyor (ADR-029).
+  - Klasör seçici ve "Explorer'da göster" / bağlantı açma için platform API'leri gerekiyor.
+  - Plan, kullanıcının mevcut statusline komutu usage API'sini çağırıyorsa bir bilgi notu istiyordu. Bunu bilmenin tek yolu kullanıcının betiğini okumak olurdu.
+- **Karar (kullanıcıyla kararlaştırıldı):**
+  - **Bölme:** 11b: ayarlar penceresi (5 sekme), statusline diff diyaloğu, API onayı, veri silme, doctor. 11c: onboarding, tray sabitleme yardımcısı, bir günlük gürültü değerlendirmesi, bellek ölçümü.
+  - **CLI profili:** Kök `Cargo.toml`'e `[profile.release-cli] inherits = "release", opt-level = "s"` eklendi. CLI bununla 2.273.280 B (2,17 MiB) oluyor. Statusline p95 yeniden ölçüldü ve bütçe içinde (`docs/perf/2026-10-27-cli-profile.md`). Uygulama `opt-level = 3` ile kalır. `measure-statusline.ps1` varsayılan olarak bu profili ölçer. Adım 12'de paketleme (`tauri.conf` `beforeBuildCommand`) bu profile geçirilir.
+  - **Birincil Claude dizini:** `[general].claude_config_dir` seçilen dizini tutar. `discover_configured` seçilen dizini listenin başına koyar, böylece birincil hesap (panelin gösterdiği) o olur. `~/.claude` ve `CLAUDE_CONFIG_DIR` **izlenmeye devam eder**. Bu ayarlar ekranında yazılıdır. Seçilen dizin yoksa uyarı loglanır, algılanan dizinler kullanılır ve ekranda gösterilir. Seçim yalnızca içinde `projects\` veya `settings.json` olan bir klasörü kabul eder. Seçim ve sıfırlama çekirdeği süreç içinde yeniden başlatır.
+  - **Çekirdeği süreç içinde yeniden başlatma:** `core_bridge::stop` çekirdeği kapatır ve tray'e `TrayMsg::CoreStopped(ack)` gönderir. Tray `Store`'unu bırakıp onaylar (en fazla 2 s beklenir). `restart` ardından `start` çağırır.
+  - **Tüm verileri sil:**
+    - Sırayla: çekirdek durdurulur; veritabanı, `-wal`, `-shm` ve spool silinir. Log dosyalarından günün dosyası boşaltılır (yazıcı onu append modunda açık tutar), diğerleri silinir.
+    - `config.toml` yalnızca `statusline.installed = true` olan hesapların `provider`, `config_dir` ve `statusline` alanlarıyla yeniden yazılır; böyle hesap yoksa silinir.
+    - Ardından ayarlar yeniden okunur (`prefs::reload`, değişiklik olaylarıyla) ve çekirdek yeniden başlar.
+    - Claude Code dosyalarına, WebView2 verisine ve autostart kaydına dokunulmaz.
+    - Silinemeyen dosyalar listelenir ve ekranda genel bir uyarı gösterilir.
+    - Onboarding'in yeniden görünmesi 11c'nin işidir.
+  - **Doctor:**
+    - Biçim: sıkıştırılmamış (stored) zip ve elle yazılmış CRC32; sıkıştırıcı bağımlılığı eklenmez.
+    - İçerik: `README.txt`, `report.json` (`schema = 1`), temizlenmiş `config.toml` ve redakte edilmiş son 200 log satırı.
+    - Yollar `path#<sha256'nın ilk 8 hex'i>` olarak gösterilir (küçük harf, `/` normalleştirilmiş). `label` gizlenir. `previous` / `previous_command` yalnızca uzunluklarıyla yazılır.
+    - Log satırları: `accessToken`, `refreshToken` veya `access_token` geçen satırlar atılır. `sk-ant-…` ve `Bearer …` maskelenir. Sürücü, UNC ve `/home/` yolları etiketlenir.
+    - Canlı bölüm (uygulamada snapshot'tan, CLI'da IPC `status.get`'ten) ad, başlık ve proje taşımaz.
+    - Performans ölçümleri pakete girmez (plan istiyordu). Uygulama çalışırken bunları tutmuyor; `docs/perf/` kayıtları geliştirici ölçümleridir.
+    - Uygulamadaki buton bir kaydetme diyaloğu açar ve dosyayı Explorer'da gösterir. Hiçbir şey gönderilmez.
+  - **Eklentiler:** `tauri-plugin-dialog` (klasör seçici, kaydetme diyaloğu) ve `tauri-plugin-opener` (Explorer'da göster, sabit GitHub sayfaları). İkisi de yalnızca Rust'tan çağrılır; JS komutlarına capability verilmez. `open_link` yalnızca `Link` enum'undaki dört sabit GitHub adresini açar (ADR-013).
+  - **Statusline diyaloğu:** `plan_statusline` diff'i sınıflandırılmış satırlar olarak ve bir token ile döner. `apply_statusline` yalnızca o token'lı planı uygular. `Plan::apply` dosya arada değiştiyse yine reddeder; o zaman diyalog yeni planı gösterir. Diyalog kapanınca plan atılır. CLI önce `<exe>\bin\tokenradar.exe`, sonra `<exe>\tokenradar.exe` yolunda aranır; bulunamazsa kurulum düğmesi kapalıdır.
+  - **Usage API notu:** Kullanıcının betiği okunmaz. Zincirleme kurulumda genel bir not gösterilir: önceki komut, kendi ağ istekleri dahil, bugün ne yapıyorsa yapmaya devam eder.
+  - **API onayı:** Açıklama (ne olur, ne okunur, ne asla okunmaz, nereye gider) her zaman görünür. İzin açık bir düğmeyle verilir ve `granted_at` ile `consent_version` (`API_CONSENT_VERSION = 1`) kaydedilir. Sürüm eskiyse onay sayılmaz ve ekranda söylenir.
+  - **Lisanslar:** Üçüncü parti lisans listesi Adım 12'nin build'inde üretilir. "Hakkında" sekmesi şimdilik bunu yazar ve MIT lisansına bağlantı verir.
+  - **Loglama:** Uygulamadaki hata `eprintln!` çağrıları `tracing`'e taşındı; böylece log dosyasına ve doctor'a ulaşıyorlar.
+- **Bedel:**
+  - CLI `opt-level = "s"` ile p95'te ~1 ms yavaşlayabilir (ölçüm gürültüsü içinde).
+  - İki eklenti uygulama ikilisini büyütür; ölçülen boyut 12.623.360 B (12,04 MiB) ve ≤ 15 MB bütçesinin içinde.
+  - Seçilen dizinden başka dizinler de izlendiği için, bir dizini izlemekten tamamen çıkarmanın yolu yok (Adım 19'un çoklu hesap UI'ı).
+  - Silme sonrası, çekirdek durduktan sonra yazılan birkaç log satırı kaybolabilir.
+  - Doctor'da performans verisi yok.
+- **Alternatifler:**
+  - Seçilen dizinin diğerlerinin yerine geçmesi (sessiz veri kaybı) veya listeye "eklenmesi" (birincil belirsiz kalır).
+  - Silme için uygulamayı yeniden başlatmak (tray simgesi kaybolup gelir; autostart'sız portable'da kendini başlatamayabilir).
+  - JS'ten dialog/opener (capability yüzeyi büyür).
+  - Deflate'li zip için `zip` crate'i (CLI bütçesine yük).
+  - Kullanıcının statusline betiğini okuyup usage API çağrısı aramak (içerik okuma; tahmin).
+  - CLI'yı `--release` ile bırakıp bütçeyi gevşetmek.

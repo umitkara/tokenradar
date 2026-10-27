@@ -67,7 +67,7 @@ v0.1'i kullanıcıya hazır hale getirmek:
   - `[data]`: `raw_retention_days`, `update_check`
   - `[advanced]`: `log_level`
   - Bilinmeyen alanlar yazımda **korunur** (`toml_edit`).
-- [ ] Ayarlar penceresi:
+- [x] Ayarlar penceresi:
   - **Genel:** dil (anlık uygulanır), tema, Windows ile başlat, panelin sıcak tutulma süresi.
   - **Veri kaynakları:**
     - Claude dizini: algılanan yol, oturum ve dosya sayısı, "Değiştir…" butonu.
@@ -80,7 +80,7 @@ v0.1'i kullanıcıya hazır hale getirmek:
     - Ağ özeti: "Bu uygulama yalnızca şu adreslere bağlanır: …"
     - "Tanılama paketi oluştur".
   - **Hakkında:** sürüm, güncelleme kontrolü (updater Adım 12'de bağlanacak, şimdilik yer tutucu), lisanslar (üçüncü parti lisans listesi build sırasında üretilir), GitHub linki.
-- [ ] Panel ve tray, ayar değişikliklerini anında yansıtır (`SettingsChanged` olayı).
+- [x] Panel ve tray, ayar değişikliklerini anında yansıtır (`SettingsChanged` olayı).
 
 ### Onboarding
 
@@ -101,7 +101,7 @@ v0.1'i kullanıcıya hazır hale getirmek:
 
 ### Doctor
 
-- [ ] `tokenradar doctor [--out <zip>]` ve ayarlardaki buton. Pakete girenler:
+- [x] `tokenradar doctor [--out <zip>]` ve ayarlardaki buton. Pakete girenler:
   - Sürümler (uygulama, Claude Code son görülen sürüm, WebView2, işletim sistemi)
   - Yollar, dosya ve olay sayıları, DB boyutu
   - Son 200 log satırı (**redaksiyon testi yapılmış**)
@@ -109,7 +109,7 @@ v0.1'i kullanıcıya hazır hale getirmek:
   - Polling durumu, şema sapma sayaçları, son performans ölçümleri
   
   Token, içerik ve proje yolları paket dışında kalır; yollar hash'lenir.
-- [ ] Test: Doctor çıktısında `sk-ant-` deseni ve fixture'lardaki örnek içerik metinleri bulunmamalı.
+- [x] Test: Doctor çıktısında `sk-ant-` deseni ve fixture'lardaki örnek içerik metinleri bulunmamalı.
 
 ## Teknik notlar ve tuzaklar
 
@@ -121,9 +121,9 @@ v0.1'i kullanıcıya hazır hale getirmek:
 
 - [ ] Bildirim kuralları testleri geçer. Gerçek kullanımda bir gün boyunca gürültü değerlendirmesi yapılır: tetiklenen bildirimler listelenir ve gereksiz olan kalmadığı devir notunda belirtilir.
 - [ ] Onboarding sıfır kurulumdan (`%LOCALAPPDATA%\TokenRadar` silinmiş durumda) sonuna kadar akar. Statusline kurulumu diff onayıyla çalışır ve panelde canlı veri görünür.
-- [ ] Ayar değişiklikleri yeniden başlatma gerektirmeden uygulanır (dil, tema, eşikler).
-- [ ] "Tüm verileri sil" yalnızca TokenRadar verisini siler. Claude Code dizini dokunulmadan kalır.
-- [ ] Doctor paketinde sır, içerik veya açık yol bulunmaz.
+- [x] Ayar değişiklikleri yeniden başlatma gerektirmeden uygulanır (dil, tema, eşikler).
+- [x] "Tüm verileri sil" yalnızca TokenRadar verisini siler. Claude Code dizini dokunulmadan kalır.
+- [x] Doctor paketinde sır, içerik veya açık yol bulunmaz.
 
 ## Doğrulama
 
@@ -203,6 +203,58 @@ pnpm dev
 - **Çoklu hesap:** Tüm poller'lar birincil hesabın onayını kullanıyor; hesap başına onay Adım 19'da bağlanacak.
 - **Eklenti izinleri:** Bildirim ve autostart eklentilerinin JS komutlarına capability verilmedi; frontend yalnızca bizim komutlarımızı kullanır.
 
-### 11b — Ayarlar UI, onboarding ve doctor
+### 11b — Ayarlar UI ve doctor
 
-_(Oturum sonunda doldurulur)_
+**Tarih:** 2026-10-27 · **Dal:** `step/11b-settings-doctor` · **Karar:** ADR-034
+
+#### Yapılanlar
+- **Bölme:** Kullanıcıyla 11b + 11c olarak kararlaştırıldı. 11b: ayarlar penceresi, statusline diyaloğu, API onayı, veri silme, doctor. 11c: onboarding, tray sabitleme yardımcısı, gürültü değerlendirmesi, bellek ölçümü.
+- **Core:**
+  - `doctor` modülü: stored zip ve CRC32 (`zip.rs`), redaksiyon (`redact.rs`), Windows sürümü ve WebView2 sürümü kayıt defterinden (`sys.rs`). `live_from_status` (CLI) ve `live_from_snapshot` (uygulama).
+  - `store/stats.rs`: `AccountStats` (oturum, proje, dosya, olay, son Claude Code sürümü, son etkinlik) ve tablo sayıları.
+  - `config`: `claude_config_dir`, `reset_keeping_statusline`, `save_api_consent_now`.
+  - `providers::claude::discover_configured`: seçilen dizin birincil olur, diğerleri izlenmeye devam eder.
+- **CLI:** `tokenradar doctor [-o <zip>]`. `[profile.release-cli]` (`opt-level = "s"`). `measure-statusline.ps1 -Profile`.
+- **Uygulama (Rust):**
+  - `sources.rs`: veri kaynakları görünümü, statusline plan/uygula/at (token'lı), API onayı, klasör seçici ve sıfırlama.
+  - `privacy.rs`: depolama, hakkında, sabit bağlantılar, tüm verileri silme, tanılama paketi.
+  - `core_bridge::{stop, restart}` ve `TrayMsg::CoreStopped`.
+  - Hata `eprintln!` çağrıları `tracing`'e taşındı.
+  - Eklentiler: dialog ve opener, yalnızca Rust'tan.
+  - Pencere boyutu 800×600 (en az 640×480).
+- **Uygulama (Svelte):**
+  - `pages/settings/`: beş sekme (dikey tablist, ok tuşları), `StatuslineDialog`, `ThresholdChips`, `Field`.
+  - Saf mantık `view.ts`'de (sekme hedefi, boyut birimi, eşik kuralları, API durum satırları); durum `state.svelte.ts`'de.
+  - Bileşenler: `lib/components/Select.svelte`; `Toggle`'a `labelHidden` eklendi.
+  - Metinler: `locales/{en,tr}/settings.ftl`.
+- **Testler:** core 251, app 49 + 2 ignored, CLI 17 + 2, i18n 16 + 6, frontend 64. `svelte-check` 0 uyarı. Clippy ve biome temiz.
+
+#### Gerçek doğrulama (2026-10-27, portable `target\debug`, CDP)
+- Beş sekme EN ve TR'de çizildi. Dil değişikliği yeniden başlatmadan uygulandı.
+- Statusline diyaloğu gerçek `settings.json` için diff gösterdi. Zincir seçeneği açıkken önceki komut korunuyor ve not çıkıyor; kapalıyken yalnızca `command` satırı değişiyor. Git Bash uyarısı ters eğik çizgili komutta göründü. Diyalog **uygulanmadan** kapatıldı; `settings.json`'a yazılmadı.
+- "Tüm verileri sil" (portable veride): onay kutusu işaretlenene kadar düğme kapalıydı. Silme sonrası veritabanı yeniden oluştu ve indeksleme baştan başladı. Loglar boşaldı. `config.toml` kaldırıldı (köprü kurulu değildi). Ayarlar varsayılana döndü.
+- `tokenradar doctor` (portable kopya): `report.json`'da yollar `path#…`; token, içerik ve açık yol yok.
+- Panel paketi değişmedi (JS 45,4 KB / 60 KB gzip). Uygulama 12,04 MiB, CLI 2,17 MiB (`docs/perf/2026-10-27-cli-profile.md`).
+
+#### Doğrulanmadı (kullanıcıya veya sonraki oturuma kalan)
+- **Yerel diyaloglar:** CDP ile sürülemiyor; elle denenmeli.
+  - Klasör seçici: geçerli, geçersiz ve `.claude` olmayan klasör.
+  - Tanılama paketinin kaydetme diyaloğu ve Explorer'da gösterme.
+- **Gerçek statusline kurulumu ve kaldırma:** Ayarlardan, gerçek `settings.json` üzerinde yapılmadı. Kullanıcı onayı gerekir. Adım 07'deki CLI kurulumu aynı `Plan::apply`'ı kullanıyor.
+- **API onayını açma:** Gerçek ağ isteği başlatacağı için denenmedi.
+
+#### Plandan sapmalar
+- Seçilen Claude dizini diğerlerinin yerine geçmiyor; birincil oluyor (ADR-034).
+- Doctor'a performans ölçümleri girmedi; uygulama bunları çalışma anında tutmuyor (ADR-034).
+- Usage API bilgi notu, kullanıcının betiği okunmadan genel bir not olarak gösteriliyor (ADR-034).
+- Üçüncü parti lisans listesi Adım 12'ye kaldı. Güncelleme denetimi anahtarı saklanıyor, ama denetim Adım 12'de bağlanacak.
+
+#### 11c için notlar
+- **Onboarding:**
+  - "Tüm verileri sil" sonrası onboarding yeniden açılmalı. Veritabanı yeni olduğu için `kv.onboarding_done` zaten yok.
+  - Statusline ve API kartları `plan_statusline` / `apply_statusline` / `set_api_consent` komutlarını ve `StatuslineDialog`'u yeniden kullanabilir.
+  - Klasör seçimi `pick_claude_dir` ile yapılabilir.
+- **Tray sabitleme yardımcısı:** ADR gerekiyor (planda yazıyor).
+- **Gürültü değerlendirmesi ve toast tıklaması:** 11a notları geçerli (`targetelease` içinden çalıştırın).
+- **Bellek:** Ayarlar penceresi ve iki yeni eklenti ile boşta tray belleği ölçülmeli (`measure-memory.ps1`). Gerçek boşta ölçümü kullanıcı yapar.
+- **Adım 12:** `tauri.conf.json`'daki `beforeBuildCommand` CLI'yı `--profile release-cli` ile derlemeli; lisans listesi build'de üretilmeli.

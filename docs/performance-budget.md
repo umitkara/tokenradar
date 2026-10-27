@@ -48,8 +48,8 @@
 | Öğe | Bütçe |
 |---|---|
 | Installer (NSIS) | ≤ 12 MB |
-| `tokenradar-app.exe` | ≤ 15 MB |
-| `tokenradar.exe` (CLI) | ≤ 3 MB. Adım 07: 2,95 MiB (`opt-level = "s"` ile 2,05 MiB, uygulanmadı) |
+| `tokenradar-app.exe` | ≤ 15 MB. Adım 11b: 12,04 MiB |
+| `tokenradar.exe` (CLI) | ≤ 3 MB. Adım 07: 2,95 MiB. Adım 11b: doctor ile `--release` 3,14 MiB; `release-cli` profili (`opt-level = "s"`, ADR-034) ile 2,17 MiB |
 | Frontend bundle (panel sayfası, gzip) | ≤ 60 KB JS + ≤ 15 KB CSS |
 | Frontend bundle (ana pencere, gzip) | ≤ 180 KB JS |
 | Veritabanı büyümesi | ≤ 30 MB/ay (referans kullanım). Ham olaylar 90 gün sonra silinir, `usage_5m` kalıcıdır. |
