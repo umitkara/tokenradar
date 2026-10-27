@@ -77,7 +77,7 @@ $inv = [System.Globalization.CultureInfo]::InvariantCulture
 function Get-ProcessTable {
     # One WMI round trip returns parent links and every counter we need for all processes.
     Get-CimInstance -ClassName Win32_PerfRawData_PerfProc_Process `
-        -Property Name, IDProcess, CreatingProcessID, PrivateBytes, WorkingSet, WorkingSetPrivate, PercentProcessorTime |
+        -Property Name, IDProcess, CreatingProcessID, ElapsedTime, PrivateBytes, WorkingSet, WorkingSetPrivate, PercentProcessorTime |
         Where-Object { $_.IDProcess -ne 0 -and $_.Name -ne '_Total' }
 }
 
@@ -112,6 +112,10 @@ function Get-Tree($table, [int[]]$roots) {
         $id = $queue.Dequeue()
         if (-not $children.ContainsKey($id)) { continue }
         foreach ($c in $children[$id]) {
+            # PIDs are reused: a process whose parent exited long ago may name a PID that now
+            # belongs to one of ours (explorer.exe and its whole tree, for example). The raw
+            # ElapsedTime is the start time, so a real child never started before its parent.
+            if ([uint64]$c.ElapsedTime -lt [uint64]$byId[$id].ElapsedTime) { continue }
             if ($seen.Add([int]$c.IDProcess)) { $tree.Add($c); $queue.Enqueue([int]$c.IDProcess) }
         }
     }
