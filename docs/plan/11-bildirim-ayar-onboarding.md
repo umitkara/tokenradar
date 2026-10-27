@@ -2,7 +2,7 @@
 
 | Sürüm | Bağımlılık | Tahmini süre | Durum |
 |---|---|---|---|
-| v0.1 | 10 | 2 oturum | 🟨 11a ✅ · 11b ⬜ |
+| v0.1 | 10 | 3 oturum | ✅ 11a · 11b · 11c (açık işler Adım 12 ön koşulu) |
 
 > Bu adım büyük. Gerekirse **11a (bildirimler + ayarlar altyapısı)** ve **11b (ayarlar UI + onboarding + doctor)** olarak iki oturuma bölün. Bölünürse devir notu her iki parça için ayrı ayrı yazılır.
 
@@ -84,8 +84,8 @@ v0.1'i kullanıcıya hazır hale getirmek:
 
 ### Onboarding
 
-- [ ] İlk çalıştırma tespiti: `kv.onboarding_done` yoksa onboarding açılır. Tray'den tekrar açılabilir.
-- [ ] Adımlar:
+- [x] İlk çalıştırma tespiti: `kv.onboarding_done` yoksa onboarding açılır. Tray'den tekrar açılabilir.
+- [x] Adımlar:
   1. **Hoş geldin:** dil seçimi (algılanan dil önceden seçili) ve tek cümlelik değer önerisi.
   2. **Claude Code bulundu:** dizin, oturum ve proje sayısı. İndeksleme bu adımda arka planda başlar ve ilerleme halkası gösterilir. Claude Code bulunamazsa yol seçme ekranı açılır.
   3. **Limit verisi:**
@@ -97,7 +97,7 @@ v0.1'i kullanıcıya hazır hale getirmek:
      - "Simgeyi her zaman göster" butonu (aşağıdaki yardımcı).
      - "Windows ile başlat" seçeneği (varsayılan açık).
      - Bitti.
-- [ ] **Tray sabitleme yardımcısı:** Windows 11'de `HKCU\Control Panel\NotifyIconSettings\<id>\IsPromoted = 1`. Bu yarı-belgelenmiş bir mekanizma; uygulamamıza ait kaydı `ExecutablePath` alanıyla bul. Yalnızca kullanıcı butona basınca yazılır. Başarısız olursa manuel talimat gösterilir. Davranış ADR olarak belgelenir.
+- [x] **Tray sabitleme yardımcısı:** Windows 11'de `HKCU\Control Panel\NotifyIconSettings\<id>\IsPromoted = 1`. Bu yarı-belgelenmiş bir mekanizma; uygulamamıza ait kaydı `ExecutablePath` alanıyla bul. Yalnızca kullanıcı butona basınca yazılır. Başarısız olursa manuel talimat gösterilir. Davranış ADR olarak belgelenir.
 
 ### Doctor
 
@@ -255,6 +255,76 @@ pnpm dev
   - Statusline ve API kartları `plan_statusline` / `apply_statusline` / `set_api_consent` komutlarını ve `StatuslineDialog`'u yeniden kullanabilir.
   - Klasör seçimi `pick_claude_dir` ile yapılabilir.
 - **Tray sabitleme yardımcısı:** ADR gerekiyor (planda yazıyor).
-- **Gürültü değerlendirmesi ve toast tıklaması:** 11a notları geçerli (`targetelease` içinden çalıştırın).
+- **Gürültü değerlendirmesi ve toast tıklaması:** 11a notları geçerli (`target\release` içinden çalıştırın).
 - **Bellek:** Ayarlar penceresi ve iki yeni eklenti ile boşta tray belleği ölçülmeli (`measure-memory.ps1`). Gerçek boşta ölçümü kullanıcı yapar.
 - **Adım 12:** `tauri.conf.json`'daki `beforeBuildCommand` CLI'yı `--profile release-cli` ile derlemeli; lisans listesi build'de üretilmeli.
+
+### 11c — Onboarding ve tray sabitleme
+
+**Tarih:** 2026-10-27 · **Dal:** `step/11c-onboarding` · **Karar:** ADR-035
+
+#### Yapılanlar
+- **Onboarding (Rust):** `onboarding.rs`.
+  - `kv.onboarding_done` yoksa çekirdek her başladığında pencere açılır, "Tüm verileri sil" sonrası dahil.
+  - Bayrak pencere yok edilince yazılır; X ile kapatmak da tamamlandı sayılır.
+  - Tray menüsüne "Başlangıç rehberi…" eklendi.
+  - `TOKENRADAR_SKIP_ONBOARDING=1` açılışı atlar.
+- **Tray sabitleme (Rust):** `tray_pin.rs`.
+  - `NotifyIconSettings` alt anahtarları `ExecutablePath` ile eşlenir; known-folder GUID'leri açılır.
+  - Eşleşen tüm anahtarlara `IsPromoted = 1` yazılır ve değer geri okunur.
+  - Durumlar: `shown`, `hidden`, `unknown`, `unsupported`.
+  - Yedek yol: `ms-settings:taskbar`.
+- **Komutlar:** `get_tray_pin`, `pin_tray_icon`, `open_taskbar_settings`, `finish_onboarding`.
+- **Svelte:** `pages/onboarding/`, 4 adım.
+  - Hoş geldin: dil seçimi.
+  - Claude: dizin, sayılar, canlı ilerleme halkası, klasör seçici.
+  - Limitler: `StatuslineDialog` ve ortak `ApiConsent`. Kaynak yoksa "İleri" düğmesi "Atla" olur.
+  - Tray: SVG şema, sabitleme düğmesi ve "Windows ile başlat" (varsayılan açık).
+  - Saf mantık `view.ts`'de.
+- **Ortak parçalar:**
+  - `ApiConsent.svelte` `SourcesTab`'dan çıkarıldı.
+  - `lib/progress.ts` (`indexPercent`) panel ile paylaşılıyor.
+  - Sayfa başına `catalog.ts`; tek `catalogs.ts` silindi. Panel JS 45,4 → 38,5 KB gzip.
+- **Metinler:** `locales/{en,tr}/onboarding.ftl`, `tray-menu-onboarding`.
+- **Testler:** core 251, app 52 + 2 ignored, CLI 17 + 2, i18n 16 + 6, frontend 76. `svelte-check` 0/0. Clippy, fmt ve biome temiz.
+- **Ölçüm:** `docs/perf/2026-10-27-onboarding.md` (sentetik).
+  - Boşta tray belleği 7,3 MB (≤ 25 MB).
+  - Onboarding açıkken bellek 80 MB (≤ 130 MB).
+  - Uygulama ikilisi 12,08 MiB (≤ 15 MB).
+
+#### Gerçek doğrulama (2026-10-27, portable `target\debug`, CDP)
+- Boş veriyle onboarding kendiliğinden açıldı. Dil EN → TR canlı değişti.
+- 2. adım gerçek dizini ve sayıları gösterdi. İlerleme halkası canlı ilerledi ve "Mevcut pencere ve bu hafta hazır" satırı çıktı.
+- 3. adım:
+  - Statusline diyaloğu diff ve zincir seçeneğiyle açıldı, "Vazgeç" ile kapatıldı.
+  - `~/.claude/settings.json` değişmedi; mtime Adım 07'den.
+  - Kaynak olmadan "Atla" ve sonuç metni göründü.
+- 4. adım:
+  - Durum `hidden` iken düğme `IsPromoted=1` yazdı. Durum `shown` oldu ve simge görev çubuğuna canlı geldi.
+  - Değer silinince simge canlı olarak taşmaya döndü. Kayıt eski haline getirildi.
+- "Bitir" (autostart kapalı) pencereyi kapattı. `onboarding_done` yazıldı; HKCU `Run` kaydı oluşmadı.
+- Yeniden başlatmada onboarding açılmadı. `delete_all_data` sonrası yeniden açıldı.
+- Koyu tema ve EN'de 4. adım kontrol edildi.
+
+#### Açık işler (Adım 12 ön koşulu, kullanıcıyla kararlaştırıldı)
+- **Bir günlük gürültü değerlendirmesi** (kabul kriteri): uygulamayı `target\release` içinden bir gün çalıştırın. Tetiklenen bildirimleri listeleyin ve gereksiz olanları not edin. Toast tıklaması da bu sırada denenmeli.
+- **Gerçek boşta bellek ölçümü:** Claude Code kapalıyken kullanıcı yapar. Komut `docs/perf/2026-10-27-onboarding.md`'de.
+- **Gerçek statusline kurulumu ve panelde canlı veri** (kabul kriteri): onboarding'den, diff onayıyla yapılmalı. Agent oturumunda kullanıcının `settings.json`'ına yazılmadı.
+- **Elle denenecekler:**
+  - Tray menüsünden "Başlangıç rehberi…" (menü tıklaması CDP ile sürülemiyor; aynı `onboarding::show` yolu `delete_all_data` sonrası doğrulandı).
+  - Klasör seçici ve onboarding'i X ile kapatma.
+
+#### Plandan sapmalar
+- İndeksleme 2. adımda değil, uygulama açılınca başlıyor; 2. adım yalnızca ilerlemeyi gösterir (ADR-035).
+- Pencereyi X ile kapatmak tamamlandı sayılır (ADR-035).
+- Taşma menüsü görseli çizilmiş bir SVG şema (ADR-035).
+- Kabul kriterindeki "`%LOCALAPPDATA%\TokenRadar` silinmiş durumda" portable veriyle denendi; gerçek veri klasörü silinmedi.
+
+#### Adım 12 için notlar
+- **Kurulum ve veri klasörü çakışabilir:**
+  - NSIS per-user kurulum büyük olasılıkla `%LOCALAPPDATA%\TokenRadar`'a kurar. Bu, veri klasörüyle aynıdır.
+  - O durumda bu adımın doğrulama komutu (`Remove-Item -Recurse "$env:LOCALAPPDATA\TokenRadar"`) uygulamayı da siler. Kaldırıcı da veriyi götürebilir.
+  - Kurulum klasörü (ör. `%LOCALAPPDATA%\Programs\TokenRadar`) ile veri klasörünü ayırmak baştan karara bağlanmalı. Tauri'nin varsayılanı sürüme göre doğrulanmalı.
+- **Tray sabitleme:** Kurulu exe'nin yolu değişince Explorer yeni bir `NotifyIconSettings` anahtarı açar; güncelleme sonrası simge yeniden taşmaya düşebilir. Updater (Adım 12) sonrası davranış denenmeli.
+- **Toast:** AppUserModelID ve Başlat menüsü kısayolu (11a notu) hâlâ geçerli.
+- **Build:** `beforeBuildCommand` + `release-cli` ve lisans listesi (11b notu) hâlâ geçerli.

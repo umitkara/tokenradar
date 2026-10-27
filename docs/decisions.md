@@ -481,3 +481,38 @@
   - Deflate'li zip için `zip` crate'i (CLI bütçesine yük).
   - Kullanıcının statusline betiğini okuyup usage API çağrısı aramak (içerik okuma; tahmin).
   - CLI'yı `--release` ile bırakıp bütçeyi gevşetmek.
+
+### ADR-035 — Onboarding ve tray sabitleme: `kv` bayrağı, kapatma = tamamlandı, `IsPromoted` + geri okuma, sayfa başına katalog
+**Durum:** Kabul (2026-10-27, Adım 11c)
+- **Bağlam:**
+  - Plan, ilk çalıştırmada 4 adımlı bir onboarding istiyor ve "indeksleme 2. adımda arka planda başlar" diyor. Ama çekirdek Adım 05'ten beri uygulama açılır açılmaz indekslemeye başlıyor.
+  - Kullanıcı onboarding'i bitirmeden pencereyi kapatabilir. Pencere her açılışta geri gelirse tray-first bir uygulamada can sıkar.
+  - Windows 11'de bildirim alanı simgeleri varsayılan olarak taşma menüsüne düşer. Bunu programla değiştirmenin belgelenmiş bir API'si yok. Tek yol `HKCU\Control Panel\NotifyIconSettings\<id>` altındaki yarı-belgelenmiş `IsPromoted` değeri.
+  - Bu anahtarlarda `ExecutablePath` bazen known-folder GUID önekiyle saklanıyor (`{6D809377-…}\…` Program Files, `{1AC14E77-…}\…` System32). Aynı exe farklı konumlardan çalıştırıldıysa birden çok anahtar olabiliyor.
+  - Tek bir `catalogs.ts` modülü, Rolldown'un paylaşılan chunk'ı yüzünden panelin tüm sayfaların FTL metinlerini yüklemesine yol açtı (panel JS 45,4 → 47,4 KB gzip).
+- **Karar (kullanıcıyla kararlaştırıldı):**
+  - **İlk çalıştırma:** `kv.onboarding_done` yoksa çekirdek her başladığında (`core_bridge::start`) onboarding açılır. Bu yüzden "Tüm verileri sil" sonrası da yeniden açılır. `TOKENRADAR_SKIP_ONBOARDING` ortam değişkeni ölçüm ve otomasyon için açılışı atlar.
+  - **Kapatma = tamamlandı:** Bayrak pencere yok edilince (`WindowEvent::Destroyed`) yazılır; X ile kapatmak da "Bitir" gibi sayılır. Yalnızca açıkça tıklanan eylemler uygulanır. Tray menüsündeki "Başlangıç rehberi…" pencereyi istendiğinde yeniden açar.
+  - **İndeksleme:** Uygulama açılışında başlamaya devam eder (plandan sapma). 2. adım yalnızca canlı ilerlemeyi (`index_progress`, `index_milestone`) gösterir. Böylece onboarding'i atlayan kullanıcıda da veri hazır olur.
+  - **Limit adımı:** Statusline kartı ayarlardaki `StatuslineDialog`'u, API kartı ayarlardan çıkarılan ortak `ApiConsent` bileşenini kullanır. Böylece onay metni iki yerde birebir aynıdır. Hiçbir kaynak yoksa "İleri" düğmesi "Atla" olur ve sonucu açıkça yazılır. Onboarding metinleri `onboarding.ftl`'de; ortak metinler `settings.ftl`'den gelir.
+  - **Windows ile başlat:** Varsayılan açık. Yalnızca "Bitir"de ve mevcut değerden farklıysa yazılır. X ile kapatmak autostart'ı değiştirmez.
+  - **Tray sabitleme:**
+    - Yalnızca kullanıcı "Simgeyi her zaman göster"e basınca yazılır.
+    - `NotifyIconSettings` altındaki tüm alt anahtarlar gezilir. `ExecutablePath` known-folder GUID'i `SHGetKnownFolderPath` ile açılarak, büyük/küçük harf ve `/`↔`\` farkı gözetmeden çalışan exe ile karşılaştırılır. Eşleşen **tüm** anahtarlara `IsPromoted = 1` (DWORD) yazılır.
+    - Yazımdan sonra değer geri okunur. Durum: `shown` (tüm eşleşmeler promoted), `hidden`, `unknown` (anahtar henüz yok; Explorer simge bir kez görünene kadar oluşturmaz), `unsupported` (Windows 10 veya kök anahtar yok).
+    - Explorer değişikliği yeniden başlatmadan uygular (değer eklenip silinerek doğrulandı).
+    - Başarısız olursa veya durum `hidden` kalırsa manuel talimat ve `ms-settings:taskbar`'ı açan bir düğme gösterilir. Windows 10'da yalnızca talimat gösterilir.
+    - Değer geri alınmaz ve başka hiçbir anahtara dokunulmaz.
+  - **Taşma menüsü görseli:** Ekran görüntüsü değil, çizilmiş bir SVG şema. Temaya ve yüksek kontrasta uyar, dil taşımaz.
+  - **Katalog:** Her sayfanın kendi `catalog.ts` dosyası var (panel, settings, onboarding, gallery). Panel yalnızca common + panel metinlerini yükler (JS 38,5 KB gzip).
+- **Bedel:**
+  - `IsPromoted` belgelenmemiş bir mekanizma. Bir Windows güncellemesi bunu bozabilir; o durumda manuel talimat yolu kalır.
+  - Exe konumu değişirse (güncelleme, portable kopya) Explorer yeni bir anahtar oluşturur ve simge tekrar taşma menüsüne düşebilir.
+  - Onboarding'i yanlışlıkla kapatan kullanıcı onu tray menüsünden bulmak zorunda.
+  - Onboarding penceresi açıkken bellek ~80 MB'a çıkar (WebView2). Pencerenin `warm_ttl` değeri 0'dır.
+- **Alternatifler:**
+  - Bayrağı yalnızca "Bitir"de yazmak (her açılışta tekrar gelir).
+  - Sabitleme için Explorer'ı yeniden başlatmak veya `TrayNotify` ikili blob'unu düzenlemek (kırılgan, yan etkili).
+  - Yalnızca talimat göstermek (kayıt yazmadan).
+  - Taşma menüsünün ekran görüntüsü (dile ve temaya bağlı, bakımı zor).
+  - İndekslemeyi onboarding'in 2. adımına kadar bekletmek.
