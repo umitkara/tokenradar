@@ -24,6 +24,7 @@ use tauri::{AppHandle, Manager, Wry};
 use tokenradar_core::config::AppConfig;
 use tokenradar_core::domain::Timestamp;
 use tokenradar_core::limits::PanelSnapshot;
+use tokenradar_core::notifier::KV_MUTED_UNTIL;
 use tokenradar_core::paths::Paths;
 use tokenradar_core::store::Store;
 use tokenradar_i18n::{Domain, Locale, Localizer};
@@ -44,9 +45,6 @@ const MENU_QUIT: &str = "quit";
 #[cfg(debug_assertions)]
 const MENU_GALLERY: &str = "gallery";
 
-/// `kv` key holding the end of the notification mute, in Unix milliseconds. Survives restarts
-/// (step 08); the notifier (Step 11) reads the same key.
-pub const KV_NOTIFY_SNOOZED_UNTIL: &str = "notify_snoozed_until";
 const MUTE_FOR_MS: i64 = 60 * 60 * 1000;
 
 /// What the `tray` thread reacts to.
@@ -227,6 +225,8 @@ trait Sink {
     fn set_tooltip(&mut self, text: &str);
     fn rebuild_menu(&mut self, l10n: &Localizer, muted: bool);
     fn set_mute_label(&mut self, l10n: &Localizer, muted: bool);
+    /// The user muted or unmuted; the core's notifier must know.
+    fn mute_changed(&mut self, until: Option<Timestamp>);
 }
 
 /// The update throttle: remembers what is on screen and skips calls that would not change it.
@@ -310,6 +310,10 @@ impl Sink for TauriSink {
         }
         self.publish_mute(muted);
     }
+
+    fn mute_changed(&mut self, until: Option<Timestamp>) {
+        crate::core_bridge::with_core(&self.app, |core| core.set_muted_until(until));
+    }
 }
 
 struct Driver<S: Sink> {
@@ -386,6 +390,7 @@ impl<S: Sink> Driver<S> {
                 if let Some(store) = &self.store {
                     write_mute(store, until);
                 }
+                self.sink.mute_changed(until);
             }
             #[cfg(any(debug_assertions, test, feature = "spike"))]
             TrayMsg::MutedUntil(until) => self.model.muted_until = until,
@@ -406,7 +411,7 @@ impl<S: Sink> Driver<S> {
 }
 
 fn read_mute(store: &Store) -> Option<Timestamp> {
-    match store.kv_get(KV_NOTIFY_SNOOZED_UNTIL) {
+    match store.kv_get(KV_MUTED_UNTIL) {
         Ok(value) => value
             .and_then(|v| v.parse().ok())
             .map(Timestamp::from_millis),
@@ -418,7 +423,7 @@ fn read_mute(store: &Store) -> Option<Timestamp> {
 }
 
 fn write_mute(store: &Store, until: Option<Timestamp>) {
-    let key = KV_NOTIFY_SNOOZED_UNTIL.to_owned();
+    let key = KV_MUTED_UNTIL.to_owned();
     let result = match until {
         Some(t) => store.writer().kv_set(key, t.as_millis().to_string()),
         None => store.writer().kv_delete(key),

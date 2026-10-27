@@ -7,8 +7,9 @@
 
 #![cfg_attr(windows, allow(unsafe_code))]
 
+pub use tokenradar_core::clock::{LocalClock, LocalTime};
 use tokenradar_core::domain::Timestamp;
-use tokenradar_i18n::{HourCycle, Weekday};
+use tokenradar_i18n::HourCycle;
 
 use super::render::Theme;
 
@@ -18,23 +19,6 @@ pub struct Environment {
     /// Icon edge in physical pixels: 16 at 100 %, 20 at 125 %, 24 at 150 %, 32 at 200 %.
     pub px: u32,
     pub theme: Theme,
-}
-
-/// A wall-clock reading in the system's time zone.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct LocalTime {
-    /// Year, month, day: only compared, to tell "today" from other days.
-    pub date: (u16, u16, u16),
-    pub weekday: Weekday,
-    pub hour: u8,
-    pub minute: u8,
-}
-
-/// Local time conversion, swappable in tests.
-pub trait LocalClock {
-    fn local(&self, t: Timestamp) -> Option<LocalTime>;
-    /// The user's 12/24-hour preference (English only; Turkish is always 24 hours).
-    fn hour_cycle(&self) -> HourCycle;
 }
 
 /// The operating system's clock and regional settings.
@@ -342,8 +326,9 @@ mod imp {
 /// Other platforms (Step 21): a fixed 16 px dark icon, no change notifications, UTC time.
 #[cfg(not(windows))]
 mod imp {
+    use tokenradar_core::clock::UtcClock;
+
     use super::{Environment, HourCycle, LocalClock, LocalTime, SystemClock, Theme, Timestamp};
-    use tokenradar_i18n::Weekday;
 
     pub fn environment() -> Environment {
         Environment {
@@ -362,16 +347,7 @@ mod imp {
 
     impl LocalClock for SystemClock {
         fn local(&self, t: Timestamp) -> Option<LocalTime> {
-            let secs = t.as_millis().div_euclid(1000);
-            let days = secs.div_euclid(86_400);
-            let in_day = secs.rem_euclid(86_400);
-            Some(LocalTime {
-                date: (0, 0, u16::try_from(days.rem_euclid(65_536)).ok()?),
-                // 1970-01-01 was a Thursday.
-                weekday: Weekday::from_sunday0(u16::try_from((days + 4).rem_euclid(7)).ok()?),
-                hour: u8::try_from(in_day / 3600).ok()?,
-                minute: u8::try_from(in_day / 60 % 60).ok()?,
-            })
+            UtcClock.local(t)
         }
 
         fn hour_cycle(&self) -> HourCycle {

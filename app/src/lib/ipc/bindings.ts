@@ -12,6 +12,21 @@ export const commands = {
 	getSettings: () => __TAURI_INVOKE<SettingsView>("get_settings"),
 	setLocale: (locale: LocalePref) => typedError<SettingsView, string>(__TAURI_INVOKE("set_locale", { locale })),
 	setTheme: (theme: ThemePref) => typedError<SettingsView, string>(__TAURI_INVOKE("set_theme", { theme })),
+	/**  Notifications, data, log level and panel timing, for the settings window. */
+	getPrefs: () => __TAURI_INVOKE<PrefsView>("get_prefs"),
+	setNotificationPrefs: (prefs: NotifyPrefs) => typedError<PrefsView, string>(__TAURI_INVOKE("set_notification_prefs", { prefs })),
+	setDataPrefs: (data: DataConfig) => typedError<PrefsView, string>(__TAURI_INVOKE("set_data_prefs", { data })),
+	setLogLevel: (level: LogLevel) => typedError<PrefsView, string>(__TAURI_INVOKE("set_log_level", { level })),
+	setPanelWarmTtl: (seconds: number) => typedError<PrefsView, string>(__TAURI_INVOKE("set_panel_warm_ttl", { seconds })),
+	/**
+	 *  Whether the app starts with Windows. The OS entry is the truth, not `config.toml`: the
+	 *  user can also turn it off in Task Manager.
+	 */
+	getAutostart: () => typedError<boolean, string>(__TAURI_INVOKE("get_autostart")),
+	/**  Turns starting with Windows on or off; answers with the state the OS now reports. */
+	setAutostart: (enabled: boolean) => typedError<boolean, string>(__TAURI_INVOKE("set_autostart", { enabled })),
+	/**  "Send test notification": shows one toast at once, ignoring mute and quiet hours. */
+	sendTestNotification: () => __TAURI_INVOKE<void>("send_test_notification"),
 	/**  The panel rendered its first snapshot; `height` is its content height in CSS pixels. */
 	panelReady: (height: number | null) => __TAURI_INVOKE<void>("panel_ready", { height }),
 	/**  The panel's content height changed. */
@@ -34,6 +49,7 @@ export const events = {
 	coreEventEmitted: makeEvent<CoreEventEmitted, CoreEventEmitted>("core-event-emitted"),
 	muteChanged: makeEvent<MuteChanged, MuteChanged>("mute-changed"),
 	panelShown: makeEvent<PanelShown, PanelShown>("panel-shown"),
+	prefsChanged: makeEvent<PrefsChanged, PrefsChanged>("prefs-changed"),
 	settingsChanged: makeEvent<SettingsChanged, SettingsChanged>("settings-changed"),
 	settingsSectionRequested: makeEvent<SettingsSectionRequested, SettingsSectionRequested>("settings-section-requested"),
 };
@@ -103,10 +119,20 @@ export type CoreEvent =
  */
 { type: "limits_updated"; data: PanelSnapshot } | 
 /**  A threshold, projection or reset signal for the notifier. */
-{ type: "limit"; data: LimitEvent };
+{ type: "limit"; data: LimitEvent } | 
+/**  A notification to show now; mute and quiet hours are already applied. */
+{ type: "notify"; data: Notice };
 
 /**  A core event, forwarded to the windows that are visible. */
 export type CoreEventEmitted = CoreEvent;
+
+/**  `[data]`: what is kept and whether updates are looked for. */
+export type DataConfig = {
+	/**  Days raw usage events are kept; the 5-minute rollup stays forever (ADR-020). */
+	raw_retention_days?: number,
+	/**  Look for a new release on GitHub (Step 12). */
+	update_check?: boolean,
+};
 
 /**  Which parser reported [`CoreEvent::SchemaDrift`]. */
 export type DriftSource = "claude_jsonl";
@@ -209,12 +235,39 @@ export type LiveStatus = "busy" | "idle" |
 /**  The user's language choice; `System` follows the operating system. */
 export type LocalePref = "system" | "en" | "tr";
 
+/**  How much goes into the log file. Never content or tokens, at any level. */
+export type LogLevel = "error" | "warn" | "info" | "debug" | "trace";
+
 /**  US dollars × 10⁶. A price of $1 per million tokens is exactly one micro-dollar per token. */
 export type MicroUsd = number;
 
 /**  Notifications were muted or unmuted (tray menu, panel, or the mute running out). */
 export type MuteChanged = {
 	muted: boolean,
+};
+
+/**  Something to show the user, already localized. */
+export type Notice = {
+	rule: Rule,
+	title: string,
+	body: string,
+};
+
+/**  When and how the notifier speaks. [`NotifyPrefs::normalized`] makes any value safe to use. */
+export type NotifyPrefs = {
+	/**  Off: nothing is shown or recorded. */
+	enabled?: boolean,
+	/**  Percentages of the 5-hour window that raise a notification, ascending. */
+	five_hour_thresholds?: number[],
+	/**  The same for weekly limits, model-scoped ones included. */
+	weekly_thresholds?: number[],
+	/**  "At this rate it will be full in N min" (at most once per window). */
+	projection?: boolean,
+	/**  A second, last projection warning below this many minutes; `0` is off. */
+	final_warning_min?: number,
+	/**  A reset is announced only if the window peaked at or above this percentage. */
+	reset_notify_min?: number,
+	quiet_hours?: QuietHours,
 };
 
 /**  Which window backdrop the system supports (`data-os` on `<html>`). */
@@ -253,6 +306,22 @@ export type PollDiagnostics = {
 	last_success: Timestamp | null,
 };
 
+/**  Sent to every open window when [`PrefsView`] changed. */
+export type PrefsChanged = PrefsView;
+
+/**
+ *  The rest of the settings, for the settings window only: sent by `get_prefs` and
+ *  [`PrefsChanged`]. Kept apart from [`SettingsView`], which every page gets before its first
+ *  paint.
+ */
+export type PrefsView = {
+	notifications: NotifyPrefs,
+	data: DataConfig,
+	log_level: LogLevel,
+	/**  How long a hidden panel stays ready, in seconds (`0`: destroyed at once). */
+	panel_warm_ttl_s: number,
+};
+
 export type Projection = {
 	/**  Percentage points per minute, never negative. */
 	rate_per_min: number | null,
@@ -265,11 +334,29 @@ export type Projection = {
 	method: RateMethod,
 };
 
+/**  A daily span, in local time, in which notifications are recorded but not shown. */
+export type QuietHours = {
+	enabled?: boolean,
+	/**  `HH:MM`, 24 hours. */
+	start?: string,
+	/**  `HH:MM`; earlier than `start` means the span crosses midnight. */
+	end?: string,
+};
+
 export type RateMethod = 
 /**  Slope of observed percentages. */
 "observed" | 
 /**  Local cost rate times the window's percent-per-dollar. */
 "cost_rate";
+
+/**  Which rule produced a notice. */
+export type Rule = "threshold" | "projection" | 
+/**  The last projection warning, shortly before the limit is full. */
+"final" | "reset" | 
+/**  Several held notices announced together after a mute or quiet hours. Never recorded. */
+"summary" | 
+/**  "Send test notification" in the settings. Never recorded. */
+"test";
 
 /**  Unusable records seen since start, summed over indexing passes. */
 export type SchemaDriftView = {

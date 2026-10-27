@@ -25,6 +25,11 @@ serde_json = "1.0.154"
 serde = { version = "1.0.229", features = ["derive"] }
 # Panel timers (warm TTL, ready timeout) on Tauri's runtime; already in the graph through the core.
 tokio = { version = "1.54.1", default-features = false, features = ["time"] }
+tauri-plugin-notification = "2.7"
+tauri-plugin-autostart = "2.7"
+tracing = "0.1.44"
+tracing-appender = "0.2"
+tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "std", "registry"] }
 
 # Raw WebView2 access: the hidden panel's memory level and the Step 02 spike. Same versions as
 # wry's, so the COM types match.

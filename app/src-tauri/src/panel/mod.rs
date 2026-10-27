@@ -49,7 +49,9 @@ const WIDTH: f64 = 360.0;
 const MAX_HEIGHT: f64 = 600.0;
 /// Used until the page reports its height.
 const DEFAULT_HEIGHT: f64 = 420.0;
-const WARM_TTL: Duration = Duration::from_secs(60);
+/// The default warm TTL; the user may change it (`general.panel_warm_ttl`, Step 11).
+const WARM_TTL: Duration =
+    Duration::from_secs(tokenradar_core::config::DEFAULT_PANEL_WARM_TTL_S as u64);
 const BLUR_GRACE: Duration = Duration::from_millis(200);
 const READY_TIMEOUT: Duration = Duration::from_millis(1500);
 
@@ -240,11 +242,15 @@ fn ready_timeout(app: &AppHandle, generation: u64) {
     });
 }
 
-/// Destroys the hidden window after [`WARM_TTL`] unless it was shown or hidden again since.
+/// Destroys the hidden window after the warm TTL (`general.panel_warm_ttl`, default
+/// [`WARM_TTL`]) unless it was shown or hidden again since.
 fn expire(app: &AppHandle, generation: u64) {
     let handle = app.clone();
+    let ttl = app
+        .try_state::<crate::prefs::Prefs>()
+        .map_or(WARM_TTL, |p| p.panel_warm_ttl());
     tauri::async_runtime::spawn(async move {
-        tokio::time::sleep(WARM_TTL).await;
+        tokio::time::sleep(ttl).await;
         if state(&handle).generation != generation || visible(&handle) {
             return;
         }

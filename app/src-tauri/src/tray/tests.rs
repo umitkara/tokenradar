@@ -13,6 +13,8 @@ struct Recorder {
     tooltips: Vec<String>,
     menus: Vec<(Locale, bool)>,
     labels: Vec<bool>,
+    /// Mute changes told to the core: `true` muted.
+    mutes: Vec<bool>,
 }
 
 impl Sink for Recorder {
@@ -27,6 +29,9 @@ impl Sink for Recorder {
     }
     fn set_mute_label(&mut self, _l10n: &Localizer, muted: bool) {
         self.labels.push(muted);
+    }
+    fn mute_changed(&mut self, until: Option<Timestamp>) {
+        self.mutes.push(until.is_some());
     }
 }
 
@@ -141,6 +146,7 @@ fn tray_toggle_mute_without_core_works_in_memory() {
     assert!(d.model.is_muted(Timestamp::now()));
     d.handle(TrayMsg::ToggleMute);
     assert!(!d.model.is_muted(Timestamp::now()));
+    assert_eq!(d.sink.mutes, [true, false], "the core hears every change");
 }
 
 #[test]

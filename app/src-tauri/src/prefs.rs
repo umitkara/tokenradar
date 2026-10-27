@@ -1,5 +1,5 @@
-//! The user's appearance settings (language, theme) and the platform facts every window needs
-//! before its first paint.
+//! The user's settings (appearance, notifications, data, log level) and the platform facts
+//! every window needs before its first paint.
 //!
 //! `config.toml` is read on a helper thread at startup: the main thread never waits on disk.
 //! Until it has been read, the defaults (`system`) apply; a window opened in that instant gets
@@ -11,7 +11,10 @@ use serde::{Deserialize, Serialize};
 use specta::Type;
 use tauri::{AppHandle, Manager};
 use tauri_specta::Event;
-use tokenradar_core::config::{self, AppConfig, LocalePref, ThemePref};
+use tokenradar_core::config::{
+    self, AdvancedConfig, AppConfig, DataConfig, LocalePref, LogLevel, ThemePref,
+};
+use tokenradar_core::notifier::NotifyPrefs;
 use tokenradar_core::paths::Paths;
 use tokenradar_i18n::{HourCycle, Locale};
 
@@ -92,10 +95,48 @@ pub struct SettingsView {
 #[derive(Debug, Clone, Serialize, Deserialize, Type, Event)]
 pub struct SettingsChanged(pub SettingsView);
 
-#[derive(Debug, Clone, Copy, Default)]
+/// The rest of the settings, for the settings window only: sent by `get_prefs` and
+/// [`PrefsChanged`]. Kept apart from [`SettingsView`], which every page gets before its first
+/// paint.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+pub struct PrefsView {
+    pub notifications: NotifyPrefs,
+    pub data: DataConfig,
+    pub log_level: LogLevel,
+    /// How long a hidden panel stays ready, in seconds (`0`: destroyed at once).
+    pub panel_warm_ttl_s: u32,
+}
+
+/// Sent to every open window when [`PrefsView`] changed.
+#[derive(Debug, Clone, Serialize, Deserialize, Type, Event)]
+pub struct PrefsChanged(pub PrefsView);
+
+#[derive(Debug, Clone)]
 struct Stored {
     locale: LocalePref,
     theme: ThemePref,
+    prefs: PrefsView,
+}
+
+impl Default for Stored {
+    fn default() -> Self {
+        Self::from_config(&AppConfig::default())
+    }
+}
+
+impl Stored {
+    fn from_config(c: &AppConfig) -> Self {
+        Self {
+            locale: c.general.locale_pref(),
+            theme: c.general.theme_pref(),
+            prefs: PrefsView {
+                notifications: c.notifications.clone().normalized(),
+                data: c.data.clone().normalized(),
+                log_level: c.advanced.log_level,
+                panel_warm_ttl_s: c.general.panel_warm_ttl_s(),
+            },
+        }
+    }
 }
 
 /// Managed by Tauri.
@@ -106,19 +147,42 @@ pub struct Prefs {
 
 impl Prefs {
     pub fn view(&self) -> SettingsView {
-        let stored = *self.stored.lock().unwrap_or_else(PoisonError::into_inner);
-        let locale = match stored.locale {
-            LocalePref::System => Locale::detect(),
-            LocalePref::En => Locale::En,
-            LocalePref::Tr => Locale::Tr,
+        let (locale_pref, theme_pref) = {
+            let s = self.stored.lock().unwrap_or_else(PoisonError::into_inner);
+            (s.locale, s.theme)
         };
+        let locale = resolve(locale_pref);
         SettingsView {
-            locale_pref: stored.locale,
-            theme_pref: stored.theme,
+            locale_pref,
+            theme_pref,
             locale: locale.into(),
             os: self.platform.os,
             hour12: locale == Locale::En && SystemClock.hour_cycle() == HourCycle::H12,
         }
+    }
+
+    pub fn prefs_view(&self) -> PrefsView {
+        self.stored
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .prefs
+            .clone()
+    }
+
+    /// The resolved UI language, also the notifications' language.
+    pub fn locale(&self) -> Locale {
+        resolve(
+            self.stored
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .locale,
+        )
+    }
+
+    /// How long a hidden panel stays ready.
+    pub fn panel_warm_ttl(&self) -> std::time::Duration {
+        let s = self.stored.lock().unwrap_or_else(PoisonError::into_inner);
+        std::time::Duration::from_secs(u64::from(s.prefs.panel_warm_ttl_s))
     }
 
     pub const fn platform(&self) -> Platform {
@@ -127,6 +191,14 @@ impl Prefs {
 
     fn update(&self, f: impl FnOnce(&mut Stored)) {
         f(&mut self.stored.lock().unwrap_or_else(PoisonError::into_inner));
+    }
+}
+
+fn resolve(pref: LocalePref) -> Locale {
+    match pref {
+        LocalePref::System => Locale::detect(),
+        LocalePref::En => Locale::En,
+        LocalePref::Tr => Locale::Tr,
     }
 }
 
@@ -140,21 +212,22 @@ pub fn init(app: &AppHandle) {
     let spawned = std::thread::Builder::new()
         .name("prefs-load".into())
         .spawn(move || {
-            let general = Paths::resolve()
+            let loaded = Paths::resolve()
                 .ok()
                 .and_then(|p| AppConfig::load(p.config_path()).ok())
-                .map(|c| c.general)
                 .unwrap_or_default();
+            crate::logging::set_level(loaded.advanced.log_level);
             let prefs = app.state::<Prefs>();
-            let before = prefs.view();
-            prefs.update(|s| {
-                s.locale = general.locale_pref();
-                s.theme = general.theme_pref();
-            });
+            let (before, before_prefs) = (prefs.view(), prefs.prefs_view());
+            prefs.update(|s| *s = Stored::from_config(&loaded));
             let after = prefs.view();
             if after != before {
                 crate::chrome::apply_theme(&app, after.theme_pref);
                 let _ = SettingsChanged(after).emit(&app);
+            }
+            let after_prefs = prefs.prefs_view();
+            if after_prefs != before_prefs {
+                let _ = PrefsChanged(after_prefs).emit(&app);
             }
         });
     if let Err(error) = spawned {
@@ -173,6 +246,7 @@ pub fn set_locale(app: &AppHandle, pref: LocalePref) -> Result<SettingsView, Str
         UiLocale::Tr => Locale::Tr,
     };
     crate::tray::send(app, crate::tray::TrayMsg::Locale(locale));
+    crate::core_bridge::with_core(app, |core| core.set_notify_locale(locale));
     let _ = SettingsChanged(view.clone()).emit(app);
     Ok(view)
 }
@@ -188,7 +262,55 @@ pub fn set_theme(app: &AppHandle, pref: ThemePref) -> Result<SettingsView, Strin
     Ok(view)
 }
 
+/// Stores the notification rules and hands them to the notifier.
+pub fn set_notifications(app: &AppHandle, prefs: NotifyPrefs) -> Result<PrefsView, String> {
+    let prefs = prefs.normalized();
+    with_config(|path| config::save_notifications(path, &prefs))?;
+    crate::core_bridge::with_core(app, |core| core.set_notify_prefs(prefs.clone()));
+    Ok(changed(app, |p| p.notifications = prefs))
+}
+
+/// Stores the data settings; the new retention applies from the next daily run.
+pub fn set_data(app: &AppHandle, data: DataConfig) -> Result<PrefsView, String> {
+    let data = data.normalized();
+    with_config(|path| config::save_data(path, &data))?;
+    let days = data.raw_retention_days;
+    crate::core_bridge::with_core(app, |core| core.set_retention_days(days));
+    Ok(changed(app, |p| p.data = data))
+}
+
+pub fn set_log_level(app: &AppHandle, level: LogLevel) -> Result<PrefsView, String> {
+    with_config(|path| config::save_advanced(path, &AdvancedConfig { log_level: level }))?;
+    crate::logging::set_level(level);
+    Ok(changed(app, |p| p.log_level = level))
+}
+
+/// Stores the panel's warm TTL; it applies the next time the panel hides.
+pub fn set_panel_warm_ttl(app: &AppHandle, seconds: u32) -> Result<PrefsView, String> {
+    let seconds = seconds.min(config::MAX_PANEL_WARM_TTL_S);
+    with_config(|path| config::save_panel_warm_ttl(path, seconds))?;
+    Ok(changed(app, |p| p.panel_warm_ttl_s = seconds))
+}
+
+/// Applies `f`, then tells every open window.
+fn changed(app: &AppHandle, f: impl FnOnce(&mut PrefsView)) -> PrefsView {
+    let prefs = app.state::<Prefs>();
+    prefs.update(|s| f(&mut s.prefs));
+    let view = prefs.prefs_view();
+    let _ = PrefsChanged(view.clone()).emit(app);
+    view
+}
+
 fn save(key: &str, value: &str) -> Result<(), String> {
+    with_config(|path| config::save_general(path, key, value))
+}
+
+fn with_config(
+    f: impl FnOnce(&std::path::Path) -> Result<(), config::ConfigError>,
+) -> Result<(), String> {
     let paths = Paths::resolve().map_err(|e| e.to_string())?;
-    config::save_general(paths.config_path(), key, value).map_err(|e| e.to_string())
+    f(paths.config_path()).map_err(|e| {
+        tracing::warn!(error = %e, "could not save the settings");
+        e.to_string()
+    })
 }

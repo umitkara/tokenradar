@@ -7,7 +7,7 @@ use std::fmt::Write as _;
 use std::sync::{Arc, Mutex, PoisonError};
 
 use tauri::{AppHandle, Manager};
-use tokenradar_core::config::AppConfig;
+use tokenradar_core::config::{self, AppConfig};
 use tokenradar_core::domain::Timestamp;
 use tokenradar_core::events::{CoreEvent, Delivery, Subscription};
 use tokenradar_core::limits::{LimitEvent, PanelSnapshot};
@@ -15,11 +15,12 @@ use tokenradar_core::live_sessions::LiveStatus;
 use tokenradar_core::paths::Paths;
 use tokenradar_core::providers::claude;
 use tokenradar_core::runtime::{
-    CoreConfig, CoreHandle, CoreRuntime, CoreStatus, IpcConfig, SHUTDOWN_TIMEOUT,
+    CoreConfig, CoreHandle, CoreRuntime, CoreStatus, IpcConfig, NotifySetup, SHUTDOWN_TIMEOUT,
 };
 
-use crate::ipc;
+use crate::tray::system::SystemClock;
 use crate::tray::{self, TrayMsg};
+use crate::{ipc, notify};
 
 /// The running core, once it has started.
 #[derive(Default)]
@@ -76,15 +77,29 @@ pub fn shutdown(app: &AppHandle) {
 fn open() -> Result<CoreHandle, Box<dyn std::error::Error>> {
     let paths = Paths::resolve()?;
     let accounts = claude::discover(&[]);
+    // The first discovered account is the primary one: a v1 consent moves to it (ADR-033).
+    let primary = accounts.first().map(|a| a.config_dir.clone());
+    match config::migrate(paths.config_path(), primary.as_deref()) {
+        Ok(true) => tracing::info!("config.toml migrated to schema v2"),
+        Ok(false) => {}
+        Err(error) => tracing::warn!(%error, "config.toml not migrated"),
+    }
+    // An unreadable config must not stop the app; it only means the defaults and no consent.
+    let app_config = AppConfig::load(paths.config_path()).unwrap_or_else(|error| {
+        tracing::warn!(%error, "config.toml ignored");
+        AppConfig::default()
+    });
     let mut config = CoreConfig::new(paths.db_path(), accounts);
-    // An unreadable config must not stop the app; it only means no API consent.
-    config.api_consent = match AppConfig::load(paths.config_path()) {
-        Ok(app_config) => app_config.api_consent_granted(),
-        Err(error) => {
-            eprintln!("TokenRadar: config.toml ignored: {error}");
-            false
-        }
-    };
+    // One consent for all pollers until multi-account settings exist (Step 19).
+    config.api_consent = primary
+        .as_deref()
+        .is_some_and(|dir| app_config.api_consent_granted(dir));
+    config.retention_days = Some(app_config.data.clone().normalized().raw_retention_days);
+    config.notify = Some(NotifySetup {
+        prefs: app_config.notifications.clone(),
+        locale: app_config.general.locale(),
+        clock: Arc::new(SystemClock),
+    });
     // The statusline bridge (Step 07): serve the CLI and import what it spooled meanwhile.
     match tokenradar_core::ipc::pipe_name() {
         Ok(pipe_name) => {
@@ -112,6 +127,12 @@ pub fn panel_snapshot(app: &AppHandle) -> Option<PanelSnapshot> {
 /// The panel opened or "Refresh" was clicked: with API consent, data older than 60 s is
 /// fetched again (the poller keeps its minimum interval and backoff).
 pub fn panel_opened(app: &AppHandle) {
+    with_core(app, CoreHandle::panel_opened);
+}
+
+/// Runs `f` on the core once it is running; before that, or after a failed start, nothing
+/// happens (the core reads the stored settings when it starts).
+pub fn with_core(app: &AppHandle, f: impl FnOnce(&CoreHandle)) {
     let Some(state) = app.try_state::<CoreState>() else {
         return;
     };
@@ -121,7 +142,7 @@ pub fn panel_opened(app: &AppHandle) {
         .unwrap_or_else(PoisonError::into_inner)
         .as_ref()
     {
-        handle.panel_opened();
+        f(handle);
     }
 }
 
@@ -134,8 +155,12 @@ async fn forward(app: AppHandle, mut sub: Subscription, state: Arc<Mutex<Option<
         }
         match delivery {
             Delivery::Event(event) => {
-                if let CoreEvent::LimitsUpdated(snapshot) = &event {
-                    tray::send(&app, TrayMsg::Snapshot(snapshot.clone()));
+                match &event {
+                    CoreEvent::LimitsUpdated(snapshot) => {
+                        tray::send(&app, TrayMsg::Snapshot(snapshot.clone()));
+                    }
+                    CoreEvent::Notify(notice) => notify::show(&app, notice),
+                    _ => {}
                 }
                 ipc::emit_core_event(&app, event);
             }

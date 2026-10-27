@@ -8,6 +8,8 @@ mod core_bridge;
 #[cfg(debug_assertions)]
 mod gallery;
 mod ipc;
+mod logging;
+mod notify;
 mod panel;
 mod prefs;
 mod settings;
@@ -18,6 +20,7 @@ mod tray;
 use tauri::RunEvent;
 
 fn main() {
+    logging::init();
     let bridge = ipc::builder();
     // Debug starts keep the TypeScript bindings in sync with the Rust types (Step 09).
     #[cfg(debug_assertions)]
@@ -36,12 +39,20 @@ fn main() {
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             panel::report(panel::show(app));
         }))
+        .plugin(tauri_plugin_notification::init())
+        // The HKCU `Run` entry is written only when the user turns autostart on (Step 11).
+        .plugin(
+            tauri_plugin_autostart::Builder::new()
+                .app_name("TokenRadar")
+                .build(),
+        )
         .setup(move |app| {
             // Tray first, so it shows within its 300 ms budget; the core starts behind it.
             panel::init(app.handle());
             tray::create(app.handle())?;
             bridge.mount_events(app);
             prefs::init(app.handle());
+            notify::init(app.handle());
             // Fake limits replace the core entirely, so tray measurements never touch real data.
             #[cfg(any(debug_assertions, feature = "spike"))]
             let fake = tray::fake::mode();

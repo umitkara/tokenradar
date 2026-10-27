@@ -7,14 +7,16 @@
 use serde::Serialize;
 use specta::Type;
 use tauri::{AppHandle, EventTarget, Manager};
+use tauri_plugin_autostart::ManagerExt as _;
 use tauri_specta::{Builder, Event, collect_commands, collect_events};
-use tokenradar_core::config::{LocalePref, ThemePref};
+use tokenradar_core::config::{DataConfig, LocalePref, LogLevel, ThemePref};
 use tokenradar_core::events::CoreEvent;
 use tokenradar_core::limits::PanelSnapshot;
+use tokenradar_core::notifier::{self, NotifyPrefs};
 
-use crate::prefs::{self, Prefs, SettingsChanged, SettingsView};
+use crate::prefs::{self, Prefs, PrefsChanged, PrefsView, SettingsChanged, SettingsView};
 use crate::settings::{self, SettingsSection, SettingsSectionRequested};
-use crate::{core_bridge, panel, tray};
+use crate::{core_bridge, notify, panel, tray};
 
 /// Relative to the `app/src-tauri` crate. Release builds never write the bindings.
 #[cfg(debug_assertions)]
@@ -38,6 +40,14 @@ pub fn builder() -> Builder<tauri::Wry> {
             get_settings,
             set_locale,
             set_theme,
+            get_prefs,
+            set_notification_prefs,
+            set_data_prefs,
+            set_log_level,
+            set_panel_warm_ttl,
+            get_autostart,
+            set_autostart,
+            send_test_notification,
             panel_ready,
             panel_resize,
             panel_painted,
@@ -50,6 +60,7 @@ pub fn builder() -> Builder<tauri::Wry> {
         .events(collect_events![
             CoreEventEmitted,
             SettingsChanged,
+            PrefsChanged,
             MuteChanged,
             SettingsSectionRequested,
             panel::PanelShown
@@ -122,6 +133,70 @@ async fn set_locale(app: AppHandle, locale: LocalePref) -> Result<SettingsView, 
 #[specta::specta]
 async fn set_theme(app: AppHandle, theme: ThemePref) -> Result<SettingsView, String> {
     prefs::set_theme(&app, theme)
+}
+
+/// Notifications, data, log level and panel timing, for the settings window.
+#[tauri::command]
+#[specta::specta]
+async fn get_prefs(app: AppHandle) -> PrefsView {
+    app.state::<Prefs>().prefs_view()
+}
+
+#[tauri::command]
+#[specta::specta]
+async fn set_notification_prefs(app: AppHandle, prefs: NotifyPrefs) -> Result<PrefsView, String> {
+    prefs::set_notifications(&app, prefs)
+}
+
+#[tauri::command]
+#[specta::specta]
+async fn set_data_prefs(app: AppHandle, data: DataConfig) -> Result<PrefsView, String> {
+    prefs::set_data(&app, data)
+}
+
+#[tauri::command]
+#[specta::specta]
+async fn set_log_level(app: AppHandle, level: LogLevel) -> Result<PrefsView, String> {
+    prefs::set_log_level(&app, level)
+}
+
+#[tauri::command]
+#[specta::specta]
+async fn set_panel_warm_ttl(app: AppHandle, seconds: u32) -> Result<PrefsView, String> {
+    prefs::set_panel_warm_ttl(&app, seconds)
+}
+
+/// Whether the app starts with Windows. The OS entry is the truth, not `config.toml`: the
+/// user can also turn it off in Task Manager.
+#[tauri::command]
+#[specta::specta]
+async fn get_autostart(app: AppHandle) -> Result<bool, String> {
+    app.autolaunch().is_enabled().map_err(|e| e.to_string())
+}
+
+/// Turns starting with Windows on or off; answers with the state the OS now reports.
+#[tauri::command]
+#[specta::specta]
+async fn set_autostart(app: AppHandle, enabled: bool) -> Result<bool, String> {
+    let manager = app.autolaunch();
+    let result = if enabled {
+        manager.enable()
+    } else {
+        manager.disable()
+    };
+    if let Err(error) = result {
+        tracing::warn!(%error, enabled, "could not change autostart");
+        return Err(error.to_string());
+    }
+    manager.is_enabled().map_err(|e| e.to_string())
+}
+
+/// "Send test notification": shows one toast at once, ignoring mute and quiet hours.
+#[tauri::command]
+#[specta::specta]
+async fn send_test_notification(app: AppHandle) {
+    let locale = app.state::<Prefs>().locale();
+    notify::show(&app, &notifier::test_notice(locale));
 }
 
 /// The panel rendered its first snapshot; `height` is its content height in CSS pixels.
