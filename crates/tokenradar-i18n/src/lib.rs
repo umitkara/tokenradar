@@ -5,15 +5,19 @@
 //! [`Domain`]s it uses: the statusline runs on every Claude Code update and should not parse
 //! the tray's or the notifier's messages.
 //!
-//! Custom Fluent functions (architecture §12): `NUM(n, decimals)`, `PCT(n)`, `DUR(ms, style)`.
-//! `TR_SUFFIX` arrives with the tray in Step 08.
+//! Custom Fluent functions (architecture §12): `NUM(n, decimals)`, `PCT(n)`, `DUR(ms, style)`
+//! and `TR_SUFFIX(value, case)`. `TR_SUFFIX` takes a number or an already formatted string, so
+//! the suffix matches what is shown: `{ TR_SUFFIX(PCT($pct), "poss") }` → `%72'si`. In English
+//! it returns its input unchanged.
 
 pub mod format;
+pub mod suffix;
 
 use fluent_bundle::{FluentArgs, FluentBundle, FluentResource, FluentValue};
 use unic_langid::LanguageIdentifier;
 
-pub use format::DurStyle;
+pub use format::{DurStyle, HourCycle, Weekday};
+pub use suffix::Case;
 
 /// A supported UI language.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
@@ -52,16 +56,20 @@ impl Locale {
 pub enum Domain {
     /// The `tokenradar` console binary and the statusline.
     Cli,
+    /// The tray icon's tooltip and menu.
+    Tray,
 }
 
 impl Domain {
-    pub const ALL: [Self; 1] = [Self::Cli];
+    pub const ALL: [Self; 2] = [Self::Cli, Self::Tray];
 
     /// Embedded Fluent source.
     pub const fn source(self, locale: Locale) -> &'static str {
         match (self, locale) {
             (Self::Cli, Locale::En) => include_str!("../../../locales/en/cli.ftl"),
             (Self::Cli, Locale::Tr) => include_str!("../../../locales/tr/cli.ftl"),
+            (Self::Tray, Locale::En) => include_str!("../../../locales/en/tray.ftl"),
+            (Self::Tray, Locale::Tr) => include_str!("../../../locales/tr/tray.ftl"),
         }
     }
 }
@@ -174,6 +182,34 @@ fn register_functions(bundle: &mut FluentBundle<FluentResource>, locale: Locale)
         };
         FluentValue::from(format::dur(locale, ms, style))
     });
+    let _ = bundle.add_function("TR_SUFFIX", move |pos, _| {
+        let text = match pos.first() {
+            Some(FluentValue::String(s)) => s.to_string(),
+            Some(FluentValue::Number(n)) => {
+                format::num(locale, n.value, shortest_decimals(n.value))
+            }
+            _ => String::new(),
+        };
+        let case = match pos.get(1) {
+            Some(FluentValue::String(s)) => Case::parse(s),
+            _ => None,
+        };
+        match (locale, case) {
+            (Locale::Tr, Some(case)) => FluentValue::from(suffix::tr_suffix(&text, case)),
+            _ => FluentValue::from(text),
+        }
+    });
+}
+
+/// Fraction digits needed to print `n` without trailing zeros (at most 6).
+fn shortest_decimals(n: f64) -> usize {
+    (0..6)
+        .find(|&d| {
+            #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
+            let scale = 10f64.powi(d as i32);
+            ((n * scale).round() - n * scale).abs() < 1e-9
+        })
+        .unwrap_or(6)
 }
 
 fn number(v: Option<&FluentValue<'_>>) -> f64 {
@@ -225,6 +261,47 @@ mod tests {
         assert_eq!(en.fmt("sl-session-share", &args), "≈9% this session");
         let args = [("ms", Arg::Num(108.0 * 60_000.0))];
         assert_eq!(tr.fmt("sl-resets-in", &args), "1sa48dk");
+    }
+
+    #[test]
+    fn tr_suffix_follows_the_formatted_value() {
+        let tr = Localizer::new(Locale::Tr, &Domain::ALL);
+        let en = Localizer::new(Locale::En, &Domain::ALL);
+        let until = [("until", Arg::Str("10:40"))];
+        assert_eq!(
+            tr.fmt("tray-muted", &until),
+            "Bildirimler 10:40'a kadar susturuldu"
+        );
+        assert_eq!(
+            en.fmt("tray-muted", &until),
+            "Notifications muted until 10:40"
+        );
+        let weekly = [("value", Arg::Str("%34")), ("at", Arg::Str("Çar 10:59"))];
+        assert_eq!(
+            tr.fmt("tray-weekly-resets", &weekly),
+            "Haftalık: %34 · Çar 10:59'da yenilenir"
+        );
+    }
+
+    #[test]
+    fn tr_suffix_formats_bare_numbers() {
+        let mut bundle = FluentBundle::new(vec![LanguageIdentifier::default()]);
+        bundle.set_use_isolating(false);
+        register_functions(&mut bundle, Locale::Tr);
+        let src = "a = { TR_SUFFIX(1000000, \"abl\") }\nb = { TR_SUFFIX(23.5, \"loc\") }\nc = { TR_SUFFIX(5, \"nope\") }\n";
+        let _ = bundle.add_resource(FluentResource::try_new(src.to_owned()).expect("valid"));
+        let fmt = |id: &str| {
+            let msg = bundle
+                .get_message(id)
+                .and_then(|m| m.value())
+                .expect("message");
+            bundle
+                .format_pattern(msg, None, &mut Vec::new())
+                .into_owned()
+        };
+        assert_eq!(fmt("a"), "1.000.000'dan");
+        assert_eq!(fmt("b"), "23,5'te");
+        assert_eq!(fmt("c"), "5");
     }
 
     /// Every embedded file parses, and both locales define the same messages with the same

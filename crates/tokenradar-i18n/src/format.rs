@@ -1,8 +1,9 @@
-//! Number, percentage and duration formatting shared by every Fluent bundle (architecture §12).
+//! Number, percentage, duration and clock formatting shared by every Fluent bundle
+//! (architecture §12).
 //!
-//! These are the Rust halves of the `NUM`, `PCT` and `DUR` Fluent functions. The TypeScript
-//! side (Step 09) must produce the same strings; `testdata/i18n-vectors.json` (Step 08) pins
-//! them for both.
+//! These are the Rust halves of the `NUM`, `PCT` and `DUR` Fluent functions, plus the small
+//! hand-written clock formatter (no ICU data is embedded). The TypeScript side (Step 09) must
+//! produce the same strings; `testdata/i18n-vectors.json` pins them for both.
 
 use crate::Locale;
 
@@ -122,9 +123,111 @@ fn part(locale: Locale, n: i64, unit: Unit, style: DurStyle) -> String {
     }
 }
 
+/// A day of the week, for [`weekday_clock`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Weekday {
+    Mon,
+    Tue,
+    Wed,
+    Thu,
+    Fri,
+    Sat,
+    Sun,
+}
+
+impl Weekday {
+    /// From a Sunday-based index (`0` = Sunday), as Windows' `SYSTEMTIME` and JS `getDay()`
+    /// count; out-of-range values wrap.
+    pub const fn from_sunday0(day: u16) -> Self {
+        match day % 7 {
+            0 => Self::Sun,
+            1 => Self::Mon,
+            2 => Self::Tue,
+            3 => Self::Wed,
+            4 => Self::Thu,
+            5 => Self::Fri,
+            _ => Self::Sat,
+        }
+    }
+
+    const fn abbr(self, locale: Locale) -> &'static str {
+        match (locale, self) {
+            (Locale::En, Self::Mon) => "Mon",
+            (Locale::En, Self::Tue) => "Tue",
+            (Locale::En, Self::Wed) => "Wed",
+            (Locale::En, Self::Thu) => "Thu",
+            (Locale::En, Self::Fri) => "Fri",
+            (Locale::En, Self::Sat) => "Sat",
+            (Locale::En, Self::Sun) => "Sun",
+            (Locale::Tr, Self::Mon) => "Pzt",
+            (Locale::Tr, Self::Tue) => "Sal",
+            (Locale::Tr, Self::Wed) => "Çar",
+            (Locale::Tr, Self::Thu) => "Per",
+            (Locale::Tr, Self::Fri) => "Cum",
+            (Locale::Tr, Self::Sat) => "Cmt",
+            (Locale::Tr, Self::Sun) => "Paz",
+        }
+    }
+}
+
+/// 12- or 24-hour clock. Turkish always uses 24 hours; English follows the OS region
+/// (architecture §12).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum HourCycle {
+    #[default]
+    H23,
+    H12,
+}
+
+/// A wall-clock time: TR `09:05`; EN `09:05` or `9:05 AM`.
+pub fn clock(locale: Locale, hour: u8, minute: u8, cycle: HourCycle) -> String {
+    if locale == Locale::En && cycle == HourCycle::H12 {
+        let h12 = match hour % 12 {
+            0 => 12,
+            h => h,
+        };
+        let meridiem = if hour < 12 { "AM" } else { "PM" };
+        format!("{h12}:{minute:02} {meridiem}")
+    } else {
+        format!("{hour:02}:{minute:02}")
+    }
+}
+
+/// Weekday and time: TR `Çar 10:59`, EN `Wed 10:59` or `Wed 10:59 AM`.
+pub fn weekday_clock(
+    locale: Locale,
+    weekday: Weekday,
+    hour: u8,
+    minute: u8,
+    cycle: HourCycle,
+) -> String {
+    format!(
+        "{} {}",
+        weekday.abbr(locale),
+        clock(locale, hour, minute, cycle)
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn clocks_follow_the_locale_and_hour_cycle() {
+        assert_eq!(clock(Locale::Tr, 9, 5, HourCycle::H12), "09:05");
+        assert_eq!(clock(Locale::En, 9, 5, HourCycle::H23), "09:05");
+        assert_eq!(clock(Locale::En, 0, 0, HourCycle::H12), "12:00 AM");
+        assert_eq!(clock(Locale::En, 12, 30, HourCycle::H12), "12:30 PM");
+        assert_eq!(clock(Locale::En, 23, 59, HourCycle::H12), "11:59 PM");
+        assert_eq!(
+            weekday_clock(Locale::Tr, Weekday::from_sunday0(3), 10, 59, HourCycle::H23),
+            "Çar 10:59"
+        );
+        assert_eq!(
+            weekday_clock(Locale::En, Weekday::from_sunday0(0), 7, 0, HourCycle::H12),
+            "Sun 7:00 AM"
+        );
+    }
 
     #[test]
     fn numbers_group_by_locale() {
