@@ -52,14 +52,16 @@ pub enum TrayMsg {
     /// The core is running; the tray reads and writes the mute through its store.
     CoreReady(Store),
     CoreFailed,
+    /// The core stopped to restart or to delete the data: the store is dropped (its open
+    /// connections would keep the database file) and the reply confirms it.
+    CoreStopped(std::sync::mpsc::Sender<()>),
     Snapshot(Box<PanelSnapshot>),
     /// "Mute for 1 hour" / "Unmute" was clicked.
     ToggleMute,
     /// Sets the mute directly (debug scenarios).
     #[cfg(any(debug_assertions, test, feature = "spike"))]
     MutedUntil(Option<Timestamp>),
-    /// The UI language changed. Sent by the settings window (Step 11) and the `cycle` scenario.
-    #[cfg_attr(not(any(debug_assertions, feature = "spike")), allow(dead_code))]
+    /// The UI language changed: settings window, "Delete all data" and the `cycle` scenario.
     Locale(Locale),
     /// Theme, scale or high contrast may have changed.
     Environment,
@@ -139,7 +141,7 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
     if let Err(error) = system::watch(Box::new(move || {
         let _ = watcher_tx.send(TrayMsg::Environment);
     })) {
-        eprintln!("TokenRadar: tray will not follow theme or scale changes: {error}");
+        tracing::warn!(%error, "tray will not follow theme or scale changes");
     }
     app.manage(Tray(tx));
     app.manage(Muted::default());
@@ -281,13 +283,13 @@ impl TauriSink {
 impl Sink for TauriSink {
     fn set_icon(&mut self, visual: TrayVisual, env: Environment) {
         if let Err(error) = self.tray.set_icon(Some(icon_image(visual, env))) {
-            eprintln!("TokenRadar: could not update the tray icon: {error}");
+            tracing::warn!(%error, "could not update the tray icon");
         }
     }
 
     fn set_tooltip(&mut self, text: &str) {
         if let Err(error) = self.tray.set_tooltip(Some(text)) {
-            eprintln!("TokenRadar: could not update the tray tooltip: {error}");
+            tracing::warn!(%error, "could not update the tray tooltip");
         }
     }
 
@@ -295,18 +297,18 @@ impl Sink for TauriSink {
         match build_menu(&self.app, l10n, muted) {
             Ok((menu, mute_item)) => {
                 if let Err(error) = self.tray.set_menu(Some(menu)) {
-                    eprintln!("TokenRadar: could not replace the tray menu: {error}");
+                    tracing::warn!(%error, "could not replace the tray menu");
                 }
                 self.mute_item = mute_item;
             }
-            Err(error) => eprintln!("TokenRadar: could not build the tray menu: {error}"),
+            Err(error) => tracing::warn!(%error, "could not build the tray menu"),
         }
         self.publish_mute(muted);
     }
 
     fn set_mute_label(&mut self, l10n: &Localizer, muted: bool) {
         if let Err(error) = self.mute_item.set_text(l10n.msg(mute_key(muted))) {
-            eprintln!("TokenRadar: could not update the tray menu: {error}");
+            tracing::warn!(%error, "could not update the tray menu");
         }
         self.publish_mute(muted);
     }
@@ -378,6 +380,12 @@ impl<S: Sink> Driver<S> {
                 self.store = Some(store);
             }
             TrayMsg::CoreFailed => self.model.core_failed = true,
+            TrayMsg::CoreStopped(done) => {
+                self.store = None;
+                self.model.snapshot = None;
+                self.model.core_failed = false;
+                let _ = done.send(());
+            }
             TrayMsg::Snapshot(snapshot) => self.model.snapshot = Some(*snapshot),
             TrayMsg::ToggleMute => {
                 let now = Timestamp::now();
@@ -416,7 +424,7 @@ fn read_mute(store: &Store) -> Option<Timestamp> {
             .and_then(|v| v.parse().ok())
             .map(Timestamp::from_millis),
         Err(error) => {
-            eprintln!("TokenRadar: could not read the notification mute: {error}");
+            tracing::warn!(%error, "could not read the notification mute");
             None
         }
     }
@@ -429,7 +437,7 @@ fn write_mute(store: &Store, until: Option<Timestamp>) {
         None => store.writer().kv_delete(key),
     };
     if let Err(error) = result {
-        eprintln!("TokenRadar: could not store the notification mute: {error}");
+        tracing::warn!(%error, "could not store the notification mute");
     }
 }
 

@@ -15,7 +15,11 @@ use tokenradar_core::limits::PanelSnapshot;
 use tokenradar_core::notifier::{self, NotifyPrefs};
 
 use crate::prefs::{self, Prefs, PrefsChanged, PrefsView, SettingsChanged, SettingsView};
+use crate::privacy::{self, AboutView, Link, StorageView};
 use crate::settings::{self, SettingsSection, SettingsSectionRequested};
+use crate::sources::{
+    self, DataSourcesView, PickError, StatuslineAction, StatuslineError, StatuslinePlanView,
+};
 use crate::{core_bridge, notify, panel, tray};
 
 /// Relative to the `app/src-tauri` crate. Release builds never write the bindings.
@@ -48,6 +52,18 @@ pub fn builder() -> Builder<tauri::Wry> {
             get_autostart,
             set_autostart,
             send_test_notification,
+            get_data_sources,
+            plan_statusline,
+            apply_statusline,
+            discard_statusline_plan,
+            set_api_consent,
+            pick_claude_dir,
+            reset_claude_dir,
+            get_storage,
+            delete_all_data,
+            create_diagnostics,
+            get_about,
+            open_link,
             panel_ready,
             panel_resize,
             panel_painted,
@@ -197,6 +213,100 @@ async fn set_autostart(app: AppHandle, enabled: bool) -> Result<bool, String> {
 async fn send_test_notification(app: AppHandle) {
     let locale = app.state::<Prefs>().locale();
     notify::show(&app, &notifier::test_notice(locale));
+}
+
+/// Runs blocking work (disk, dialogs, restarting the core) off the async workers.
+async fn blocking<T: Send + 'static>(f: impl FnOnce() -> T + Send + 'static) -> T {
+    tauri::async_runtime::spawn_blocking(f)
+        .await
+        .unwrap_or_else(|e| panic!("blocking command failed: {e}"))
+}
+
+/// Claude Code directories, the statusline bridge and the API consent.
+#[tauri::command]
+#[specta::specta]
+async fn get_data_sources(app: AppHandle) -> Result<DataSourcesView, String> {
+    blocking(move || sources::view(&app)).await
+}
+
+/// Plans installing or removing the statusline bridge; nothing is written until
+/// `apply_statusline` gets the returned token.
+#[tauri::command]
+#[specta::specta]
+async fn plan_statusline(
+    app: AppHandle,
+    action: StatuslineAction,
+) -> Result<StatuslinePlanView, StatuslineError> {
+    blocking(move || sources::plan(&app, action)).await
+}
+
+/// Applies the plan the user confirmed; returns the backup's path.
+#[tauri::command]
+#[specta::specta]
+async fn apply_statusline(app: AppHandle, token: u32) -> Result<Option<String>, StatuslineError> {
+    blocking(move || sources::apply(&app, token)).await
+}
+
+#[tauri::command]
+#[specta::specta]
+async fn discard_statusline_plan(app: AppHandle) {
+    sources::discard(&app);
+}
+
+/// The user's explicit yes (or withdrawal) for the usage API, stamped with the text version.
+#[tauri::command]
+#[specta::specta]
+async fn set_api_consent(app: AppHandle, granted: bool) -> Result<DataSourcesView, String> {
+    blocking(move || {
+        sources::set_api_consent(&app, granted)?;
+        sources::view(&app)
+    })
+    .await
+}
+
+/// Folder picker for the Claude Code directory; `false` when cancelled.
+#[tauri::command]
+#[specta::specta]
+async fn pick_claude_dir(app: AppHandle) -> Result<bool, PickError> {
+    blocking(move || sources::pick_claude_dir(&app)).await
+}
+
+#[tauri::command]
+#[specta::specta]
+async fn reset_claude_dir(app: AppHandle) -> Result<(), String> {
+    blocking(move || sources::reset_claude_dir(&app)).await
+}
+
+#[tauri::command]
+#[specta::specta]
+async fn get_storage() -> Result<StorageView, String> {
+    blocking(privacy::storage).await
+}
+
+/// Deletes TokenRadar's own data (never Claude Code's) and starts over.
+#[tauri::command]
+#[specta::specta]
+async fn delete_all_data(app: AppHandle) -> Result<(), String> {
+    blocking(move || privacy::delete_all_data(&app)).await
+}
+
+/// Save dialog, then the bundle; its path, or `None` when cancelled.
+#[tauri::command]
+#[specta::specta]
+async fn create_diagnostics(app: AppHandle) -> Result<Option<String>, String> {
+    blocking(move || privacy::create_diagnostics(&app)).await
+}
+
+#[tauri::command]
+#[specta::specta]
+async fn get_about() -> AboutView {
+    privacy::about()
+}
+
+#[tauri::command]
+#[specta::specta]
+async fn open_link(app: AppHandle, link: Link) -> Result<(), String> {
+    privacy::open_link(&app, link)
 }
 
 /// The panel rendered its first snapshot; `height` is its content height in CSS pixels.

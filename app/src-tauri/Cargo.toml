@@ -27,6 +27,11 @@ serde = { version = "1.0.229", features = ["derive"] }
 tokio = { version = "1.54.1", default-features = false, features = ["time"] }
 tauri-plugin-notification = "2.7"
 tauri-plugin-autostart = "2.7"
+# Folder picker (Claude Code directory) and save dialog (diagnostics bundle); called from Rust
+# only, the frontend gets no dialog permission (Step 11b).
+tauri-plugin-dialog = "2.8"
+# Opens the allowlisted links (About) and shows the diagnostics bundle in Explorer; Rust only.
+tauri-plugin-opener = "2.7"
 tracing = "0.1.44"
 tracing-appender = "0.2"
 tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "std", "registry"] }

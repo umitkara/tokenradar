@@ -458,7 +458,7 @@ pub fn builder(app: &AppHandle) -> WebviewWindowBuilder<'_, tauri::Wry, AppHandl
 // TODO(step-11): route through `tracing` once logging exists.
 pub fn report(result: tauri::Result<()>) {
     if let Err(err) = result {
-        eprintln!("panel: {err}");
+        tracing::warn!(error = %err, "panel");
     }
 }
 

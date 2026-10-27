@@ -34,6 +34,15 @@ pub enum UiLocale {
     Tr,
 }
 
+impl From<UiLocale> for Locale {
+    fn from(l: UiLocale) -> Self {
+        match l {
+            UiLocale::En => Self::En,
+            UiLocale::Tr => Self::Tr,
+        }
+    }
+}
+
 impl From<Locale> for UiLocale {
     fn from(l: Locale) -> Self {
         match l {
@@ -211,27 +220,32 @@ pub fn init(app: &AppHandle) {
     let app = app.clone();
     let spawned = std::thread::Builder::new()
         .name("prefs-load".into())
-        .spawn(move || {
-            let loaded = Paths::resolve()
-                .ok()
-                .and_then(|p| AppConfig::load(p.config_path()).ok())
-                .unwrap_or_default();
-            crate::logging::set_level(loaded.advanced.log_level);
-            let prefs = app.state::<Prefs>();
-            let (before, before_prefs) = (prefs.view(), prefs.prefs_view());
-            prefs.update(|s| *s = Stored::from_config(&loaded));
-            let after = prefs.view();
-            if after != before {
-                crate::chrome::apply_theme(&app, after.theme_pref);
-                let _ = SettingsChanged(after).emit(&app);
-            }
-            let after_prefs = prefs.prefs_view();
-            if after_prefs != before_prefs {
-                let _ = PrefsChanged(after_prefs).emit(&app);
-            }
-        });
+        .spawn(move || reload(&app));
     if let Err(error) = spawned {
-        eprintln!("TokenRadar: could not read the settings: {error}");
+        tracing::warn!(%error, "could not read the settings");
+    }
+}
+
+/// Reads `config.toml` again and applies what changed: log level, theme, the tray's language
+/// and every open window. Used at start and after "Delete all data".
+pub fn reload(app: &AppHandle) {
+    let loaded = Paths::resolve()
+        .ok()
+        .and_then(|p| AppConfig::load(p.config_path()).ok())
+        .unwrap_or_default();
+    crate::logging::set_level(loaded.advanced.log_level);
+    let prefs = app.state::<Prefs>();
+    let (before, before_prefs) = (prefs.view(), prefs.prefs_view());
+    prefs.update(|s| *s = Stored::from_config(&loaded));
+    let after = prefs.view();
+    if after != before {
+        crate::chrome::apply_theme(app, after.theme_pref);
+        crate::tray::send(app, crate::tray::TrayMsg::Locale(after.locale.into()));
+        let _ = SettingsChanged(after).emit(app);
+    }
+    let after_prefs = prefs.prefs_view();
+    if after_prefs != before_prefs {
+        let _ = PrefsChanged(after_prefs).emit(app);
     }
 }
 
@@ -241,10 +255,7 @@ pub fn set_locale(app: &AppHandle, pref: LocalePref) -> Result<SettingsView, Str
     let prefs = app.state::<Prefs>();
     prefs.update(|s| s.locale = pref);
     let view = prefs.view();
-    let locale = match view.locale {
-        UiLocale::En => Locale::En,
-        UiLocale::Tr => Locale::Tr,
-    };
+    let locale: Locale = view.locale.into();
     crate::tray::send(app, crate::tray::TrayMsg::Locale(locale));
     crate::core_bridge::with_core(app, |core| core.set_notify_locale(locale));
     let _ = SettingsChanged(view.clone()).emit(app);

@@ -28,8 +28,13 @@ struct CoreState(Arc<Mutex<Option<CoreHandle>>>);
 
 /// Starts the core in the background.
 pub fn start(app: &AppHandle) {
-    let state = Arc::default();
-    app.manage(CoreState(Arc::clone(&state)));
+    let state = if let Some(state) = app.try_state::<CoreState>() {
+        Arc::clone(&state.0)
+    } else {
+        let state = Arc::default();
+        app.manage(CoreState(Arc::clone(&state)));
+        state
+    };
     let app = app.clone();
     let spawned = std::thread::Builder::new()
         .name("core-start".into())
@@ -44,12 +49,12 @@ pub fn start(app: &AppHandle) {
                 tauri::async_runtime::spawn(forward(app, sub, state));
             }
             Err(error) => {
-                eprintln!("TokenRadar: could not start the core: {error}");
+                tracing::error!(%error, "could not start the core");
                 tray::send(&app, TrayMsg::CoreFailed);
             }
         });
     if let Err(error) = spawned {
-        eprintln!("TokenRadar: could not start the core thread: {error}");
+        tracing::error!(%error, "could not start the core thread");
     }
 }
 
@@ -66,17 +71,38 @@ pub fn shutdown(app: &AppHandle) {
     if let Some(handle) = handle {
         let report = handle.shutdown(SHUTDOWN_TIMEOUT);
         if !report.timed_out.is_empty() {
-            eprintln!(
-                "TokenRadar: core threads still running at exit: {:?}",
-                report.timed_out
-            );
+            tracing::warn!(threads = ?report.timed_out, "core threads still running at shutdown");
         }
     }
 }
 
+/// Stops the core and waits until the tray let go of the database: after this, its files
+/// can be deleted.
+pub fn stop(app: &AppHandle) {
+    shutdown(app);
+    let (done, wait) = std::sync::mpsc::channel();
+    tray::send(app, TrayMsg::CoreStopped(done));
+    if wait
+        .recv_timeout(std::time::Duration::from_secs(2))
+        .is_err()
+    {
+        tracing::warn!("the tray did not release the store in time");
+    }
+}
+
+/// Starts the core again, e.g. after the Claude Code directory changed. Blocks while the old
+/// core stops (at most [`SHUTDOWN_TIMEOUT`]); call it off the main thread.
+pub fn restart(app: &AppHandle) {
+    stop(app);
+    start(app);
+}
+
 fn open() -> Result<CoreHandle, Box<dyn std::error::Error>> {
     let paths = Paths::resolve()?;
-    let accounts = claude::discover(&[]);
+    let chosen = AppConfig::load(paths.config_path())
+        .ok()
+        .and_then(|c| c.general.claude_config_dir);
+    let accounts = claude::discover_configured(chosen.as_deref());
     // The first discovered account is the primary one: a v1 consent moves to it (ADR-033).
     let primary = accounts.first().map(|a| a.config_dir.clone());
     match config::migrate(paths.config_path(), primary.as_deref()) {
@@ -108,7 +134,7 @@ fn open() -> Result<CoreHandle, Box<dyn std::error::Error>> {
                 server_id: format!("tokenradar-app/{}", env!("CARGO_PKG_VERSION")),
             });
         }
-        Err(error) => eprintln!("TokenRadar: no IPC pipe: {error}"),
+        Err(error) => tracing::warn!(%error, "no IPC pipe"),
     }
     config.spool_dir = Some(paths.spool_dir());
     Ok(CoreRuntime::start(&config)?)

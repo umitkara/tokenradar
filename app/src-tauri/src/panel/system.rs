@@ -123,7 +123,7 @@ mod imp {
                     .and_then(|core| core.SetMemoryUsageTargetLevel(level))
             };
             if let Err(error) = result {
-                eprintln!("panel: memory target level: {error}");
+                tracing::warn!(%error, "panel: memory target level");
             }
         });
     }

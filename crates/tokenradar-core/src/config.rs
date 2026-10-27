@@ -554,6 +554,22 @@ pub fn save_api_consent(
     })
 }
 
+/// [`save_api_consent`] stamped with the current time (UTC, whole seconds).
+pub fn save_api_consent_now(
+    path: &Path,
+    config_dir: &Path,
+    granted: bool,
+) -> Result<(), ConfigError> {
+    let now = jiff::Timestamp::now()
+        .round(jiff::Unit::Second)
+        .unwrap_or_else(|_| jiff::Timestamp::now());
+    let at = now
+        .to_string()
+        .parse()
+        .unwrap_or_else(|_| unreachable!("jiff writes RFC 3339"));
+    save_api_consent(path, config_dir, granted, at)
+}
+
 /// Brings `path` up to [`SCHEMA_VERSION`]; `true` if the file was rewritten. A missing file
 /// stays missing. Newer schemas are left alone.
 ///

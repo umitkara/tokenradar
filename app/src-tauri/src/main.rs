@@ -12,7 +12,9 @@ mod logging;
 mod notify;
 mod panel;
 mod prefs;
+mod privacy;
 mod settings;
+mod sources;
 #[cfg(any(debug_assertions, feature = "spike"))]
 mod spike;
 mod tray;
@@ -40,6 +42,9 @@ fn main() {
             panel::report(panel::show(app));
         }))
         .plugin(tauri_plugin_notification::init())
+        // Used from Rust only; no window has a dialog or opener permission.
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_opener::init())
         // The HKCU `Run` entry is written only when the user turns autostart on (Step 11).
         .plugin(
             tauri_plugin_autostart::Builder::new()
@@ -52,6 +57,7 @@ fn main() {
             tray::create(app.handle())?;
             bridge.mount_events(app);
             prefs::init(app.handle());
+            sources::init(app.handle());
             notify::init(app.handle());
             // Fake limits replace the core entirely, so tray measurements never touch real data.
             #[cfg(any(debug_assertions, feature = "spike"))]

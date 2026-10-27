@@ -27,6 +27,28 @@ export const commands = {
 	setAutostart: (enabled: boolean) => typedError<boolean, string>(__TAURI_INVOKE("set_autostart", { enabled })),
 	/**  "Send test notification": shows one toast at once, ignoring mute and quiet hours. */
 	sendTestNotification: () => __TAURI_INVOKE<void>("send_test_notification"),
+	/**  Claude Code directories, the statusline bridge and the API consent. */
+	getDataSources: () => typedError<DataSourcesView, string>(__TAURI_INVOKE("get_data_sources")),
+	/**
+	 *  Plans installing or removing the statusline bridge; nothing is written until
+	 *  `apply_statusline` gets the returned token.
+	 */
+	planStatusline: (action: StatuslineAction) => typedError<StatuslinePlanView, StatuslineError>(__TAURI_INVOKE("plan_statusline", { action })),
+	/**  Applies the plan the user confirmed; returns the backup's path. */
+	applyStatusline: (token: number) => typedError<string | null, StatuslineError>(__TAURI_INVOKE("apply_statusline", { token })),
+	discardStatuslinePlan: () => __TAURI_INVOKE<void>("discard_statusline_plan"),
+	/**  The user's explicit yes (or withdrawal) for the usage API, stamped with the text version. */
+	setApiConsent: (granted: boolean) => typedError<DataSourcesView, string>(__TAURI_INVOKE("set_api_consent", { granted })),
+	/**  Folder picker for the Claude Code directory; `false` when cancelled. */
+	pickClaudeDir: () => typedError<boolean, PickError>(__TAURI_INVOKE("pick_claude_dir")),
+	resetClaudeDir: () => typedError<null, string>(__TAURI_INVOKE("reset_claude_dir")),
+	getStorage: () => typedError<StorageView, string>(__TAURI_INVOKE("get_storage")),
+	/**  Deletes TokenRadar's own data (never Claude Code's) and starts over. */
+	deleteAllData: () => typedError<null, string>(__TAURI_INVOKE("delete_all_data")),
+	/**  Save dialog, then the bundle; its path, or `None` when cancelled. */
+	createDiagnostics: () => typedError<string | null, string>(__TAURI_INVOKE("create_diagnostics")),
+	getAbout: () => __TAURI_INVOKE<AboutView>("get_about"),
+	openLink: (link: Link) => typedError<null, string>(__TAURI_INVOKE("open_link", { link })),
 	/**  The panel rendered its first snapshot; `height` is its content height in CSS pixels. */
 	panelReady: (height: number | null) => __TAURI_INVOKE<void>("panel_ready", { height }),
 	/**  The panel's content height changed. */
@@ -55,8 +77,27 @@ export const events = {
 };
 
 /* Types */
+export type AboutView = {
+	version: string,
+	repo_url: string,
+};
+
 /**  Row id in `accounts`. */
 export type AccountId = number;
+
+export type AccountStats = {
+	account_id: AccountId,
+	/**  Main sessions; subagents are part of their parent. */
+	sessions: number,
+	projects: number,
+	/**  Transcript files that still exist. */
+	files: number,
+	/**  Raw usage events kept (older ones are pruned, ADR-020). */
+	events: number,
+	/**  Claude Code's version in the most recent session. */
+	last_cc_version: string | null,
+	last_activity: Timestamp | null,
+};
 
 export type AccountView = {
 	id: AccountId,
@@ -67,6 +108,16 @@ export type AccountView = {
 	tier: string | null,
 	/**  From the usage API; `None` until it answered. */
 	extra_usage_enabled: boolean | null,
+};
+
+export type ApiConsentView = {
+	granted: boolean,
+	/**  RFC 3339, when the consent was given. */
+	granted_at: string | null,
+	/**  A consent for an older text no longer counts and is asked again. */
+	outdated: boolean,
+	/**  The poller's state; `None` while the core is not running. */
+	status: ApiStatusView | null,
 };
 
 /**  The API client's state as the panel shows it. */
@@ -81,6 +132,17 @@ export type ApiState =
 export type ApiStatusView = {
 	state: ApiState,
 	diagnostics: PollDiagnostics,
+};
+
+/**  One Claude Code directory the app watches. */
+export type ClaudeDirView = {
+	path: string,
+	/**  The panel shows this account. */
+	primary: boolean,
+	/**  Picked in the settings. */
+	chosen: boolean,
+	/**  `None` until the app indexed it. */
+	stats: AccountStats | null,
 };
 
 export type Confidence = "low" | "medium" | "high";
@@ -132,6 +194,28 @@ export type DataConfig = {
 	raw_retention_days?: number,
 	/**  Look for a new release on GitHub (Step 12). */
 	update_check?: boolean,
+};
+
+export type DataSourcesView = {
+	dirs: ClaudeDirView[],
+	/**  A picked directory that no longer exists. */
+	chosen_missing: string | null,
+	/**  `CLAUDE_CONFIG_DIR`, shown to explain where a directory came from. */
+	env_dir: string | null,
+	statusline: StatuslineView,
+	/**  Last statusline reading the app received. */
+	statusline_last_seen: Timestamp | null,
+	/**  The CLI could not be found, so the bridge cannot be installed from here. */
+	cli_missing: boolean,
+	api: ApiConsentView,
+};
+
+export type DiffKind = "header" | "hunk" | "added" | "removed" | "context";
+
+/**  One line of a unified diff, classified for colouring. */
+export type DiffLine = {
+	kind: DiffKind,
+	text: string,
 };
 
 /**  Which parser reported [`CoreEvent::SchemaDrift`]. */
@@ -212,6 +296,9 @@ export type LimitView = {
 	/**  `None` for estimates and when no rate can be derived. */
 	projection: Projection | null,
 };
+
+/**  The only pages the app opens (ADR-013: no other destination). */
+export type Link = "repo" | "releases" | "issues" | "license";
 
 /**  A Claude Code process that is running right now. */
 export type LiveSession = {
@@ -294,6 +381,10 @@ export type PanelSnapshot = {
 	statusline: StatuslineState,
 	generated_at: Timestamp,
 };
+
+export type PickError = { error: "not_a_directory" } | 
+/**  Neither `projects\` nor `settings.json` inside: probably the wrong folder. */
+{ error: "not_claude_dir" } | { error: "io"; message: string };
 
 /**  Counters for `doctor`. */
 export type PollDiagnostics = {
@@ -426,9 +517,51 @@ export type Source = "statusline" | "api" |
 /**  Derived locally; never persisted to `limit_snapshots`. */
 "estimate" | "codex_log";
 
+export type StatuslineAction = "install" | 
+/**  Install without keeping the previous command. */
+"install_no_chain" | "uninstall";
+
+/**  Why a statusline change failed; the window words it. */
+export type StatuslineError = { error: "no_directory" } | { error: "cli_missing" } | 
+/**  `settings.json` is not a JSON object; nothing was written. */
+{ error: "invalid_settings" } | 
+/**  The file changed after the diff was shown; nothing was written. */
+{ error: "changed_meanwhile" } | 
+/**  The plan was already applied or replaced by a newer one. */
+{ error: "stale_plan" } | { error: "io"; message: string };
+
+/**  A planned `settings.json` change, shown before anything is written. */
+export type StatuslinePlanView = { outcome: "ready"; 
+/**  Pass back to `apply_statusline`; only this plan can be applied. */
+token: number; settings_path: string; diff: DiffLine[]; 
+/**  Install: the previous command keeps running (chained). */
+chained_command: string | null; 
+/**  Install: Git Bash would drop the backslashes of the chained command. */
+chained_mangled: boolean; 
+/**  Uninstall: the previous value comes back. */
+restores_previous: boolean } | { outcome: "already_installed" } | { outcome: "not_installed" };
+
 export type StatuslineState = {
 	/**  `None`: never seen, the bridge is probably not installed. */
 	last_seen: Timestamp | null,
+};
+
+export type StatuslineView = 
+/**  No Claude Code directory: nothing to install into. */
+{ state: "no_directory" } | { state: "not_installed"; 
+/**  The user's own statusline command, kept and chained by default. */
+current_command: string | null } | { state: "installed"; 
+/**  Chained: this command still runs before or after TokenRadar's line. */
+chained_command: string | null } | 
+/**  TokenRadar runs as the statusline but the app did not install it (CLI, by hand). */
+{ state: "installed_elsewhere" };
+
+export type StorageView = {
+	data_dir: string,
+	/**  Database with its WAL, in bytes. */
+	db_bytes: number,
+	logs_bytes: number,
+	portable: boolean,
 };
 
 /**  The user's theme choice; `System` follows the operating system's app theme. */

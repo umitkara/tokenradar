@@ -256,7 +256,7 @@ mod imp {
                 ..std::mem::zeroed()
             };
             if RegisterClassW(&raw const wc) == 0 {
-                eprintln!("TokenRadar: tray environment watcher unavailable (class)");
+                tracing::warn!("tray environment watcher unavailable (class)");
                 return;
             }
             // A hidden top-level window: broadcasts reach it, message-only windows miss them.
@@ -275,7 +275,7 @@ mod imp {
                 std::ptr::null(),
             );
             if hwnd.is_null() {
-                eprintln!("TokenRadar: tray environment watcher unavailable (window)");
+                tracing::warn!("tray environment watcher unavailable (window)");
                 return;
             }
             let mut msg: MSG = std::mem::zeroed();
