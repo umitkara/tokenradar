@@ -2,8 +2,8 @@ import "../../lib/styles/tokens.css";
 import "../../lib/styles/themes.css";
 import "../../lib/styles/base.css";
 import { mount } from "svelte";
-import { settingsCatalog } from "../../lib/i18n/catalogs";
 import { boot } from "../../lib/settings.svelte";
+import { settingsCatalog } from "./catalog";
 import Settings from "./Settings.svelte";
 
 const target = document.getElementById("app");

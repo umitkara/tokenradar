@@ -1,7 +1,7 @@
 import { render } from "svelte/server";
 import { beforeEach, describe, expect, it } from "vitest";
+import { galleryCatalog } from "../../pages/gallery/catalog";
 import { sessions as fixtures, limit, weekly } from "../../pages/gallery/fixtures";
-import { galleryCatalog } from "../i18n/catalogs";
 import { initI18n } from "../i18n/i18n.svelte";
 import type { SessionShareView } from "../ipc/bindings";
 import LimitBar from "./LimitBar.svelte";

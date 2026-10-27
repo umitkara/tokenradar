@@ -1,7 +1,7 @@
 import { render } from "svelte/server";
 import { describe, expect, it } from "vitest";
-import { settingsCatalog } from "../../lib/i18n/catalogs";
 import { initI18n } from "../../lib/i18n/i18n.svelte";
+import { settingsCatalog } from "./catalog";
 import Settings from "./Settings.svelte";
 
 describe("Settings", () => {
