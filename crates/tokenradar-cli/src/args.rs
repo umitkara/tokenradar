@@ -19,6 +19,8 @@ pub enum Command {
     Uninstall {
         yes: bool,
         config_dir: Option<PathBuf>,
+        /// Every account `config.toml` records as installed (the uninstaller uses it).
+        all: bool,
     },
     Status {
         json: bool,
@@ -33,6 +35,10 @@ pub enum Command {
     Doctor {
         out: Option<PathBuf>,
     },
+    /// Puts the CLI's directory on the user's `PATH` (`add`) or takes it off.
+    Path {
+        add: bool,
+    },
 }
 
 #[derive(Default)]
@@ -44,6 +50,7 @@ struct Flags {
     chain: bool,
     no_chain: bool,
     yes: bool,
+    all: bool,
     config_dir: Option<PathBuf>,
     out: Option<PathBuf>,
 }
@@ -61,6 +68,7 @@ pub fn parse(mut parser: lexopt::Parser) -> Result<Command, lexopt::Error> {
             Long("chain") => f.chain = true,
             Long("no-chain") => f.no_chain = true,
             Short('y') | Long("yes") => f.yes = true,
+            Long("all") => f.all = true,
             Long("config-dir") => f.config_dir = Some(parser.value()?.into()),
             Short('o') | Long("out") => f.out = Some(parser.value()?.into()),
             Value(v) if words.len() < 2 => words.push(v.string()?),
@@ -87,14 +95,22 @@ pub fn parse(mut parser: lexopt::Parser) -> Result<Command, lexopt::Error> {
                 config_dir: f.config_dir.take(),
             }
         }
-        ["statusline", "uninstall"] => Command::Uninstall {
-            yes: f.yes,
-            config_dir: f.config_dir.take(),
-        },
+        ["statusline", "uninstall"] => {
+            if f.all && f.config_dir.is_some() {
+                return Err("--all and --config-dir exclude each other".into());
+            }
+            Command::Uninstall {
+                yes: f.yes,
+                config_dir: f.config_dir.take(),
+                all: f.all,
+            }
+        }
         ["status"] => Command::Status { json: f.json },
         ["limits"] => Command::Limits { json: f.json },
         ["sessions"] => Command::Sessions { json: f.json },
         ["doctor"] => Command::Doctor { out: f.out.take() },
+        ["path", "add"] => Command::Path { add: true },
+        ["path", "remove"] => Command::Path { add: false },
         [..] => return Err(format!("unknown command '{}'", words.join(" ")).into()),
     };
     check_flags(&command, &f)?;
@@ -103,14 +119,15 @@ pub fn parse(mut parser: lexopt::Parser) -> Result<Command, lexopt::Error> {
 
 /// Rejects flags the command does not take, so a typo is not silently ignored.
 fn check_flags(command: &Command, f: &Flags) -> Result<(), lexopt::Error> {
-    let (json, chain, no_chain, yes, dir, out) = match command {
-        Command::Statusline { .. } => (false, true, false, false, false, false),
-        Command::Install { .. } => (false, true, true, true, true, false),
-        Command::Uninstall { .. } => (false, false, false, true, true, false),
+    let (json, chain, no_chain, yes, dir, out, all) = match command {
+        Command::Statusline { .. } => (false, true, false, false, false, false, false),
+        Command::Install { .. } => (false, true, true, true, true, false, false),
+        Command::Uninstall { .. } => (false, false, false, true, true, false, true),
         Command::Status { .. } | Command::Limits { .. } | Command::Sessions { .. } => {
-            (true, false, false, false, false, false)
+            (true, false, false, false, false, false, false)
         }
-        Command::Doctor { .. } => (false, false, false, false, false, true),
+        Command::Doctor { .. } => (false, false, false, false, false, true, false),
+        Command::Path { .. } => (false, false, false, false, false, false, false),
         Command::Help | Command::Version => return Ok(()),
     };
     let used = [
@@ -120,6 +137,7 @@ fn check_flags(command: &Command, f: &Flags) -> Result<(), lexopt::Error> {
         (f.yes && !yes, "--yes"),
         (f.config_dir.is_some() && !dir, "--config-dir"),
         (f.out.is_some() && !out, "--out"),
+        (f.all && !all, "--all"),
     ];
     match used.iter().find(|(bad, _)| *bad) {
         Some((_, flag)) => Err(format!("{flag} does not apply to this command").into()),
@@ -176,6 +194,15 @@ mod tests {
             Ok(Command::Uninstall {
                 yes: true,
                 config_dir: None,
+                all: false,
+            })
+        );
+        assert_eq!(
+            parse_args(&["statusline", "uninstall", "--all", "--yes"]),
+            Ok(Command::Uninstall {
+                yes: true,
+                config_dir: None,
+                all: true,
             })
         );
         assert_eq!(
@@ -189,6 +216,14 @@ mod tests {
                 out: Some("D:/x.zip".into())
             })
         );
+        assert_eq!(
+            parse_args(&["path", "add"]),
+            Ok(Command::Path { add: true })
+        );
+        assert_eq!(
+            parse_args(&["path", "remove"]),
+            Ok(Command::Path { add: false })
+        );
     }
 
     #[test]
@@ -201,5 +236,9 @@ mod tests {
         assert!(parse_args(&["--frobnicate"]).is_err());
         assert!(parse_args(&["status", "--out", "x.zip"]).is_err());
         assert!(parse_args(&["doctor", "--json"]).is_err());
+        assert!(parse_args(&["path"]).is_err());
+        assert!(parse_args(&["path", "add", "--yes"]).is_err());
+        assert!(parse_args(&["statusline", "install", "--all"]).is_err());
+        assert!(parse_args(&["statusline", "uninstall", "--all", "--config-dir", "D:/c"]).is_err());
     }
 }

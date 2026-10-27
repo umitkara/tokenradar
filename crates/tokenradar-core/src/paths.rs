@@ -26,10 +26,8 @@ impl Paths {
     /// next to it, the platform's per-user directories otherwise.
     pub fn resolve() -> Result<Self, PathsError> {
         let exe = std::env::current_exe().map_err(PathsError::CurrentExe)?;
-        if let Some(dir) = exe.parent()
-            && dir.join(PORTABLE_MARKER).is_file()
-        {
-            return Ok(Self::portable(dir));
+        if let Some(dir) = exe.parent().and_then(portable_root) {
+            return Ok(Self::portable(&dir));
         }
         Self::platform()
     }
@@ -96,6 +94,22 @@ impl Paths {
     }
 }
 
+/// The portable root for an executable in `exe_dir`: the directory itself when the marker is
+/// there, or its parent for the CLI in the portable zip's `bin` (the marker sits next to the
+/// app, one level up).
+fn portable_root(exe_dir: &Path) -> Option<PathBuf> {
+    if exe_dir.join(PORTABLE_MARKER).is_file() {
+        return Some(exe_dir.to_path_buf());
+    }
+    let is_bin = exe_dir
+        .file_name()
+        .is_some_and(|name| name.eq_ignore_ascii_case("bin"));
+    exe_dir
+        .parent()
+        .filter(|root| is_bin && root.join(PORTABLE_MARKER).is_file())
+        .map(Path::to_path_buf)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -113,6 +127,24 @@ mod tests {
         assert_eq!(paths.db_path(), exe_dir.join("data").join("tokenradar.db"));
         assert_eq!(paths.logs_dir(), exe_dir.join("data").join("logs"));
         assert_eq!(paths.spool_dir(), exe_dir.join("data").join("spool"));
+    }
+
+    #[test]
+    fn the_marker_is_found_next_to_the_exe_or_above_bin() {
+        let root = tempfile::tempdir().expect("temp dir");
+        let bin = root.path().join("bin");
+        std::fs::create_dir(&bin).expect("bin");
+        assert_eq!(portable_root(root.path()), None);
+        assert_eq!(portable_root(&bin), None);
+
+        std::fs::write(root.path().join(PORTABLE_MARKER), "").expect("marker");
+        assert_eq!(portable_root(root.path()), Some(root.path().to_path_buf()));
+        assert_eq!(portable_root(&bin), Some(root.path().to_path_buf()));
+
+        // Only `bin` looks one level up.
+        let other = root.path().join("tools");
+        std::fs::create_dir(&other).expect("tools");
+        assert_eq!(portable_root(&other), None);
     }
 
     #[test]

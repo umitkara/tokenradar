@@ -63,8 +63,18 @@ install-not-interactive = Terminal değil; sormadan uygulamak için --yes verin.
 uninstall-not-installed = Statusline köprüsü { $path } içinde kurulu değil.
 uninstall-done = Kaldırıldı. Yedek: { $backup }
 uninstall-restored = Önceki statusline ayarınız geri yüklendi.
+uninstall-none = TokenRadar'ın statusline köprüsü hiçbir yerde kurulu değil.
 settings-changed-meanwhile = { $path } beklerken değişti; hiçbir şey yazılmadı. Komutu yeniden çalıştırın.
 settings-invalid = { $path } geçerli bir JSON nesnesi değil; hiçbir şey değiştirilmedi.
+
+## path add / remove
+
+path-added = { $path } kullanıcı PATH'inize eklendi. Yeni terminaller tokenradar'ı bulur.
+path-already = { $path } zaten kullanıcı PATH'inizde.
+path-removed = { $path } kullanıcı PATH'inizden kaldırıldı.
+path-absent = { $path } kullanıcı PATH'inizde değil.
+path-too-long = Kullanıcı PATH'iniz { $length } karakter olurdu; bu, Windows araçlarının güvenle işleyebildiği { $max } sınırını aşıyor. Hiçbir şey değiştirilmedi. { $path } dizinini elle ekleyin ya da PATH'inizi kısaltın.
+path-unsupported = Bu komut yalnızca Windows'ta kullanılabilir.
 
 ## Hatalar ve yardım
 
@@ -80,8 +90,9 @@ cli-help =
       sessions [--json]                   Çalışan Claude Code oturumları
       statusline [--chain]                Claude Code statusline'ı (JSON'u stdin'den okur)
       statusline install [--chain|--no-chain] [--yes] [--config-dir <DİZİN>]
-      statusline uninstall [--yes] [--config-dir <DİZİN>]
+      statusline uninstall [--yes] [--config-dir <DİZİN> | --all]
       doctor [--out <ZIP>]                Sorun bildirirken paylaşılacak tanılama paketi
+      path add|remove                     Bu tokenradar'ı kullanıcı PATH'inize ekler ya da kaldırır
     Seçenekler:
       -h, --help       Yardımı göster
       -V, --version    Sürümü göster

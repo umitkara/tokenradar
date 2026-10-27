@@ -63,8 +63,18 @@ install-not-interactive = Not a terminal; pass --yes to apply without asking.
 uninstall-not-installed = The statusline bridge is not installed in { $path }.
 uninstall-done = Removed. Backup: { $backup }
 uninstall-restored = Your previous statusline setting was restored.
+uninstall-none = TokenRadar's statusline bridge is not installed anywhere.
 settings-changed-meanwhile = { $path } changed while waiting; nothing was written. Run the command again.
 settings-invalid = { $path } is not a valid JSON object; nothing was changed.
+
+## path add / remove
+
+path-added = Added { $path } to your user PATH. New terminals will find tokenradar.
+path-already = { $path } is already on your user PATH.
+path-removed = Removed { $path } from your user PATH.
+path-absent = { $path } is not on your user PATH.
+path-too-long = Your user PATH would be { $length } characters long, over the { $max } that Windows tools handle safely; nothing was changed. Add { $path } by hand or shorten your PATH.
+path-unsupported = This command is only available on Windows.
 
 ## Errors and help
 
@@ -80,8 +90,9 @@ cli-help =
       sessions [--json]                   Running Claude Code sessions
       statusline [--chain]                Claude Code statusline (reads JSON from stdin)
       statusline install [--chain|--no-chain] [--yes] [--config-dir <DIR>]
-      statusline uninstall [--yes] [--config-dir <DIR>]
+      statusline uninstall [--yes] [--config-dir <DIR> | --all]
       doctor [--out <ZIP>]                Diagnostics bundle to share when reporting a problem
+      path add|remove                     Put this tokenradar on your user PATH, or take it off
     Options:
       -h, --help       Print help
       -V, --version    Print version

@@ -94,6 +94,30 @@ pub fn uninstall(ctx: &Context, yes: bool, config_dir: Option<PathBuf>) -> Outco
     Ok(())
 }
 
+/// Removes the bridge from every Claude Code directory `config.toml` records as installed; the
+/// uninstaller runs this. Nothing recorded is a success.
+pub fn uninstall_all(ctx: &Context, yes: bool) -> Outcome {
+    let dirs: Vec<PathBuf> = ctx
+        .config
+        .accounts
+        .iter()
+        .filter(|a| a.statusline.installed)
+        .map(|a| a.config_dir.clone())
+        .collect();
+    if dirs.is_empty() {
+        println!("{}", ctx.l10n.msg("uninstall-none"));
+        return Ok(());
+    }
+    // Every directory is tried, even after one failed.
+    let mut result = Ok(());
+    for dir in dirs {
+        if uninstall(ctx, yes, Some(dir)).is_err() {
+            result = Err(());
+        }
+    }
+    result
+}
+
 /// Claude Code's directory and the app's config file.
 fn locations(ctx: &Context, config_dir: Option<PathBuf>) -> Result<(PathBuf, PathBuf), ()> {
     let l = &ctx.l10n;
