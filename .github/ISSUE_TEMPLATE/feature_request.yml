@@ -1,0 +1,19 @@
+name: Feature request
+description: An idea for TokenRadar.
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: Check the roadmap in the README first; the feature may already be planned for a later version.
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What are you trying to do, and what gets in the way?
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: The idea
+      description: How could TokenRadar help? Mockups and examples are welcome.

@@ -1,0 +1,91 @@
+name: Release
+
+# A `v*` tag builds the installer and the portable zip, signs the updater artifacts and opens a
+# draft release. Publishing the draft is a manual step (Step 12). A manual run builds the same
+# assets as a workflow artifact without creating a release.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: Build and sign (Windows)
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+
+      # No build cache: release binaries come from a clean build only.
+      - name: Install Rust toolchain
+        run: rustup toolchain install
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install JS dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check the tag against the version
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        run: |
+          $meta = cargo metadata --format-version 1 --no-deps --locked | ConvertFrom-Json
+          $version = ($meta.packages | Where-Object name -eq 'tokenradar-app').version
+          if ("v$version" -ne $env:GITHUB_REF_NAME) {
+            throw "tag $env:GITHUB_REF_NAME does not match the version $version"
+          }
+
+      - name: Format, lint and test
+        run: pnpm check:all
+
+      - name: NSIS template matches tauri-cli
+        run: node scripts/check-nsis-template.mjs
+
+      - name: Build the installer with updater artifacts
+        run: pnpm tauri build --config src-tauri/tauri.release.conf.json
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+
+      - name: Bundle budget
+        run: node scripts/check-bundle-size.mjs
+
+      - name: Portable zip
+        shell: pwsh
+        run: ./scripts/package-portable.ps1
+
+      # Verifies the signature against the shipped public key, then writes latest.json,
+      # SHA256SUMS.txt and the release notes.
+      - name: Release assets
+        run: node scripts/release-assets.mjs
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release-assets
+          path: target/release/bundle/release/
+          if-no-files-found: error
+
+      - name: Draft release
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $dir = 'target/release/bundle/release'
+          $assets = Get-ChildItem $dir -File | Where-Object Name -ne 'notes.md' | ForEach-Object FullName
+          $version = $env:GITHUB_REF_NAME.TrimStart('v')
+          gh release create $env:GITHUB_REF_NAME --draft --verify-tag `
+            --title "TokenRadar $version" --notes-file "$dir/notes.md" @assets

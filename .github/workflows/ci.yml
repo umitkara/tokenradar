@@ -42,12 +42,32 @@ jobs:
       - name: Format, lint and test
         run: pnpm check:all
 
+      - name: NSIS template matches tauri-cli
+        run: node scripts/check-nsis-template.mjs
+
+      # The installer without updater artifacts: no signing key needed (release.yml signs).
       - name: Release build
-        run: pnpm tauri build --no-bundle
+        run: pnpm tauri build
 
       # The release build above ran `pnpm build`, so app/dist holds the production bundle.
       - name: Bundle budget
         run: node scripts/check-bundle-size.mjs
+
+      - name: Portable zip
+        shell: pwsh
+        run: ./scripts/package-portable.ps1
+
+  audit:
+    name: JS advisories
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: pnpm audit
+        run: pnpm audit --audit-level high
 
   deny:
     name: Dependency policy

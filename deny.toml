@@ -11,6 +11,12 @@ all-features = false
 [advisories]
 version = 2
 yanked = "deny"
+ignore = [
+    # paste is unmaintained (archived, no known vulnerability). It is a compile-time macro crate
+    # pulled in by tauri and specta, so nothing of it runs in the shipped binaries. Drop this when
+    # they move to a fork (Step 12).
+    { id = "RUSTSEC-2024-0436", reason = "unmaintained compile-time macro crate from tauri and specta; no safe upgrade" },
+]
 
 [licenses]
 version = 2
