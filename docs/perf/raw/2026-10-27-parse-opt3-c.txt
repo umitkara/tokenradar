@@ -1,0 +1,19 @@
+dataset: 1376 files, 3.06 GiB
+warm-up read: 5.76 s (544 MiB/s)
+
+| Strategy | Threads | Wall s (median) | Wall s (min–max) | MiB/s | lines/s | CPU s | Peak WS MiB | Peak private MiB |
+|---|---|---|---|---|---|---|---|---|
+| C | 1 | 1.23 | 1.21–1.24 | 2539 | 282652 | 1.22 | 18.6 | 15.7 |
+| C | 4 | 0.36 | 0.35–0.39 | 8625 | 960083 | 1.38 | 21.7 | 20.5 |
+
+lines=348510 bytes=3283048458 io_errors=0
+parse errors C: 0
+all runs agree on token totals: yes (fingerprint 43649f039d0916a0)
+single-thread runs agree on metadata: yes (fingerprint a8c23e8b2da1b14a)
+metadata of tied duplicates differs between merge orders:
+  C × 1: a8c23e8b2da1b14a
+  C × 1: a8c23e8b2da1b14a
+  C × 1: a8c23e8b2da1b14a
+  C × 4: 115236cf2b5e1a7d
+  C × 4: a8c23e8b2da1b14a
+  C × 4: 50d5ef50d4d4fc29

@@ -30,7 +30,7 @@
 - **Alternatif:** Klasik pencere uygulaması. Reddedildi, çünkü arka planda çalışmadan % geçmişi kaydı ve bildirim mümkün değil.
 
 ### ADR-004 — Tek uygulama süreci + ayrı CLI binary'si
-**Durum:** Kabul (Adım 02 performans kapısına bağlı)
+**Durum:** Kabul. Adım 02 kapısı geçildi (2026-10-27): bkz. ADR-023.
 - **Karar:** `tokenradar-app.exe` tray, çekirdek ve pencereleri tek süreçte barındırır. `tokenradar.exe` ise ayrı ve hafif bir konsol CLI'ıdır. Çekirdek Tauri'den bağımsız bir crate olduğu için ileride headless bir daemon'a bölünebilir.
 - **Kapı:** Adım 02'de ölçülür: tüm pencereler yok edildikten sonra WebView2 süreçleri sonlanıyor mu ve RAM ≤ 30 MB'a dönüyor mu? **Dönmüyorsa yedek plan** devreye girer: UI, istek üzerine başlatılan ayrı bir süreç olur (`tokenradar-app --ui`) ve çekirdekle IPC üzerinden konuşur.
 - **Alternatif:** Baştan ayrık daemon + UI süreci. Daha güçlü bir bellek garantisi verir ama ~%20-30 ek karmaşıklık getirir. Kanıt olmadan bu bedeli ödemiyoruz.
@@ -142,3 +142,35 @@
   - **rustfmt yalnızca stable ayarlarla çalışır:** `rustfmt.toml` içinde yalnızca `max_width = 100` bulunur. Crate bazlı import gruplama bir konvansiyondur, araçla zorlanmaz. `imports_granularity` stable'a geçtiğinde geri eklenir.
 - **Bedel:** Rust sürüm yükseltmeleri elle yapılır. TS 7'nin hız kazancından şimdilik yararlanılmıyor. Import biçimi kod incelemesine kalıyor.
 - **Alternatifler:** `channel = "stable"` (bakımı daha az, ama CI sürprizleri olabilir); biçimlendirme için tarihli nightly toolchain (ayar zorlanır ama ikinci bir toolchain gerekir). İkisi de kullanıcıyla değerlendirildi ve reddedildi.
+
+### ADR-023 — WebView2 yaşam döngüsü kapısı geçildi: tek süreç modeli korunur
+**Durum:** Kabul (2026-10-27, Adım 02)
+- **Bağlam:** ADR-004, tek süreç modelini bir ölçüm koşuluna bağlamıştı. Tüm pencereler yok edildiğinde WebView2 süreçleri sonlanmalı ve toplam bellek ≤ 30 MB'a dönmeliydi. Adım 02'de `TOKENRADAR_SPIKE=lifecycle` senaryosu release derlemede 3 kez çalıştırıldı (`docs/perf/2026-10-27-spike.md`).
+- **Ölçüm (medyan, private working set, tüm süreç ağacı):**
+  - Yalnızca tray: 1,6 MB.
+  - Panel açık: 90,8 MB, 7 süreç.
+  - Panel yok edildikten 60 s sonra: 3,6 MB, 1 süreç.
+  - Tüm `msedgewebview2` süreçleri `destroy()` çağrısından ~0,4 s sonra çıkıyor (9 ölçümün tamamında ≤ 0,5 s).
+  - Soğuk açılış: ilk frame'e kadar 345 ms. Sıcak açılış: 17 ms. İkinci pencerenin ek maliyeti: +18 MB.
+- **Karar:**
+  - ADR-004'teki tek süreç modeli **onaylandı**. Ayrık UI süreci (`tokenradar-app --ui`) yedek planı uygulanmaz ve prototipi yazılmadı.
+  - Pencere yaşam döngüsü architecture.md §2'deki gibi kalır: `warm_ttl` süresi dolunca webview `destroy()` edilir. Ek bir çare (ortamı serbest bırakma, `--renderer-process-limit`) gerekmez.
+  - Gizli ama sıcak pencerede `ICoreWebView2_19::SetMemoryUsageTargetLevel(Low)` working set'i ~14 MB düşürüyor, private bytes'ı ise değiştirmiyor. `controller.SetIsVisible(false)` tek başına ölçülebilir bir fark yaratmıyor. Kısa `warm_ttl` (60 s) asıl kazancı zaten sağladığı için bu ayarlar zorunlu tutulmaz. Adım 10 isterse Low seviyesini gizlemede kullanabilir.
+- **Bedel:** Sıcak tutulan panel `warm_ttl` boyunca ~90 MB kullanır. Bu, tray bütçesinin değil "panel açık" bütçesinin kapsamındadır.
+- **Alternatif:** Ayrık UI süreci. Kanıt gereksiz olduğunu gösterdi; ~%20-30 ek karmaşıklıktan kaçınıldı.
+
+### ADR-024 — JSONL parse stratejisi: `memmem` ön filtresi + tipli, ödünç alan `serde_json`
+**Durum:** Kabul (2026-10-27, Adım 02)
+- **Bağlam:** Adım 02'de dört strateji gerçek veri setinde (5.190 dosya, 11,4 GiB, 1,27 milyon satır) ve sentetik bir criterion bench'inde karşılaştırıldı (`docs/perf/2026-10-27-spike.md`). Dördü de birebir aynı tekilleştirilmiş olay sayısını ve token toplamlarını verdi.
+  - A, `serde_json::Value`: 4 thread'de soğuk diskte 6,8 s.
+  - B, tipli ve ödünç alan: 4,1 s.
+  - C, B + ön filtre: 3,8 s.
+  - D, C + `simd-json`: 3,8 s.
+  - Önbelleğe sığan 3 GiB alt kümede tek thread hızları: A 661, B 1.786, C 2.537, D 2.713 MiB/s.
+- **Karar:**
+  - **Strateji C** kullanılır. Satır `memchr::memmem` ile `"type":"assistant"` ve `"usage":` için ön filtrelenir. Geçen satırlar ödünç alan tipli struct'lara `serde_json` ile deserialize edilir. `content` gibi bilinmeyen alanlar serde tarafından materyalize edilmeden atlanır.
+  - String alanları `Cow<'a, str>` olarak ödünç alınır. `Option<Cow<'a, str>>` serde'de her zaman allocate ettiği için `Option` içinde ödünç alan bir newtype kullanılır. Windows'ta `cwd` kaçışlı ters bölü içerdiği için `&'a str` kullanılamaz.
+  - **Worker sayısı `min(4, çekirdek/2)`** olarak kalır. Arka plan önceliğinde (`THREAD_MODE_BACKGROUND_BEGIN`) disk okuması darboğazdır: 1 thread 16,1 s, 4 thread 12,6 s. Daha fazla thread kazanç getirmez.
+  - `simd-json` **reddedildi.** Gerçek veride C ile farkı gürültü düzeyinde. Buna karşılık ek bir bağımlılık, satır başına kopya ve thread başına +8-20 MiB tepe bellek getiriyor.
+- **Bedel:** C'nin ön filtresi kompakt JSON biçimine (`"type":"assistant"`, boşluksuz) dayanır. Claude Code biçimi değiştirirse filtre her satırı reddeder. Adım 04'te bunu yakalayan bir test (fixture + "hiç olay yok" uyarısı) yazılmalı.
+- **Alternatifler:** B (ön filtresiz, ~%6 daha yavaş ama biçimden bağımsız), D (yukarıda). Ölçülen ilk indeksleme süresi yalnızca parse içindir. SQLite yazma maliyeti Adım 04'te ölçülür.

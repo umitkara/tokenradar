@@ -1,0 +1,27 @@
+dataset: 5190 files, 11.39 GiB, uncached, background mode
+
+| Strategy | Threads | Wall s (median) | Wall s (min–max) | MiB/s | lines/s | CPU s | Peak WS MiB | Peak private MiB |
+|---|---|---|---|---|---|---|---|---|
+| C | 1 | 16.14 | 15.62–16.46 | 723 | 78994 | 3.33 | 60.0 | 66.9 |
+| D | 1 | 17.14 | 16.58–17.58 | 681 | 74375 | 3.42 | 62.1 | 69.2 |
+| C | 4 | 12.63 | 12.59–12.81 | 923 | 100916 | 3.39 | 120.4 | 166.4 |
+| D | 4 | 12.46 | 12.39–12.90 | 936 | 102276 | 3.55 | 128.2 | 174.9 |
+
+lines=1274565 bytes=12228718827 io_errors=0
+parse errors C: 0
+parse errors D: 0
+all runs agree on token totals: yes (fingerprint 696c5f183d41ce41)
+single-thread runs agree on metadata: yes (fingerprint 541154b519512f57)
+metadata of tied duplicates differs between merge orders:
+  C × 1: 541154b519512f57
+  C × 1: 541154b519512f57
+  C × 1: 541154b519512f57
+  D × 1: 541154b519512f57
+  D × 1: 541154b519512f57
+  D × 1: 541154b519512f57
+  C × 4: 27fda8aab5782dc9
+  C × 4: 46acdd9d405ab7ef
+  C × 4: 6eadf6329a918b72
+  D × 4: ddb05387686beecd
+  D × 4: a67e55b9a23d4951
+  D × 4: a67e55b9a23d4951

@@ -9,10 +9,10 @@
 | Durum | Bütçe | Not |
 |---|---|---|
 | Yalnızca tray (pencere yok, indeksleme bitmiş) | **≤ 25 MB** | Ana hedef. "Görünmez ayak izi" vaadi bu değere dayanıyor. |
-| Tray + ilk indeksleme sürüyor | ≤ 120 MB (tepe) | İndeksleme bitince ≤ 25 MB'a dönmeli |
+| Tray + ilk indeksleme sürüyor | ≤ 120 MB (tepe) | İndeksleme bitince ≤ 25 MB'a dönmeli. Adım 02: 22 MiB'lık satırlar biriktirilirse 4 worker ~165 MiB'a çıkıyor. Uzun satırlar biriktirilmeden atlanmalı (Adım 04). |
 | Panel açık | ≤ 130 MB | WebView2 süreçleri dahil |
 | Ana pencere açık (v0.2) | ≤ 180 MB | Büyük listeler sanallaştırılmış |
-| Tüm pencereler kapandıktan `warm_ttl + 10 s` sonra | ≤ 30 MB | **Adım 02'de ölçülecek kritik varsayım** (WebView2 süreçleri sonlanıyor mu?) |
+| Tüm pencereler kapandıktan `warm_ttl + 10 s` sonra | ≤ 30 MB | **Adım 02'de doğrulandı:** WebView2 süreçleri `destroy()` sonrası ~0,4 s'de çıkıyor, 60 s sonra 3,6 MB (ADR-023). |
 | Widget açık (v0.3) | Tray + ≤ 45 MB | Aşılırsa native çizim yedek planı devreye girer (ADR-011) |
 
 ## CPU
@@ -39,9 +39,9 @@
 
 | İşlem | Bütçe |
 |---|---|
-| İlk indeksleme — referans veri seti, soğuk disk önbelleği | ≤ 60 s (Adım 02 ölçümüne göre revize edilebilir) |
+| İlk indeksleme — referans veri seti, soğuk disk önbelleği | ≤ 60 s. Adım 02'de yalnızca parse 12,6 s ölçüldü (arka plan önceliği, 4 worker). SQLite yazımıyla birlikte Adım 04'te doğrulanır. |
 | İlk indeksleme — kullanılabilir ilk görünüm (mevcut pencere + bu hafta) | ≤ 5 s (en yeni dosyalardan başlanır) |
-| Yeniden başlatma sonrası artımlı tarama (değişmemiş 5.200 dosya) | ≤ 500 ms (yalnızca metadata/stat) |
+| Yeniden başlatma sonrası artımlı tarama (değişmemiş 5.200 dosya) | ≤ 500 ms (yalnızca metadata/stat). Adım 02: dizin yürüyüşü + `DirEntry::metadata` 177 ms. |
 
 ## Disk ve boyut
 
@@ -64,7 +64,7 @@
 
 ## Ölçüm yöntemi
 
-- **Bellek:** `scripts/measure-memory.ps1`, `tokenradar-app` sürecini ve **tüm alt süreçlerini** (`msedgewebview2.exe` ağacı) bulur ve `PrivateMemorySize64` toplamını raporlar. Senaryo adımları: başlat → 60 s bekle → paneli aç → 10 s → paneli kapat → `warm_ttl + 10 s` → tekrar ölç.
+- **Bellek:** `scripts/measure-memory.ps1`, `tokenradar-app` sürecini ve **tüm alt süreçlerini** (`msedgewebview2.exe` ağacı) ebeveyn bağlantıları üzerinden bulur. Private working set (bütçenin esası), private bytes (`PrivateMemorySize64`), working set ve CPU süresi toplamlarını CSV'ye yazar. Senaryo adımları: başlat → 60 s bekle → paneli aç → 10 s → paneli kapat → `warm_ttl + 10 s` → tekrar ölç. Pencere yaşam döngüsü senaryosu için `scripts/spike-lifecycle.ps1` (Adım 02) kullanılır.
 - **CPU:** Aynı script, 10 dakikalık boşta CPU süresi farkını ölçer.
 - **İndeksleme:** `cargo bench -p tokenradar-core --bench indexer` (sentetik) ve `tokenradar-app --measure-index <dir>` (gerçek veri). Soğuk ölçümden önce dosya önbelleği temizlenir (RAMMap "Empty Standby List" veya yeniden başlatma).
 - **Statusline:** `scripts/measure-statusline.ps1`, 200 çağrı yapıp p50/p95 değerlerini raporlar.

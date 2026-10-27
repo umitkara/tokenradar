@@ -1,0 +1,46 @@
+dataset: 1376 files, 3.06 GiB
+warm-up read: 0.80 s (3902 MiB/s)
+
+| Strategy | Threads | Wall s (median) | Wall s (min–max) | MiB/s | lines/s | CPU s | Peak WS MiB | Peak private MiB |
+|---|---|---|---|---|---|---|---|---|
+| A | 1 | 4.73 | 4.71–5.53 | 661 | 73582 | 4.66 | 22.5 | 19.2 |
+| B | 1 | 1.75 | 1.70–1.90 | 1786 | 198667 | 1.73 | 18.0 | 14.7 |
+| C | 1 | 1.23 | 1.15–1.32 | 2537 | 282223 | 1.19 | 18.6 | 15.7 |
+| D | 1 | 1.15 | 1.14–1.36 | 2713 | 301788 | 1.14 | 18.4 | 15.5 |
+| A | 4 | 1.51 | 1.48–1.75 | 2075 | 230791 | 5.73 | 26.7 | 25.9 |
+| B | 4 | 0.50 | 0.48–0.59 | 6261 | 696526 | 1.91 | 21.2 | 21.0 |
+| C | 4 | 0.36 | 0.32–0.40 | 8696 | 967397 | 1.38 | 21.8 | 21.3 |
+| D | 4 | 0.39 | 0.32–0.42 | 8110 | 902236 | 1.45 | 28.8 | 29.7 |
+
+lines=348263 bytes=3282645018 io_errors=0
+parse errors A: 0
+parse errors B: 0
+parse errors C: 0
+parse errors D: 0
+all runs agree on token totals: yes (fingerprint f3a0db9accef3a41)
+single-thread runs agree on metadata: yes (fingerprint 000dc296e74e3150)
+metadata of tied duplicates differs between merge orders:
+  A × 1: 000dc296e74e3150
+  A × 1: 000dc296e74e3150
+  A × 1: 000dc296e74e3150
+  B × 1: 000dc296e74e3150
+  B × 1: 000dc296e74e3150
+  B × 1: 000dc296e74e3150
+  C × 1: 000dc296e74e3150
+  C × 1: 000dc296e74e3150
+  C × 1: 000dc296e74e3150
+  D × 1: 000dc296e74e3150
+  D × 1: 000dc296e74e3150
+  D × 1: 000dc296e74e3150
+  A × 4: 392a2445f674c0e0
+  A × 4: 000dc296e74e3150
+  A × 4: 000dc296e74e3150
+  B × 4: 2add2b39e84a2594
+  B × 4: 2add2b39e84a2594
+  B × 4: 54e6c6346f484013
+  C × 4: 46514c2e28edfa2b
+  C × 4: 54e6c6346f484013
+  C × 4: 2add2b39e84a2594
+  D × 4: 000dc296e74e3150
+  D × 4: 392a2445f674c0e0
+  D × 4: 392a2445f674c0e0

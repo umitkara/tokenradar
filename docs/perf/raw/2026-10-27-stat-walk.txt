@@ -1,0 +1,12 @@
+5190 files
+| Method | Round | ms |
+|---|---|---|
+| walk + DirEntry::metadata | 1 | 182 |
+| walk + fs::metadata(path) | 1 | 271 |
+| known paths + fs::metadata | 1 | 95 |
+| walk + DirEntry::metadata | 2 | 172 |
+| walk + fs::metadata(path) | 2 | 288 |
+| known paths + fs::metadata | 2 | 105 |
+| walk + DirEntry::metadata | 3 | 177 |
+| walk + fs::metadata(path) | 3 | 285 |
+| known paths + fs::metadata | 3 | 103 |
