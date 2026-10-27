@@ -57,6 +57,7 @@ install-confirm = Apply this change to { $path }? [y/N]
 install-done = Installed. Backup: { $backup }
 install-chained = Your previous statusline command keeps running; its output is shown above TokenRadar's line.
 install-chain-hint = Your previous statusline command is replaced. Re-run with --chain to keep it.
+install-previous-mangled = Note: Git Bash removes the backslashes in your previous statusline command, so it most likely prints nothing today: { $command }. Write its path with forward slashes (/), or install with --no-chain.
 install-cancelled = Nothing changed.
 install-not-interactive = Not a terminal; pass --yes to apply without asking.
 uninstall-not-installed = The statusline bridge is not installed in { $path }.

@@ -42,6 +42,14 @@ impl ServerConfig {
     }
 }
 
+pub type StopSender = oneshot::Sender<()>;
+pub type StopReceiver = oneshot::Receiver<()>;
+
+/// The channel [`run`] stops on; dropping the sender stops it too. Callers need no tokio.
+pub fn stop_channel() -> (StopSender, StopReceiver) {
+    oneshot::channel()
+}
+
 /// Serves until `stop` fires or its sender is dropped. Blocks the calling thread. `ready`
 /// learns whether the pipe could be created.
 pub fn run(

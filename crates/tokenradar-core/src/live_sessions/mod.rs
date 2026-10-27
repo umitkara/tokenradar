@@ -194,6 +194,43 @@ fn read_small(path: &Path) -> std::io::Result<Vec<u8>> {
     Ok(buf)
 }
 
+/// The running sessions of one Claude Code directory, without a store (the CLI while the app
+/// is closed). A missing or unreadable directory has none.
+pub fn running_sessions(config_dir: &Path) -> Vec<SessionFile> {
+    scan(&config_dir.join(SESSIONS_DIR), probe).unwrap_or_default()
+}
+
+/// The session files in `sessions_dir` whose process is alive; a missing directory is empty.
+fn scan(sessions_dir: &Path, probe: fn(u32) -> Liveness) -> std::io::Result<Vec<SessionFile>> {
+    let entries = match std::fs::read_dir(sessions_dir) {
+        Ok(rd) => rd,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(e) => return Err(e),
+    };
+    let mut files = Vec::new();
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let Some(pid) = file_pid(&path) else { continue };
+        // Claude Code may be rewriting the file; a failed read just skips it this round.
+        let Ok(bytes) = read_small(&path) else {
+            continue;
+        };
+        let Some(file) = parse_session_file(&bytes, pid) else {
+            tracing::debug!(path = %path.display(), "not a session file");
+            continue;
+        };
+        if let (Some(domain), Some(local)) = (&file.pid_domain, LOCAL_PID_DOMAIN)
+            && !domain.starts_with(local)
+        {
+            continue;
+        }
+        if is_live(&file, probe(file.pid)) {
+            files.push(file);
+        }
+    }
+    Ok(files)
+}
+
 /// Tracks the live sessions of one account.
 pub struct LiveSessionTracker {
     account: AccountId,
@@ -244,36 +281,15 @@ impl LiveSessionTracker {
     /// Re-reads the directory and checks every pid. Returns whether the list or any status
     /// changed (timestamps alone do not count).
     pub fn refresh(&mut self) -> bool {
-        let mut next = Vec::new();
-        let entries = match std::fs::read_dir(&self.sessions_dir) {
-            Ok(rd) => rd,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                return self.replace(next);
-            }
+        let files = match scan(&self.sessions_dir, self.probe) {
+            Ok(files) => files,
             Err(error) => {
                 tracing::warn!(%error, dir = %self.sessions_dir.display(), "could not list live sessions");
                 return false;
             }
         };
-        for entry in entries.flatten() {
-            let path = entry.path();
-            let Some(pid) = file_pid(&path) else { continue };
-            // Claude Code may be rewriting the file; a failed read just skips it this round.
-            let Ok(bytes) = read_small(&path) else {
-                continue;
-            };
-            let Some(file) = parse_session_file(&bytes, pid) else {
-                tracing::debug!(path = %path.display(), "not a session file");
-                continue;
-            };
-            if let (Some(domain), Some(local)) = (&file.pid_domain, LOCAL_PID_DOMAIN)
-                && !domain.starts_with(local)
-            {
-                continue;
-            }
-            if !is_live(&file, (self.probe)(file.pid)) {
-                continue;
-            }
+        let mut next = Vec::with_capacity(files.len());
+        for file in files {
             let session_id = self.resolve(&file.session_uuid);
             next.push(LiveSession {
                 account: self.account,

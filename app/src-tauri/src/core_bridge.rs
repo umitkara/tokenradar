@@ -14,7 +14,9 @@ use tokenradar_core::limits::{LimitEvent, PanelSnapshot};
 use tokenradar_core::live_sessions::LiveStatus;
 use tokenradar_core::paths::Paths;
 use tokenradar_core::providers::claude;
-use tokenradar_core::runtime::{CoreConfig, CoreHandle, CoreRuntime, CoreStatus, SHUTDOWN_TIMEOUT};
+use tokenradar_core::runtime::{
+    CoreConfig, CoreHandle, CoreRuntime, CoreStatus, IpcConfig, SHUTDOWN_TIMEOUT,
+};
 
 use crate::tray;
 
@@ -81,6 +83,17 @@ fn open() -> Result<CoreHandle, Box<dyn std::error::Error>> {
             false
         }
     };
+    // The statusline bridge (Step 07): serve the CLI and import what it spooled meanwhile.
+    match tokenradar_core::ipc::pipe_name() {
+        Ok(pipe_name) => {
+            config.ipc = Some(IpcConfig {
+                pipe_name,
+                server_id: format!("tokenradar-app/{}", env!("CARGO_PKG_VERSION")),
+            });
+        }
+        Err(error) => eprintln!("TokenRadar: no IPC pipe: {error}"),
+    }
+    config.spool_dir = Some(paths.spool_dir());
     Ok(CoreRuntime::start(&config)?)
 }
 

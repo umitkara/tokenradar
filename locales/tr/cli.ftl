@@ -57,6 +57,7 @@ install-confirm = Bu değişiklik { $path } dosyasına uygulansın mı? [e/H]
 install-done = Kuruldu. Yedek: { $backup }
 install-chained = Önceki statusline komutunuz çalışmaya devam ediyor; çıktısı TokenRadar satırının üstünde gösterilir.
 install-chain-hint = Önceki statusline komutunuzun yerini TokenRadar alıyor. Korumak için --chain ile yeniden çalıştırın.
+install-previous-mangled = Not: Önceki statusline komutunuzdaki ters bölüleri Git Bash siliyor, bu yüzden komut büyük olasılıkla bugün de hiçbir şey yazdırmıyor: { $command }. Yolu düz bölülerle (/) yazın ya da --no-chain ile kurun.
 install-cancelled = Hiçbir şey değiştirilmedi.
 install-not-interactive = Terminal değil; sormadan uygulamak için --yes verin.
 uninstall-not-installed = Statusline köprüsü { $path } içinde kurulu değil.

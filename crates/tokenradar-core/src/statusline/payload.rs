@@ -77,7 +77,8 @@ impl RateWindow {
             .map(|s| Timestamp::from_millis((s * 1000.0).round() as i64))
     }
 
-    fn percent(&self) -> Option<f64> {
+    /// The used percentage, if it is a usable number.
+    pub fn percent(&self) -> Option<f64> {
         self.used_percentage.filter(|p| p.is_finite() && *p >= 0.0)
     }
 }
