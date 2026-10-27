@@ -21,12 +21,17 @@ reqwest = { version = "0.13.5", default-features = false, features = ["rustls"] 
 rusqlite = { version = "0.41.0", features = ["bundled"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
+# Pipe name from the user's SID (Step 07); already in the tree through Tauri.
+sha2 = "0.10.9"
 # Pinned to the exact version tauri-specta uses so the app can export these types (Step 09).
 specta = { version = "=2.0.0-rc.26", features = ["derive"] }
 thiserror = "2.0.21"
 toml = { version = "1.1.8", default-features = false, features = ["std", "parse", "serde"] }
-# `sync` for the event bus; `rt` + `time` only for the poller thread's local runtime (ADR-027, ADR-028).
-tokio = { version = "1.54.1", default-features = false, features = ["sync", "rt", "time"] }
+# Writes `config.toml` without losing unknown fields or comments (statusline install state).
+toml_edit = { version = "0.25.17", default-features = false, features = ["parse", "display"] }
+# `sync` for the event bus; `rt` + `time` for the poller thread's local runtime (ADR-027, ADR-028);
+# `net`, `io-util` and `macros` for the IPC server's named pipe (ADR-029).
+tokio = { version = "1.54.1", default-features = false, features = ["sync", "rt", "time", "net", "io-util", "macros"] }
 tracing = "0.1.44"
 xxhash-rust = { version = "0.8.19", features = ["xxh3"] }
 zeroize = "1.9.1"
@@ -45,7 +50,14 @@ tempfile = "3"
 tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "std"] }
 
 [target."cfg(windows)".dependencies]
-windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Threading"] }
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_Security_Authorization",
+    "Win32_Storage_FileSystem",
+    "Win32_System_Pipes",
+    "Win32_System_Threading",
+] }
 
 [target."cfg(windows)".dev-dependencies]
 windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_ProcessStatus", "Win32_System_Threading"] }

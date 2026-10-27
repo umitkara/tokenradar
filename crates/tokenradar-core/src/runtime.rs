@@ -17,6 +17,10 @@
 //! [`CoreEvent::LimitsUpdated`] when the panel would look different. Each account has a
 //! `core-api-<id>` poller that only sends requests with the user's consent (ADR-006).
 //!
+//! The statusline bridge (Step 07): `core-ipc` serves the CLI over a named pipe and turns
+//! statusline pushes into observations for `core-limits`, which also imports the spool the
+//! CLI wrote while the app was closed (at start and every five minutes).
+//!
 //! Start-up order (architecture §2): the watcher starts at once; the first full scan waits
 //! [`Timings::startup_delay`] so the tray and IPC come up first.
 
@@ -44,8 +48,13 @@ use crate::providers::claude::usage_api::{
     HttpTransport, PollInputs, PollUpdate, PollerMsg, UsageApiPoller,
 };
 use crate::providers::claude::{AccountDescriptor, PROJECTS_DIR, classify_path};
+use crate::statusline::spool;
 use crate::store::{Store, StoreError};
 use crate::watcher::{self, Debouncer, FsSignal, FsWatcher, HotFiles, Stamp};
+
+mod bridge;
+
+pub use bridge::IpcConfig;
 
 /// How long shutdown waits for the threads by default (Step 05 acceptance: exit within 2 s).
 pub const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(2);
@@ -103,6 +112,10 @@ pub struct CoreConfig {
     /// The user allowed the OAuth usage API (see [`crate::config::AppConfig::api_consent_granted`]).
     /// Without it no request is ever sent and the token is never read.
     pub api_consent: bool,
+    /// Serve the CLI; `None` runs without IPC (tests, headless tools).
+    pub ipc: Option<IpcConfig>,
+    /// Statusline spool to import (see [`crate::paths::Paths::spool_dir`]); `None` skips it.
+    pub spool_dir: Option<PathBuf>,
 }
 
 impl CoreConfig {
@@ -114,6 +127,8 @@ impl CoreConfig {
             indexer: IndexerConfig::default(),
             retention_days: Some(indexer::DEFAULT_KEEP_DAYS),
             api_consent: false,
+            ipc: None,
+            spool_dir: None,
         }
     }
 }
@@ -138,6 +153,7 @@ pub struct CoreRuntime;
 impl CoreRuntime {
     /// Opens the store and starts every core thread. Returns quickly; indexing starts after
     /// [`Timings::startup_delay`].
+    #[allow(clippy::too_many_lines)] // one linear wiring of every core thread, in start order
     pub fn start(config: &CoreConfig) -> Result<CoreHandle, RuntimeError> {
         let store = Store::open(&config.db_path)?;
         let bus = EventBus::default();
@@ -198,14 +214,34 @@ impl CoreRuntime {
             ));
         }
 
+        let account_dirs: Vec<(AccountId, PathBuf)> = metas
+            .iter()
+            .zip(&config.accounts)
+            .map(|(m, d)| (m.id, d.config_dir.clone()))
+            .collect();
         let engine = LimitEngine::new(store.clone(), metas, config.api_consent, Timestamp::now())?;
         let ctx = LimitsCtx {
             engine,
             pollers,
             bus: bus.clone(),
             status: status.clone(),
+            store: store.clone(),
+            spool_dir: config.spool_dir.clone(),
+            account_dirs: account_dirs.clone(),
         };
         threads.push(spawn("core-limits", move || limits_loop(ctx, &limits_rx))?);
+
+        let mut ipc_stop = None;
+        if let Some(ipc) = &config.ipc {
+            let handler = bridge::CoreIpc {
+                limits_tx: limits_tx.clone(),
+                status: status.clone(),
+                accounts: account_dirs,
+            };
+            let (tx, thread) = spawn_ipc(ipc, handler)?;
+            ipc_stop = Some(tx);
+            threads.push(thread);
+        }
 
         let fs = FsWatcher::new(watch_tx.clone(), WatchMsg::Fs)?;
         let ctx = WatchCtx {
@@ -237,8 +273,40 @@ impl CoreRuntime {
             index_txs,
             threads,
             retention,
+            ipc_stop,
         })
     }
+}
+
+/// Starts `core-ipc`. A pipe that cannot be created (another instance owns it) is logged;
+/// the app keeps running and the CLI spools instead.
+#[cfg(windows)]
+fn spawn_ipc(
+    ipc: &IpcConfig,
+    handler: bridge::CoreIpc,
+) -> std::io::Result<(tokio::sync::oneshot::Sender<()>, JoinHandle<()>)> {
+    use crate::ipc::server::{self, ServerConfig};
+
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    let config = ServerConfig::new(ipc.pipe_name.clone(), ipc.server_id.clone());
+    let thread = spawn("core-ipc", move || {
+        server::run(&config, Arc::new(handler), rx, |ready| {
+            if let Err(error) = ready {
+                tracing::warn!(%error, "could not start the IPC server");
+            }
+        });
+    })?;
+    Ok((tx, thread))
+}
+
+/// IPC is Windows-only until Step 21.
+#[cfg(not(windows))]
+fn spawn_ipc(
+    _ipc: &IpcConfig,
+    _handler: bridge::CoreIpc,
+) -> std::io::Result<(tokio::sync::oneshot::Sender<()>, JoinHandle<()>)> {
+    let (tx, _rx) = tokio::sync::oneshot::channel();
+    Ok((tx, spawn("core-ipc", || {})?))
 }
 
 /// Handle to a running core. Dropping it without [`CoreHandle::shutdown`] also stops the
@@ -253,6 +321,8 @@ pub struct CoreHandle {
     index_txs: Vec<mpsc::Sender<IndexCmd>>,
     threads: Vec<JoinHandle<()>>,
     retention: Option<RetentionScheduler>,
+    /// Stops `core-ipc`; dropping it does too.
+    ipc_stop: Option<tokio::sync::oneshot::Sender<()>>,
 }
 
 /// What [`CoreHandle::shutdown`] managed to stop.
@@ -304,6 +374,9 @@ impl CoreHandle {
         self.cancel.store(true, Ordering::Relaxed);
         let _ = self.watch_tx.send(WatchMsg::Stop);
         let _ = self.limits_tx.send(LimitsMsg::Stop);
+        if let Some(tx) = self.ipc_stop.take() {
+            let _ = tx.send(());
+        }
         for tx in self.index_txs.drain(..) {
             let _ = tx.send(IndexCmd::Stop);
         }
@@ -873,9 +946,25 @@ struct LimitsCtx {
     pollers: Vec<PollerLink>,
     bus: EventBus,
     status: Arc<Mutex<CoreStatus>>,
+    store: Store,
+    spool_dir: Option<PathBuf>,
+    account_dirs: Vec<(AccountId, PathBuf)>,
 }
 
 impl LimitsCtx {
+    /// Imports the statusline spool; `true` if anything was ingested.
+    fn import_spool(&mut self, now: Timestamp) -> bool {
+        let Some(dir) = &self.spool_dir else {
+            return false;
+        };
+        let mut events = Vec::new();
+        let report = bridge::import_spool(dir, &self.store, &self.account_dirs, |obs| {
+            events.extend(self.engine.ingest(obs, now));
+        });
+        self.publish_all(events);
+        report.ingested > 0
+    }
+
     /// Publishes the engine's signals; `true` if there were any.
     fn publish_all(&self, events: Vec<LimitEvent>) -> bool {
         let any = !events.is_empty();
@@ -957,8 +1046,13 @@ fn limits_loop(mut ctx: LimitsCtx, rx: &mpsc::Receiver<LimitsMsg>) {
     let mut last_key = None;
     let mut dirty = true;
     let mut next_build = Instant::now();
+    let mut next_spool = Instant::now();
     loop {
         let now = Timestamp::now();
+        if ctx.spool_dir.is_some() && Instant::now() >= next_spool {
+            dirty |= ctx.import_spool(now);
+            next_spool = Instant::now() + spool::IMPORT_INTERVAL;
+        }
         let resets = ctx.engine.tick(now);
         dirty |= ctx.publish_all(resets);
         ctx.sync_poll_inputs();
@@ -975,6 +1069,10 @@ fn limits_loop(mut ctx: LimitsCtx, rx: &mpsc::Receiver<LimitsMsg>) {
         if dirty {
             let until_build = next_build.saturating_duration_since(Instant::now());
             wait = Some(wait.map_or(until_build, |w| w.min(until_build)));
+        }
+        if ctx.spool_dir.is_some() {
+            let until_spool = next_spool.saturating_duration_since(Instant::now());
+            wait = Some(wait.map_or(until_spool, |w| w.min(until_spool)));
         }
         let msg = match wait {
             Some(wait) => match rx.recv_timeout(wait) {

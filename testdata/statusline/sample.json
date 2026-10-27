@@ -1,0 +1,34 @@
+{
+  "hook_event_name": "Status",
+  "session_id": "00000000-0000-4000-8000-000000000001",
+  "session_name": "synthetic sample",
+  "transcript_path": "C:\\Users\\example\\.claude\\projects\\C--Work-Alpha\\00000000-0000-4000-8000-000000000001.jsonl",
+  "cwd": "C:\\Work\\Alpha",
+  "model": { "id": "claude-opus-5-5", "display_name": "Opus 5.5" },
+  "workspace": {
+    "current_dir": "C:\\Work\\Alpha",
+    "project_dir": "C:\\Work\\Alpha",
+    "repo": { "host": "github.com", "owner": "example", "name": "alpha" }
+  },
+  "version": "2.1.310",
+  "output_style": { "name": "default" },
+  "cost": {
+    "total_cost_usd": 4.12,
+    "total_duration_ms": 1234567,
+    "total_api_duration_ms": 345678,
+    "total_lines_added": 156,
+    "total_lines_removed": 23
+  },
+  "context_window": {
+    "used_percentage": 41,
+    "context_window_size": 200000,
+    "current_usage": { "input_tokens": 8500, "output_tokens": 1200, "cache_creation_input_tokens": 5000, "cache_read_input_tokens": 67500 }
+  },
+  "fast_mode": false,
+  "effort": { "level": "high" },
+  "rate_limits": {
+    "five_hour": { "used_percentage": 23.5, "resets_at": 1738425600 },
+    "seven_day": { "used_percentage": 41.2, "resets_at": 1738857600 }
+  },
+  "prompt_cache": { "expires_at": 1738420300 }
+}

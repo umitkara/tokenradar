@@ -34,6 +34,27 @@ pub(crate) fn insert(conn: &Connection, obs: &LimitObservation) -> Result<i64> {
     Ok(id)
 }
 
+/// Whether this exact reading is already stored: same account, limit, source, session and
+/// instant. Makes the spool import idempotent.
+pub(crate) fn exists(conn: &Connection, obs: &LimitObservation) -> Result<bool> {
+    let found = conn
+        .prepare_cached(
+            "SELECT 1 FROM limit_snapshots
+             WHERE account_id = ?1 AND limit_kind = ?2 AND scope IS ?3 AND observed_at = ?4
+               AND source = ?5 AND session_uuid IS ?6
+             LIMIT 1",
+        )?
+        .exists(params![
+            obs.account,
+            obs.kind.as_str(),
+            obs.scope.as_ref().map(ToString::to_string),
+            obs.observed_at,
+            obs.source.as_str(),
+            obs.session_uuid
+        ])?;
+    Ok(found)
+}
+
 const COLUMNS: &str = "account_id, limit_kind, scope, percent, resets_at, severity, source, \
                        session_uuid, observed_at";
 

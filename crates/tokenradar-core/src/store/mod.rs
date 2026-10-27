@@ -157,6 +157,11 @@ impl Store {
         self.read(|c| snapshots::latest(c, account))
     }
 
+    /// Whether this exact reading is already stored (spool import idempotency).
+    pub fn snapshot_exists(&self, obs: &LimitObservation) -> Result<bool> {
+        self.read(|c| snapshots::exists(c, obs))
+    }
+
     pub fn snapshots_between(
         &self,
         account: AccountId,
@@ -392,6 +397,42 @@ fn configure_writer(conn: &Connection) -> Result<()> {
          PRAGMA cache_size = -8000;",
     )?;
     Ok(())
+}
+
+/// Read-only access from another process, e.g. the CLI while the app is closed or busy. It
+/// never creates, migrates or writes the database; WAL lets it read beside the app's writer.
+pub struct ReadOnlyStore {
+    conn: Connection,
+}
+
+impl ReadOnlyStore {
+    /// `None` when the database does not exist or was never initialized.
+    pub fn open(path: impl AsRef<Path>) -> Result<Option<Self>> {
+        let path = path.as_ref();
+        if !path.is_file() {
+            return Ok(None);
+        }
+        let conn = open_reader(path)?;
+        let version: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0))?;
+        if version == 0 {
+            return Ok(None);
+        }
+        if version > migrate::LATEST {
+            return Err(StoreError::SchemaTooNew {
+                found: version,
+                supported: migrate::LATEST,
+            });
+        }
+        Ok(Some(Self { conn }))
+    }
+
+    pub fn accounts(&self) -> Result<Vec<Account>> {
+        catalog::accounts(&self.conn)
+    }
+
+    pub fn latest_snapshots(&self, account: AccountId) -> Result<Vec<LimitObservation>> {
+        snapshots::latest(&self.conn, account)
+    }
 }
 
 fn open_reader(path: &Path) -> Result<Connection> {

@@ -6,6 +6,7 @@ use std::io::Write as _;
 use super::*;
 use crate::events::Delivery;
 use crate::live_sessions::{Liveness, SESSIONS_DIR};
+use crate::statusline::StatuslinePush;
 
 const ALPHA: &str = "0a1f0000-0000-4000-8000-00000000a001";
 
@@ -365,4 +366,142 @@ fn shutdown_interrupts_the_startup_delay() {
     let report = handle.shutdown(SHUTDOWN_TIMEOUT);
     assert_eq!(report.timed_out, Vec::<String>::new());
     assert!(started.elapsed() < Duration::from_millis(500));
+}
+
+/// A statusline reading for the Alpha project of `env`, as the CLI would send it.
+fn statusline_push(env: &Env, observed_at: Timestamp, percent: f64) -> StatuslinePush {
+    let resets_s = observed_at.as_millis() / 1000 + 3 * 3600;
+    let payload = serde_json::json!({
+        "session_id": ALPHA,
+        "transcript_path": env.alpha_main(),
+        "rate_limits": {
+            "five_hour": { "used_percentage": percent, "resets_at": resets_s },
+        },
+    });
+    StatuslinePush {
+        observed_at,
+        payload: crate::statusline::StatuslinePayload::parse(
+            &serde_json::to_vec(&payload).expect("json"),
+        )
+        .expect("payload"),
+    }
+}
+
+fn session_percent(snapshot: &PanelSnapshot) -> Option<f64> {
+    snapshot
+        .limits
+        .iter()
+        .find(|l| l.kind == crate::domain::LimitKind::Session)
+        .map(|l| l.percent)
+}
+
+#[cfg(windows)]
+#[test]
+fn a_statusline_push_over_ipc_reaches_the_panel_snapshot() {
+    use crate::ipc::{Client, Op, Request, StatusQuery, StatusReply};
+
+    let env = Env::new();
+    let mut config = env.config();
+    let pipe = format!(r"\\.\pipe\tokenradar-runtime-test-{}", std::process::id());
+    config.ipc = Some(IpcConfig {
+        pipe_name: pipe.clone(),
+        server_id: "tokenradar-test/1".into(),
+    });
+    let handle = CoreRuntime::start(&config).expect("start");
+    let rx = events(&handle);
+
+    // The pipe comes up on its own thread; retry briefly.
+    let started = Instant::now();
+    let mut client = loop {
+        match Client::connect(&pipe, Duration::from_millis(200)) {
+            Ok(c) => break c,
+            Err(e) if started.elapsed() > Duration::from_secs(5) => panic!("connect: {e:?}"),
+            Err(_) => thread::sleep(Duration::from_millis(20)),
+        }
+    };
+    let push = statusline_push(&env, Timestamp::now(), 61.5);
+    let replies = client
+        .call(&[
+            Request::new(1, Op::StatuslinePush(Box::new(push))),
+            Request::new(2, Op::StatusGet(StatusQuery::default())),
+        ])
+        .expect("call");
+    assert_eq!(replies.len(), 1);
+    let _: StatusReply = replies[0].clone().into_data().expect("status");
+
+    let snapshot = wait_for(&rx, Duration::from_secs(5), |e| match e {
+        CoreEvent::LimitsUpdated(s) if session_percent(s).is_some() => Some(s.clone()),
+        _ => None,
+    })
+    .expect("LimitsUpdated");
+    assert_eq!(session_percent(&snapshot), Some(61.5));
+
+    // The next status answer reflects it.
+    let mut client = Client::connect(&pipe, Duration::from_secs(2)).expect("connect");
+    let replies = client
+        .call(&[Request::new(3, Op::StatusGet(StatusQuery::default()))])
+        .expect("call");
+    let status: StatusReply = replies[0].clone().into_data().expect("status");
+    assert!(
+        status
+            .limits
+            .iter()
+            .any(|l| (l.percent - 61.5).abs() < 1e-9),
+        "{status:?}"
+    );
+    let report = handle.shutdown(SHUTDOWN_TIMEOUT);
+    assert!(report.timed_out.is_empty(), "{report:?}");
+}
+
+#[test]
+fn spooled_readings_are_imported_once_at_start() {
+    let env = Env::new();
+    let spool_dir = env.db_path.with_file_name("spool");
+    let now = Timestamp::now();
+    let pushes: Vec<_> = (0..10u32)
+        .map(|i| {
+            let at = Timestamp::from_millis(now.as_millis() - i64::from(10 - i) * 60_000);
+            statusline_push(&env, at, 10.0 + f64::from(i))
+        })
+        .collect();
+    for p in &pushes {
+        spool::append(&spool_dir, p).expect("spool");
+    }
+
+    let mut config = env.config();
+    config.spool_dir = Some(spool_dir.clone());
+    let handle = CoreRuntime::start(&config).expect("start");
+    let rx = events(&handle);
+    let snapshot = wait_for(&rx, Duration::from_secs(5), |e| match e {
+        CoreEvent::LimitsUpdated(s) if session_percent(s).is_some() => Some(s.clone()),
+        _ => None,
+    })
+    .expect("LimitsUpdated");
+    assert_eq!(
+        session_percent(&snapshot),
+        Some(19.0),
+        "the newest reading wins"
+    );
+
+    let account = AccountId(1);
+    let stored = handle
+        .store()
+        .snapshots_between(account, Timestamp::from_millis(0), Timestamp::now())
+        .expect("snapshots");
+    assert_eq!(stored.len(), 10, "every spooled reading is kept");
+    assert_eq!(
+        fs::read_dir(&spool_dir).expect("spool dir").count(),
+        0,
+        "imported files are deleted"
+    );
+
+    // A file that comes back (a crash between ingest and delete) adds nothing.
+    for p in &pushes {
+        spool::append(&spool_dir, p).expect("spool");
+    }
+    let accounts = vec![(account, env.config_dir.clone())];
+    let mut again = 0;
+    let report = bridge::import_spool(&spool_dir, handle.store(), &accounts, |_| again += 1);
+    assert_eq!((report.ingested, report.duplicates, again), (0, 10, 0));
+    handle.shutdown(SHUTDOWN_TIMEOUT);
 }

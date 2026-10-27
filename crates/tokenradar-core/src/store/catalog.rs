@@ -40,6 +40,21 @@ pub(crate) fn upsert_account(
     Ok(id)
 }
 
+/// Every account, oldest first.
+pub(crate) fn accounts(conn: &Connection) -> Result<Vec<Account>> {
+    let ids: Vec<AccountId> = conn
+        .prepare_cached("SELECT id FROM accounts ORDER BY id")?
+        .query_map([], |r| r.get(0))?
+        .collect::<rusqlite::Result<_>>()?;
+    let mut out = Vec::with_capacity(ids.len());
+    for id in ids {
+        if let Some(a) = account(conn, id)? {
+            out.push(a);
+        }
+    }
+    Ok(out)
+}
+
 pub(crate) fn account(conn: &Connection, id: AccountId) -> Result<Option<Account>> {
     let row = conn
         .prepare_cached(
