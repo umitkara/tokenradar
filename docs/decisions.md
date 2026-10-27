@@ -238,3 +238,28 @@
   - Tokio runtime + `spawn_blocking` (bloklayan kodu sarmalamak gerekir, kapanışta blocking pool'u izlemek zorlaşır).
   - Yalnızca 10 dakikalık güvenlik ağı (aktif bir dosyanın son yazması 10 dakika gecikebilir).
   - Kendi `ReadDirectoryChangesW` sarmalayıcımızı yazmak (taşmayı doğru yakalar, ama ~300 satır unsafe FFI ve bakım yükü getirir).
+
+### ADR-028 — Limit motoru ve kullanım API'si: yerel runtime'lı `reqwest`, geri çekilen yoklama, heartbeat'li kalıcılık
+**Durum:** Kabul (2026-10-27, Adım 06)
+- **Bağlam:**
+  - ADR-027 çekirdeği düz thread'lere bağladı. OAuth kullanım API'si (S2) ise bir HTTP istemcisi gerektiriyor ve kapanış bütçesi (2 s), 10 s'lik bir istek zaman aşımıyla çakışıyor.
+  - Plan, ağ değişimini işletim sisteminin bağlantı olaylarıyla (NLM) izlemeyi öneriyordu. Bu, Windows'a özgü COM kodu ve bir thread daha demek.
+  - Plandaki "60 s / 5 dk" kalıcılık ifadesi iki biçimde okunabiliyordu: her gözlemi 60 s'de bir mi, değişmeyen değeri 5 dakikada bir mi yazmak.
+  - API'nin `resets_at` değeri her yanıtta mikrosaniye düzeyinde kayıyor; statusline ise saniye çözünürlüklü epoch veriyor. Aynı pencere iki farklı zaman damgasıyla geliyor.
+- **Karar (HTTP ve çevrimdışı davranış kullanıcıyla kararlaştırıldı):**
+  - **HTTP:** `reqwest` 0.13 (`rustls`, varsayılan özellikler kapalı). Hesap başına `core-api-<id>` thread'i, ilk istekte kendi `current_thread` Tokio runtime'ını kurar ve isteği `block_on` ile bekler. Gizli bir runtime thread'i yoktur; onay yoksa ne runtime ne istemci oluşur. Uçuştaki istek 100 ms dilimlerle iptal bayrağını yoklar, bu yüzden kapanış 10 s beklemez. Aynı yığın ileride güncelleyici için de kullanılır.
+  - **Çevrimdışı:** İşletim sistemi olayı dinlenmez. Ağ hatası `Offline` durumuna geçer ve 60 s'den 30 dakikaya kadar katlanarak (±%10 jitter) yeniden denenir. Panelin açılması veya `.credentials.json`'un değişmesi beklemeyi hemen bitirir. 429/5xx'te `Retry-After` (en fazla 6 saat) uygulanır. 401/403'te istek atılmaz; mtime değişene kadar `TokenStale` durumunda kalınır (ADR-006).
+  - **Kalıcılık (heartbeat):** Tahmin dışındaki her gözlem `limit_snapshots`'a yazılır. Tek istisna: aynı kaynaktan, aynı pencerede ve aynı yüzde (±0,005) ise 5 dakika içinde tekrar yazılmaz. Böylece saniyede bir gelen statusline çağrıları tabloyu şişirmez, ama zaman serisi kopmaz. Tahminler (`Estimate`) hiç yazılmaz.
+  - **Pencere eşleşmesi:** `limit_windows` satırı `(hesap, tür, kapsam)` ve ±5 dakika toleranslı `resets_at` ile bulunur. SQLite `UNIQUE` içinde NULL kapsamları farklı saydığı için `ON CONFLICT` yerine önce arama yapılır.
+  - **Görünüm modeli:** `PanelSnapshot` tek bir birincil hesabı taşır; plandakine ek olarak penceredeki en pahalı üç oturum `top_sessions` olarak gelir. `eta_100_at` süre değil mutlak zaman damgasıdır (UI saati yerelleştirir, geri sayımı kendisi yapmaz). `tokens_per_min` girdi, çıktı ve cache yazmasını sayar; `cache_read` sayılmaz, çünkü kotaya etkisi çok küçüktür ve oranı anlamsızca şişirir. `LimitsUpdated` yalnızca kullanıcının görebileceği bir alan (yuvarlanmış yüzde, önem, tazelik, kaynak…) değişince yayınlanır.
+  - **Plan bilgisi:** `subscriptionType` ve `rateLimitTier` onaysız okunur. Bunu okuyan yapı token alanlarını hiç tanımlamaz, dolayısıyla token belleğe deserialize edilmez.
+- **Bedel:**
+  - Her API thread'i istek sırasında küçük bir runtime taşır (~birkaç yüz KiB). Onay yoksa sıfırdır.
+  - Ağ geri geldiğinde veri en fazla 30 dakika gecikebilir (panel açılırsa hemen yenilenir).
+  - `rustls` varsayılan olarak `aws-lc-rs` kullanır: derleme süresi ve ikili boyutu artar. Ölçüm Adım 13'teki boyut bütçesinde yapılır.
+  - `reqwest`'in `HeaderValue`'su içindeki token baytları sıfırlanamaz; değer `set_sensitive(true)` ile işaretlenir ve istekle birlikte serbest bırakılır.
+- **Alternatifler:**
+  - `ureq` gibi senkron bir istemci (ikinci bir TLS/HTTP yığını getirir, güncelleyiciyle paylaşılamaz).
+  - Tauri'nin async runtime'ı (çekirdeği Tauri'ye bağlar; CLI'da yok).
+  - NLM / `NetworkInformation` olayları (platforma özgü, test edilmesi zor).
+  - Her gözlemi yazmak (statusline ile günde ~86.000 satır) veya 60 s'de bir örneklemek (eşik geçişini geç kaydeder).
