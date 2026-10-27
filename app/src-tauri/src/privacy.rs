@@ -124,13 +124,12 @@ fn delete_files(paths: &Paths) -> Result<(), String> {
         p.push(suffix);
         remove_file(Path::new(&p), &mut failed);
     }
-    for dir in [paths.spool_dir(), paths.logs_dir()] {
-        if let Ok(entries) = std::fs::read_dir(&dir) {
-            for e in entries.flatten() {
-                remove_file(&e.path(), &mut failed);
-            }
+    if let Ok(entries) = std::fs::read_dir(paths.spool_dir()) {
+        for e in entries.flatten() {
+            remove_file(&e.path(), &mut failed);
         }
     }
+    clear_logs(&paths.logs_dir(), &mut failed);
     if let Err(e) = config::reset_keeping_statusline(paths.config_path()) {
         failed.push(format!("config.toml: {e}"));
     }
@@ -142,6 +141,35 @@ fn delete_files(paths: &Paths) -> Result<(), String> {
             "some TokenRadar files could not be deleted"
         );
         Err(failed.join("\n"))
+    }
+}
+
+/// Removes every log file but today's, which is emptied instead: the log writer keeps it open
+/// in append mode, so it goes on writing from the start. A deleted open file would swallow
+/// everything logged until the next daily rotation.
+fn clear_logs(dir: &Path, failed: &mut Vec<String>) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    let mut files: Vec<_> = entries
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.is_file())
+        .collect();
+    // `tokenradar.YYYY-MM-DD.log`: the newest sorts last.
+    files.sort();
+    let current = files.pop();
+    for path in &files {
+        remove_file(path, failed);
+    }
+    if let Some(path) = current {
+        let truncated = std::fs::OpenOptions::new()
+            .write(true)
+            .open(&path)
+            .and_then(|f| f.set_len(0));
+        if let Err(e) = truncated {
+            failed.push(format!("{}: {e}", path.display()));
+        }
     }
 }
 
@@ -181,4 +209,30 @@ pub fn create_diagnostics(app: &AppHandle) -> Result<Option<String>, String> {
         tracing::warn!(%error, "could not show the diagnostics bundle");
     }
     Ok(Some(written.display().to_string()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn clearing_logs_empties_the_current_file_and_removes_the_rest() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let old = dir.path().join("tokenradar.2026-10-26.log");
+        let current = dir.path().join("tokenradar.2026-10-27.log");
+        std::fs::write(&old, "old\n").expect("old");
+        std::fs::write(&current, "today\n").expect("current");
+        // Held open in append mode, as the log writer does.
+        let mut writer = std::fs::OpenOptions::new()
+            .append(true)
+            .open(&current)
+            .expect("open");
+        let mut failed = Vec::new();
+        clear_logs(dir.path(), &mut failed);
+        assert!(failed.is_empty(), "{failed:?}");
+        assert!(!old.exists());
+        assert_eq!(std::fs::read_to_string(&current).expect("read"), "");
+        std::io::Write::write_all(&mut writer, b"after\n").expect("write");
+        assert_eq!(std::fs::read_to_string(&current).expect("read"), "after\n");
+    }
 }

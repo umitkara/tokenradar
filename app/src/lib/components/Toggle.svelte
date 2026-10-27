@@ -1,13 +1,23 @@
-<!-- An on/off switch with its label. Space and Enter flip it, like any button. -->
+<!--
+  An on/off switch with its label. Space and Enter flip it, like any button. `labelHidden` keeps
+  the label for screen readers only, for rows that show it elsewhere.
+-->
 <script lang="ts">
 interface Props {
   checked: boolean;
   label: string;
   disabled?: boolean;
+  labelHidden?: boolean;
   onchange?: (checked: boolean) => void;
 }
 
-let { checked = $bindable(), label, disabled = false, onchange }: Props = $props();
+let {
+  checked = $bindable(),
+  label,
+  disabled = false,
+  labelHidden = false,
+  onchange,
+}: Props = $props();
 
 function flip() {
   checked = !checked;
@@ -15,9 +25,16 @@ function flip() {
 }
 </script>
 
-<button type="button" role="switch" aria-checked={checked} {disabled} onclick={flip}>
+<button
+  type="button"
+  role="switch"
+  aria-checked={checked}
+  aria-label={labelHidden ? label : undefined}
+  {disabled}
+  onclick={flip}
+>
   <span class="track" class:on={checked} aria-hidden="true"><span class="thumb"></span></span>
-  <span>{label}</span>
+  {#if !labelHidden}<span>{label}</span>{/if}
 </button>
 
 <style>

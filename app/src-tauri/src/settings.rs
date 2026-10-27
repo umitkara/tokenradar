@@ -1,5 +1,5 @@
-//! The settings window. Its content and "About" arrive in Step 11. Its warm TTL is 0 s
-//! (architecture.md §2): closing it destroys the webview.
+//! The settings window (Step 11b). Its warm TTL is 0 s (architecture.md §2): closing it
+//! destroys the webview.
 
 use serde::{Deserialize, Serialize};
 use specta::Type;
@@ -56,7 +56,8 @@ pub fn show(app: &AppHandle, section: Option<SettingsSection>) -> tauri::Result<
         let builder = WebviewWindowBuilder::new(app, LABEL, WebviewUrl::App(page.into()));
         chrome::dress(app, builder, Surface::Window)
             .title("TokenRadar")
-            .inner_size(640.0, 480.0)
+            .inner_size(800.0, 600.0)
+            .min_inner_size(640.0, 480.0)
             .build()?
     };
     window.show()?;
