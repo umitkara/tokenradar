@@ -12,6 +12,7 @@
 //! locale = "tr"          # system | en | tr
 //! theme = "dark"         # system | light | dark
 //! panel_warm_ttl = 60    # seconds a hidden panel stays ready
+//! claude_config_dir = 'D:\Claude'   # chosen in the settings; the primary account
 //!
 //! [notifications]        # see `notifier::NotifyPrefs`
 //! five_hour_thresholds = [75, 90, 100]
@@ -114,6 +115,9 @@ pub struct GeneralConfig {
     pub theme: Option<String>,
     /// Seconds; see [`GeneralConfig::panel_warm_ttl_s`].
     pub panel_warm_ttl: Option<i64>,
+    /// The Claude Code directory picked in the settings. It becomes the primary account (the
+    /// one the panel shows); `~/.claude` and `CLAUDE_CONFIG_DIR` are still watched beside it.
+    pub claude_config_dir: Option<PathBuf>,
 }
 
 impl GeneralConfig {
@@ -383,6 +387,66 @@ pub fn save_panel_warm_ttl(path: &Path, seconds: u32) -> Result<(), ConfigError>
         table_mut(doc.as_table_mut(), "general")["panel_warm_ttl"] = value(i64::from(seconds));
         Ok(())
     })
+}
+
+/// Stores the Claude Code directory picked in the settings; `None` goes back to discovery.
+pub fn save_claude_config_dir(path: &Path, dir: Option<&Path>) -> Result<(), ConfigError> {
+    edit(path, |doc| {
+        let general = table_mut(doc.as_table_mut(), "general");
+        match dir {
+            Some(dir) => general["claude_config_dir"] = value(dir.to_string_lossy().as_ref()),
+            None => {
+                general.remove("claude_config_dir");
+            }
+        }
+        Ok(())
+    })
+}
+
+/// "Delete all TokenRadar data": everything goes except each account's statusline install
+/// state, which `uninstall` needs to put the user's previous command back. Without one, the
+/// file is removed.
+pub fn reset_keeping_statusline(path: &Path) -> Result<(), ConfigError> {
+    let text = match std::fs::read_to_string(path) {
+        Ok(text) => text,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(e) => return Err(e.into()),
+    };
+    let old: DocumentMut = text.parse()?;
+    let mut kept = ArrayOfTables::new();
+    if let Some(accounts) = old.get("accounts").and_then(Item::as_array_of_tables) {
+        for account in accounts {
+            let Some(statusline) = account.get("statusline").and_then(Item::as_table) else {
+                continue;
+            };
+            let installed = statusline
+                .get("installed")
+                .and_then(Item::as_bool)
+                .unwrap_or(false);
+            if !installed {
+                continue;
+            }
+            let mut t = Table::new();
+            for key in ["provider", "config_dir"] {
+                if let Some(item) = account.get(key) {
+                    t[key] = item.clone();
+                }
+            }
+            t["statusline"] = Item::Table(statusline.clone());
+            kept.push(t);
+        }
+    }
+    if kept.is_empty() {
+        return match std::fs::remove_file(path) {
+            Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e.into()),
+            _ => Ok(()),
+        };
+    }
+    let mut doc = DocumentMut::new();
+    doc["schema_version"] = value(SCHEMA_VERSION);
+    doc["accounts"] = Item::ArrayOfTables(kept);
+    crate::fsutil::atomic_write(path, doc.to_string().as_bytes())?;
+    Ok(())
 }
 
 /// Stores `[notifications]` (normalized); keys this build does not know are kept.

@@ -274,3 +274,82 @@ fn migration_leaves_missing_and_newer_files_alone() {
         "schema_version = 9\n[api_consent]\ngranted = true\n"
     );
 }
+
+#[test]
+fn claude_dir_override_round_trips() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let path = dir.path().join("config.toml");
+    std::fs::write(&path, "# mine\n[general]\nlocale = \"tr\"\n").expect("seed");
+    save_claude_config_dir(&path, Some(Path::new("D:/Claude Work"))).expect("save");
+    let cfg = AppConfig::load(&path).expect("load");
+    assert_eq!(
+        cfg.general.claude_config_dir.as_deref(),
+        Some(Path::new("D:/Claude Work"))
+    );
+    assert_eq!(cfg.general.locale.as_deref(), Some("tr"));
+    save_claude_config_dir(&path, None).expect("clear");
+    let text = std::fs::read_to_string(&path).expect("read");
+    assert!(!text.contains("claude_config_dir"), "{text}");
+    assert!(text.contains("# mine"), "{text}");
+}
+
+#[test]
+fn reset_keeps_only_installed_statusline_state() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let path = dir.path().join("config.toml");
+    std::fs::write(
+        &path,
+        r#"schema_version = 2
+[general]
+locale = "tr"
+claude_config_dir = 'D:\Claude'
+
+[notifications]
+projection = false
+
+[[accounts]]
+provider = "claude"
+config_dir = 'C:\Users\Ada\.claude'
+label = "Work"
+
+[accounts.api_consent]
+granted = true
+consent_version = 1
+
+[accounts.statusline]
+installed = true
+previous = '{"type": "command", "command": "python s.py"}'
+previous_command = "python s.py"
+chain = true
+chain_position = "before"
+
+[[accounts]]
+provider = "claude"
+config_dir = 'C:\Other'
+
+[accounts.statusline]
+installed = false
+"#,
+    )
+    .expect("seed");
+    reset_keeping_statusline(&path).expect("reset");
+    let cfg = AppConfig::load(&path).expect("load");
+    assert_eq!(cfg.general, GeneralConfig::default());
+    assert_eq!(cfg.notifications, NotifyPrefs::default());
+    assert_eq!(cfg.accounts.len(), 1);
+    let account = &cfg.accounts[0];
+    assert_eq!(account.config_dir, Path::new(r"C:\Users\Ada\.claude"));
+    assert_eq!(account.label, None);
+    assert_eq!(account.api_consent, None);
+    assert!(account.statusline.installed);
+    assert_eq!(
+        account.statusline.previous_command.as_deref(),
+        Some("python s.py")
+    );
+
+    // Nothing installed: the file goes.
+    std::fs::write(&path, "[general]\nlocale = \"en\"\n").expect("seed");
+    reset_keeping_statusline(&path).expect("reset");
+    assert!(!path.exists());
+    reset_keeping_statusline(&path).expect("missing is fine");
+}

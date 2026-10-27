@@ -46,6 +46,24 @@ pub fn discover(extra: &[PathBuf]) -> Vec<AccountDescriptor> {
     discover_from(home.as_deref(), env.as_deref(), extra)
 }
 
+/// The accounts to watch: [`discover`] plus the directory the user picked in the settings,
+/// which comes first and so becomes the primary account. Nothing discovered is dropped, so
+/// usage under `~/.claude` stays tracked after picking another directory.
+pub fn discover_configured(chosen: Option<&Path>) -> Vec<AccountDescriptor> {
+    let extra: Vec<PathBuf> = chosen.map(Path::to_path_buf).into_iter().collect();
+    let mut accounts = discover(&extra);
+    if let Some(dir) = chosen.filter(|d| d.is_dir()) {
+        let id = identity(dir);
+        if let Some(i) = accounts.iter().position(|a| identity(&a.config_dir) == id) {
+            let primary = accounts.remove(i);
+            accounts.insert(0, primary);
+        }
+    } else if let Some(dir) = chosen {
+        tracing::warn!(dir = %dir.display(), "the chosen Claude Code directory is gone");
+    }
+    accounts
+}
+
 /// [`discover`] with explicit inputs, for tests.
 pub fn discover_from(
     home: Option<&Path>,

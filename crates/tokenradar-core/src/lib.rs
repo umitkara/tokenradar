@@ -4,6 +4,7 @@
 
 pub mod clock;
 pub mod config;
+pub mod doctor;
 pub mod domain;
 pub mod events;
 mod fsutil;

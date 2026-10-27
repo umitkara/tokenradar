@@ -17,6 +17,7 @@ mod notifications;
 mod retention;
 mod snapshots;
 mod sql;
+mod stats;
 mod windows;
 
 use std::path::{Path, PathBuf};
@@ -29,6 +30,7 @@ use rusqlite::{Connection, OpenFlags};
 pub use events::UpsertStats;
 pub use index::{IndexBatch, SourceFileState};
 pub use retention::{PruneStats, RETENTION_INTERVAL_MS};
+pub use stats::AccountStats;
 pub use windows::{SessionLabel, WINDOW_MATCH_TOLERANCE_MS};
 
 use crate::domain::{
@@ -152,6 +154,19 @@ impl Store {
 
     pub fn session(&self, id: SessionId) -> Result<Option<Session>> {
         self.read(|c| catalog::session(c, id))
+    }
+
+    pub fn accounts(&self) -> Result<Vec<Account>> {
+        self.read(catalog::accounts)
+    }
+
+    pub fn account_stats(&self, account: AccountId) -> Result<AccountStats> {
+        self.read(|c| stats::account_stats(c, account))
+    }
+
+    /// Rows per table, for `doctor`.
+    pub fn table_counts(&self) -> Result<Vec<(String, u64)>> {
+        self.read(stats::table_counts)
     }
 
     pub fn latest_snapshots(&self, account: AccountId) -> Result<Vec<LimitObservation>> {
@@ -451,6 +466,25 @@ impl ReadOnlyStore {
 
     pub fn latest_snapshots(&self, account: AccountId) -> Result<Vec<LimitObservation>> {
         snapshots::latest(&self.conn, account)
+    }
+
+    pub fn account_stats(&self, account: AccountId) -> Result<AccountStats> {
+        stats::account_stats(&self.conn, account)
+    }
+
+    pub fn table_counts(&self) -> Result<Vec<(String, u64)>> {
+        stats::table_counts(&self.conn)
+    }
+
+    pub fn kv_get(&self, key: &str) -> Result<Option<String>> {
+        kv::get(&self.conn, key)
+    }
+
+    /// `PRAGMA user_version`: the migration the database is at.
+    pub fn schema_version(&self) -> Result<i64> {
+        Ok(self
+            .conn
+            .query_row("PRAGMA user_version", [], |r| r.get(0))?)
     }
 }
 
