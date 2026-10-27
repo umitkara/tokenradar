@@ -1,0 +1,135 @@
+---
+source: crates/tokenradar-core/src/indexer/tests.rs
+expression: summary
+---
+sessions:
+  - uuid: 0a1f0000-0000-4000-8000-00000000a001
+    kind: main
+    parent: ~
+    root: ~
+    project:
+      - "C:\\work\\alpha"
+      - Alpha
+    title:
+      - Alpha work
+      - custom
+    git_branch: main
+    cc_version: 2.1.310
+    entrypoint: cli
+    first_ts: 1792490460000
+    last_ts: 1792491180000
+    totals:
+      events: 4
+      input: 7009
+      output: 708
+      cache_read: 3400
+      cache_w5m: 900
+      cache_w1h: 400
+      thinking: 20
+      cost_micro_usd: 48088
+  - uuid: 0b2e0000-0000-4000-8000-00000000b001
+    kind: main
+    parent: ~
+    root: ~
+    project:
+      - "unresolved:C--Work-Beta"
+      - C--Work-Beta
+    title:
+      - beta-reviewer
+      - agent
+    git_branch: dev
+    cc_version: 2.1.310
+    entrypoint: cli
+    first_ts: 1792492200000
+    last_ts: 1792492260000
+    totals:
+      events: 2
+      input: 10
+      output: 20
+      cache_read: 0
+      cache_w5m: 0
+      cache_w1h: 0
+      thinking: 0
+      cost_micro_usd: 440
+  - uuid: 0c3d0000-0000-4000-8000-00000000c001
+    kind: main
+    parent: ~
+    root: ~
+    project: ~
+    title: ~
+    git_branch: ~
+    cc_version: ~
+    entrypoint: ~
+    first_ts: ~
+    last_ts: ~
+    totals:
+      events: 0
+      input: 0
+      output: 0
+      cache_read: 0
+      cache_w5m: 0
+      cache_w1h: 0
+      thinking: 0
+      cost_micro_usd: 0
+  - uuid: agent-a1b2c3
+    kind: subagent
+    parent: 0a1f0000-0000-4000-8000-00000000a001
+    root: 0a1f0000-0000-4000-8000-00000000a001
+    project:
+      - "C:\\work\\alpha"
+      - Alpha
+    title: ~
+    git_branch: main
+    cc_version: 2.1.310
+    entrypoint: cli
+    first_ts: 1792490460000
+    last_ts: 1792490580000
+    totals:
+      events: 2
+      input: 11
+      output: 70
+      cache_read: 100
+      cache_w5m: 0
+      cache_w1h: 50
+      thinking: 0
+      cost_micro_usd: 48
+  - uuid: agent-ffee01
+    kind: subagent
+    parent: 0c3d0000-0000-4000-8000-00000000c001
+    root: 0c3d0000-0000-4000-8000-00000000c001
+    project:
+      - "C:\\work\\gamma"
+      - Gamma
+    title: ~
+    git_branch: main
+    cc_version: 2.1.310
+    entrypoint: cli
+    first_ts: 1792492800000
+    last_ts: 1792492800000
+    totals:
+      events: 1
+      input: 7
+      output: 15
+      cache_read: 0
+      cache_w5m: 0
+      cache_w1h: 0
+      thinking: 0
+      cost_micro_usd: 328
+models:
+  - - "<synthetic>"
+    - synthetic
+  - - claude-haiku-5-5
+    - haiku
+  - - claude-opus-5-5
+    - opus
+  - - claude-sonnet-5-5
+    - sonnet
+total:
+  events: 9
+  input: 7037
+  output: 813
+  cache_read: 3500
+  cache_w5m: 900
+  cache_w1h: 450
+  thinking: 20
+  cost_micro_usd: 48904

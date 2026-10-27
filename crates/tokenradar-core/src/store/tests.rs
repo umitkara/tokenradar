@@ -12,7 +12,7 @@ use rusqlite::Connection;
 
 use super::testutil::{Fixture, account_spec, memory_db, seed};
 use super::*;
-use crate::domain::{BUCKET_MS, LimitKind, Scope, SessionKind, Source};
+use crate::domain::{BUCKET_MS, LimitKind, Scope, SessionKind, SessionTitle, Source, TitleSource};
 
 fn upsert(conn: &mut Connection, batch: &[UsageEvent]) -> UpsertStats {
     let tx = conn.transaction().expect("tx");
@@ -223,13 +223,46 @@ fn same_key_shrinking_output_keeps_the_stored_event() {
 }
 
 #[test]
-fn equal_output_takes_the_latest_line() {
+fn equal_output_in_one_session_takes_the_latest_line() {
     let mut conn = memory_db();
     let fx = seed(&conn);
     let first = fx.event(1, 50, 1_000, 0, 0);
-    let later = fx.event(1, 50, 2_000, 1, 0); // e.g. a sidechain copy in another file
+    let later = fx.event(1, 50, 2_000, 0, 1);
     upsert(&mut conn, &[first, later.clone()]);
     assert_eq!(rollup(&conn), expected_rollup([later]));
+}
+
+#[test]
+fn equal_output_across_sessions_has_an_order_independent_owner() {
+    // `s-0` < `s-1`, both main: `s-0` owns the response whichever copy comes first.
+    for order in [[0, 1], [1, 0]] {
+        let mut conn = memory_db();
+        let fx = seed(&conn);
+        let copies = order.map(|s| fx.event(1, 50, 1_000 + s as i64, s, 0));
+        upsert(&mut conn, &copies);
+        assert_eq!(
+            rollup(&conn),
+            expected_rollup([fx.event(1, 50, 1_000, 0, 0)])
+        );
+    }
+    // A main session beats a subagent even when the subagent's uuid sorts first.
+    for sub_first in [true, false] {
+        let mut conn = memory_db();
+        let fx = seed(&conn);
+        let mut spec = SessionSpec::new(fx.account, "agent-0", SessionKind::Subagent);
+        spec.parent_id = Some(fx.sessions[1]);
+        let sub = catalog::upsert_session(&conn, &spec).expect("subagent");
+        let main = fx.event(1, 50, 1_000, 1, 0);
+        let mut copy = main.clone();
+        copy.session_id = sub;
+        let batch = if sub_first {
+            [copy, main.clone()]
+        } else {
+            [main.clone(), copy]
+        };
+        upsert(&mut conn, &batch);
+        assert_eq!(rollup(&conn), expected_rollup([main]));
+    }
 }
 
 #[test]
@@ -321,12 +354,18 @@ proptest! {
             rest = &rest[n..];
         }
 
-        // Oracle: the latest event with the largest output per key.
+        // Oracle: per key, the largest output; on ties the smaller session index (`s-0` sorts
+        // before `s-1`), then the latest line.
         let mut finals: BTreeMap<u8, (u64, UsageEvent)> = BTreeMap::new();
         for (&(key, output, ..), e) in lines.iter().zip(&events) {
-            match finals.get(&key) {
-                Some((best, _)) if output < *best => {}
-                _ => { finals.insert(key, (output, e.clone())); }
+            let replace = match finals.get(&key) {
+                None => true,
+                Some((best, b)) => {
+                    output > *best || (output == *best && e.session_id <= b.session_id)
+                }
+            };
+            if replace {
+                finals.insert(key, (output, e.clone()));
             }
         }
         prop_assert_eq!(event_count(&conn), finals.len() as i64);
@@ -395,7 +434,7 @@ fn session_upsert_merges_fields_and_widens_the_time_range() {
     let conn = memory_db();
     let fx = seed(&conn);
     let mut spec = SessionSpec::new(fx.account, "abc", SessionKind::Main);
-    spec.title = Some("First title".into());
+    spec.title = Some(title("First title", TitleSource::Ai));
     spec.first_ts = Some(Timestamp::from_millis(500));
     spec.last_ts = Some(Timestamp::from_millis(600));
     let id = catalog::upsert_session(&conn, &spec).expect("insert");
@@ -410,10 +449,54 @@ fn session_upsert_merges_fields_and_widens_the_time_range() {
         .expect("read")
         .expect("exists")
         .spec;
-    assert_eq!(stored.title.as_deref(), Some("First title"));
+    assert_eq!(stored.title, Some(title("First title", TitleSource::Ai)));
     assert_eq!(stored.git_branch.as_deref(), Some("main"));
     assert_eq!(stored.first_ts, Some(Timestamp::from_millis(100)));
     assert_eq!(stored.last_ts, Some(Timestamp::from_millis(600)));
+}
+
+fn title(text: &str, source: TitleSource) -> SessionTitle {
+    SessionTitle {
+        text: text.into(),
+        source,
+    }
+}
+
+#[test]
+fn session_title_is_replaced_only_by_an_equal_or_stronger_source() {
+    let conn = memory_db();
+    let fx = seed(&conn);
+    let upsert_title = |t: SessionTitle| {
+        let mut spec = SessionSpec::new(fx.account, "titled", SessionKind::Main);
+        spec.title = Some(t);
+        let id = catalog::upsert_session(&conn, &spec).expect("upsert");
+        catalog::session(&conn, id)
+            .expect("read")
+            .expect("exists")
+            .spec
+            .title
+    };
+    assert_eq!(
+        upsert_title(title("ai 1", TitleSource::Ai)),
+        Some(title("ai 1", TitleSource::Ai))
+    );
+    assert_eq!(
+        upsert_title(title("ai 2", TitleSource::Ai)),
+        Some(title("ai 2", TitleSource::Ai))
+    );
+    let custom = title("mine", TitleSource::Custom);
+    assert_eq!(upsert_title(custom.clone()), Some(custom.clone()));
+    // A later generated or agent title must not overwrite the user's own name.
+    assert_eq!(
+        upsert_title(title("ai 3", TitleSource::Ai)),
+        Some(custom.clone())
+    );
+    assert_eq!(
+        upsert_title(title("agent", TitleSource::Agent)),
+        Some(custom)
+    );
+    let renamed = title("renamed", TitleSource::Custom);
+    assert_eq!(upsert_title(renamed.clone()), Some(renamed));
 }
 
 #[test]

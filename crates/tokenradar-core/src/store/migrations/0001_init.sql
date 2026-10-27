@@ -30,6 +30,7 @@ CREATE TABLE sessions (
   root_id    INTEGER REFERENCES sessions (id),
   project_id INTEGER REFERENCES projects (id),
   title      TEXT,
+  title_source TEXT,                               -- 'ai' | 'agent' | 'custom' (precedence order)
   git_branch TEXT,
   entrypoint TEXT,
   cc_version TEXT,

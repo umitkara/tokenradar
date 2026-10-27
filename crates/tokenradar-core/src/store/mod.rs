@@ -10,6 +10,7 @@
 
 mod catalog;
 mod events;
+mod index;
 mod kv;
 mod migrate;
 mod retention;
@@ -24,7 +25,8 @@ use std::thread;
 use rusqlite::{Connection, OpenFlags};
 
 pub use events::UpsertStats;
-pub use retention::PruneStats;
+pub use index::{IndexBatch, SourceFileState};
+pub use retention::{PruneStats, RETENTION_INTERVAL_MS};
 
 use crate::domain::{
     Account, AccountId, AccountSpec, LimitObservation, ModelFamily, ModelId, ProjectId,
@@ -164,6 +166,14 @@ impl Store {
     pub fn kv_get(&self, key: &str) -> Result<Option<String>> {
         self.read(|c| kv::get(c, key))
     }
+
+    /// Read positions of all transcript files of an account, keyed by path.
+    pub fn source_files(
+        &self,
+        account: AccountId,
+    ) -> Result<std::collections::HashMap<String, SourceFileState>> {
+        self.read(|c| index::files(c, account))
+    }
 }
 
 /// Sends work to the writer thread and waits for the result.
@@ -220,6 +230,16 @@ impl Writer {
         })
     }
 
+    /// Writes one indexer flush (sessions, events, file offsets) in a single transaction.
+    pub fn commit_index_batch(&self, batch: IndexBatch) -> Result<UpsertStats> {
+        self.call(move |conn| index::commit(conn, &batch))
+    }
+
+    /// Marks transcript files as deleted; their data stays.
+    pub fn mark_files_deleted(&self, paths: Vec<String>, at: Timestamp) -> Result<()> {
+        self.call(move |conn| index::mark_deleted(conn, &paths, at))
+    }
+
     pub fn upsert_account(&self, spec: AccountSpec) -> Result<AccountId> {
         self.call(move |conn| catalog::upsert_account(conn, &spec, Timestamp::now()))
     }
@@ -252,6 +272,12 @@ impl Writer {
     /// Deletes raw events older than `older_than`; `usage_5m` is untouched (ADR-020).
     pub fn prune_raw_events(&self, older_than: Timestamp) -> Result<PruneStats> {
         self.call(move |conn| retention::prune_raw_events(conn, older_than))
+    }
+
+    /// Runs [`Writer::prune_raw_events`] with a `keep_days` cutoff unless it already ran within
+    /// [`RETENTION_INTERVAL_MS`]. Returns `None` when it was not due.
+    pub fn prune_if_due(&self, now: Timestamp, keep_days: u32) -> Result<Option<PruneStats>> {
+        self.call(move |conn| retention::prune_if_due(conn, now, keep_days))
     }
 
     /// Stops the writer thread after queued jobs finish. Further calls return `WriterGone`.

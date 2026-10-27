@@ -17,6 +17,12 @@ pub struct PruneStats {
     pub vacuumed_pages: u64,
 }
 
+/// When retention last ran, in epoch milliseconds.
+const LAST_RUN_KEY: &str = "retention.last_run";
+
+/// How often retention runs.
+pub const RETENTION_INTERVAL_MS: i64 = 24 * 60 * 60 * 1000;
+
 fn watermark_key(account: AccountId) -> String {
     format!("retention.pruned_before.{account}")
 }
@@ -82,4 +88,29 @@ pub(crate) fn prune_raw_events(conn: &mut Connection, older_than: Timestamp) -> 
         "pruned raw usage events"
     );
     Ok(stats)
+}
+
+/// Prunes raw events older than `keep_days` if retention has not run in the last
+/// [`RETENTION_INTERVAL_MS`]. Returns `None` when it was not due.
+pub(crate) fn prune_if_due(
+    conn: &mut Connection,
+    now: Timestamp,
+    keep_days: u32,
+) -> Result<Option<PruneStats>> {
+    let last: Option<i64> = conn
+        .prepare_cached("SELECT value FROM kv WHERE key = ?1")?
+        .query_row([LAST_RUN_KEY], |r| r.get::<_, String>(0))
+        .optional()?
+        .and_then(|v| v.parse().ok());
+    if last.is_some_and(|t| now.as_millis() - t < RETENTION_INTERVAL_MS && t <= now.as_millis()) {
+        return Ok(None);
+    }
+    let cutoff = now.saturating_sub_millis(i64::from(keep_days) * 24 * 60 * 60 * 1000);
+    let stats = prune_raw_events(conn, cutoff)?;
+    conn.execute(
+        "INSERT INTO kv (key, value) VALUES (?1, ?2)
+         ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+        params![LAST_RUN_KEY, now.as_millis().to_string()],
+    )?;
+    Ok(Some(stats))
 }

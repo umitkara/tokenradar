@@ -19,6 +19,18 @@ impl MsgKey {
         Self(hasher.digest128().to_le_bytes())
     }
 
+    /// Key of a secondary inference billed within the same response, such as an advisor
+    /// iteration: the response's ids plus a tag that names the part (e.g. `advisor#1`).
+    pub fn from_ids_tagged(message_id: &str, request_id: &str, tag: &str) -> Self {
+        let mut hasher = xxhash_rust::xxh3::Xxh3::new();
+        hasher.update(message_id.as_bytes());
+        hasher.update(&[0]);
+        hasher.update(request_id.as_bytes());
+        hasher.update(&[0]);
+        hasher.update(tag.as_bytes());
+        Self(hasher.digest128().to_le_bytes())
+    }
+
     /// Fallback key when the ids are missing: a hash of some other stable identity, such as
     /// the line's `uuid` or the raw line. The indexer counts how often it falls back.
     pub fn from_fallback(bytes: &[u8]) -> Self {
@@ -116,6 +128,14 @@ mod tests {
         assert_eq!(
             MsgKey::from_ids("msg_1", "req_1"),
             MsgKey::from_ids("msg_1", "req_1")
+        );
+        assert_ne!(
+            MsgKey::from_ids("msg_1", "req_1"),
+            MsgKey::from_ids_tagged("msg_1", "req_1", "advisor#1")
+        );
+        assert_ne!(
+            MsgKey::from_ids_tagged("msg_1", "req_1", "advisor#1"),
+            MsgKey::from_ids_tagged("msg_1", "req_1", "advisor#2")
         );
     }
 

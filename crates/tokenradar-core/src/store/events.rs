@@ -2,7 +2,14 @@
 //!
 //! Claude Code writes one line per content block, so the same response appears several
 //! times, sometimes with partial usage (`docs/data-sources.md` S3). Per `(account, msg_key)`
-//! the stored event is the one with the largest `output`; on ties the latest one seen wins.
+//! the stored event is the one with the largest `output`. On ties:
+//!
+//! - **Same session:** the latest line wins (later lines of one file are more complete).
+//! - **Different sessions:** the same response also appears in resumed sessions and in forked
+//!   subagents that copy their parent's context. Batches from parallel workers arrive in any
+//!   order, so "latest wins" would make the owner random. Instead a main session beats a
+//!   subagent, and otherwise the smaller session uuid wins. This is a total order, so the
+//!   result does not depend on processing order (ADR-026).
 //!
 //! The rollup is kept exact by applying differences: when an event replaces an older version,
 //! the old values leave the old row's bucket and the new values enter the new bucket (session,
@@ -106,6 +113,9 @@ pub(crate) fn upsert(tx: &Transaction<'_>, batch: &[UsageEvent]) -> Result<Upser
     let mut stats = UpsertStats::default();
     let mut deltas: HashMap<BucketKey, Delta> = HashMap::new();
     let mut watermarks: HashMap<AccountId, Option<Timestamp>> = HashMap::new();
+    let mut ranks: HashMap<SessionId, SessionRank> = HashMap::new();
+    let mut rank_stmt =
+        tx.prepare_cached("SELECT kind = 'subagent', uuid FROM sessions WHERE id = ?1")?;
 
     let mut select = tx.prepare_cached(
         "SELECT id, session_id, model_id, ts, input, output, cache_read, cache_w5m, cache_w1h,
@@ -162,7 +172,11 @@ pub(crate) fn upsert(tx: &Transaction<'_>, batch: &[UsageEvent]) -> Result<Upser
                     .add(&new, 1);
                 stats.inserted += 1;
             }
-            Some((id, old)) if new.output >= old.output => {
+            Some((id, old))
+                if new.output > old.output
+                    || (new.output == old.output
+                        && tie_prefers(&mut ranks, &mut rank_stmt, new.session, old.session)?) =>
+            {
                 update.execute(params![
                     id,
                     event.session_id,
@@ -195,6 +209,31 @@ pub(crate) fn upsert(tx: &Transaction<'_>, batch: &[UsageEvent]) -> Result<Upser
 
     apply_deltas(tx, &deltas)?;
     Ok(stats)
+}
+
+/// Tie-break order of a session: main before subagent, then by uuid.
+type SessionRank = (bool, String);
+
+/// Whether an event of session `new` replaces a stored event of session `old` with the same
+/// `output`. Ties across sessions are rare, so ranks are looked up lazily and cached per batch.
+fn tie_prefers(
+    cache: &mut HashMap<SessionId, SessionRank>,
+    stmt: &mut rusqlite::CachedStatement<'_>,
+    new: SessionId,
+    old: SessionId,
+) -> Result<bool> {
+    if new == old {
+        return Ok(true);
+    }
+    let mut rank = |id: SessionId| -> Result<SessionRank> {
+        if let Some(r) = cache.get(&id) {
+            return Ok(r.clone());
+        }
+        let r: SessionRank = stmt.query_row([id], |r| Ok((r.get(0)?, r.get(1)?)))?;
+        cache.insert(id, r.clone());
+        Ok(r)
+    };
+    Ok(rank(new)? < rank(old)?)
 }
 
 /// `(id, values)` of a stored event, from the `select` statement in [`upsert`].
