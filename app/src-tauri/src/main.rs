@@ -4,18 +4,27 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod panel;
+#[cfg(any(debug_assertions, feature = "spike"))]
+mod spike;
 mod tray;
 
 use tauri::RunEvent;
 
 fn main() {
-    let app = tauri::Builder::default()
+    let builder = tauri::Builder::default();
+    // Step 02 measurement scenario; never part of a regular release build.
+    #[cfg(any(debug_assertions, feature = "spike"))]
+    let builder = spike::register(builder);
+
+    let app = builder
         // Must be the first plugin so a second launch exits before doing any work.
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             panel::report(panel::show(app));
         }))
         .setup(|app| {
             tray::create(app.handle())?;
+            #[cfg(any(debug_assertions, feature = "spike"))]
+            spike::start(app.handle());
             Ok(())
         })
         .build(tauri::generate_context!())

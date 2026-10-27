@@ -26,6 +26,11 @@ pub fn show(app: &AppHandle) -> tauri::Result<()> {
 }
 
 fn build(app: &AppHandle) -> tauri::Result<WebviewWindow> {
+    builder(app).build()
+}
+
+/// The panel's window configuration, shared with the Step 02 measurement scenario.
+pub fn builder(app: &AppHandle) -> WebviewWindowBuilder<'_, tauri::Wry, AppHandle> {
     // Positioning next to the tray and hide-on-blur arrive in Step 10.
     WebviewWindowBuilder::new(app, LABEL, WebviewUrl::App("panel.html".into()))
         .title("TokenRadar")
@@ -35,7 +40,6 @@ fn build(app: &AppHandle) -> tauri::Result<WebviewWindow> {
         .skip_taskbar(true)
         .always_on_top(true)
         .visible(false)
-        .build()
 }
 
 /// Reports a failed window operation. Event handlers have nowhere to propagate errors to.

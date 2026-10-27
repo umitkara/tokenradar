@@ -18,5 +18,14 @@ tokenradar-i18n.workspace = true
 tauri.workspace = true
 tauri-plugin-single-instance.workspace = true
 
+# Raw WebView2 access for the Step 02 lifecycle spike. Same versions as wry's, so the COM types match.
+[target.'cfg(windows)'.dependencies]
+webview2-com = "0.39"
+windows-core = "0.62"
+
+[features]
+# Compiles the Step 02 measurement scenario (`TOKENRADAR_SPIKE`) into release builds.
+spike = []
+
 [lints]
 workspace = true

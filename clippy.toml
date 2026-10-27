@@ -1,2 +1,2 @@
 # ".." keeps clippy's default list and extends it.
-doc-valid-idents = ["TokenRadar", ".."]
+doc-valid-idents = ["TokenRadar", "WebView2", ".."]
