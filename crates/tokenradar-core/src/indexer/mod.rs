@@ -19,18 +19,22 @@ mod retention;
 
 pub mod priority;
 
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::fs::File;
 use std::io::{self, Seek, SeekFrom};
 use std::ops::ControlFlow;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::mpsc::{self, RecvTimeoutError};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime};
 
 pub use reader::{CHUNK, LineReader, MAX_LINE, ReadStats};
 pub use retention::{CHECK_EVERY, DEFAULT_KEEP_DAYS, RetentionScheduler};
+
+use serde::Serialize;
+use specta::Type;
 
 use crate::domain::{
     AccountId, ModelId, MsgKey, ProjectId, ProjectSpec, SessionId, SessionKind, SessionSpec,
@@ -92,14 +96,15 @@ pub fn default_workers() -> usize {
     (cores / 2).clamp(1, 4)
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Type)]
+#[serde(rename_all = "snake_case")]
 pub enum IndexPhase {
     Inventory,
     Indexing,
     Done,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Type)]
 pub struct IndexProgress {
     pub files_done: usize,
     pub files_total: usize,
@@ -108,14 +113,17 @@ pub struct IndexProgress {
     pub phase: IndexPhase,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Type)]
+#[serde(rename_all = "snake_case")]
 pub enum IndexMilestone {
     /// Every file modified within [`IndexerConfig::recent_window`] is indexed: the current
     /// 5-hour window and this week can be shown.
     RecentReady,
+    /// The first full scan after start finished. Reported by the runtime, not the indexer.
+    Complete,
 }
 
-/// Progress callback payload. Step 05 forwards these to the event bus.
+/// Progress callback payload; the runtime forwards it to the event bus.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum IndexEvent {
     Progress(IndexProgress),
@@ -171,6 +179,13 @@ pub struct IndexReport {
     pub bytes_read: u64,
     pub events: UpsertStats,
     pub parse: ParseStats,
+    /// Sessions that received at least one event in this pass.
+    pub sessions: BTreeSet<SessionId>,
+    /// Earliest and latest timestamp among those events.
+    pub ts_range: Option<(Timestamp, Timestamp)>,
+    /// The pass stopped early because [`Indexer::set_cancel`]'s flag was raised. Everything
+    /// reported was stored; the remaining files are picked up by the next pass.
+    pub cancelled: bool,
 }
 
 fn add_upsert(a: &mut UpsertStats, b: UpsertStats) {
@@ -261,6 +276,7 @@ pub struct Indexer {
     account: AccountId,
     projects_dir: PathBuf,
     config: IndexerConfig,
+    cancel: Arc<AtomicBool>,
     sessions: HashMap<String, SessionId>,
     projects: HashMap<String, ProjectId>,
     models: HashMap<String, ModelId>,
@@ -274,10 +290,17 @@ impl Indexer {
             account,
             projects_dir: config_dir.join(crate::providers::claude::PROJECTS_DIR),
             config,
+            cancel: Arc::new(AtomicBool::new(false)),
             sessions: HashMap::new(),
             projects: HashMap::new(),
             models: HashMap::new(),
         }
+    }
+
+    /// Shares a cancellation flag. Once it is set, workers finish the file they are reading and
+    /// take no new one; the pass stores what it has and returns with `cancelled` set.
+    pub fn set_cancel(&mut self, flag: Arc<AtomicBool>) {
+        self.cancel = flag;
     }
 
     /// Inventories every transcript and indexes what changed, newest first.
@@ -325,7 +348,10 @@ impl Indexer {
         paths: &[PathBuf],
         on_event: &mut dyn FnMut(IndexEvent),
     ) -> Result<IndexReport, IndexError> {
-        let stored = self.store.source_files(self.account)?;
+        // Look up only these files: the watcher calls this every few seconds with a handful of
+        // paths, and loading every row of the account each time would dominate the pass.
+        let keys: Vec<String> = paths.iter().map(|p| path_key(p)).collect();
+        let stored = self.store.source_files_at(self.account, &keys)?;
         let mut entries = Vec::new();
         let mut vanished = Vec::new();
         for path in paths {
@@ -392,16 +418,18 @@ impl Indexer {
         let next = AtomicUsize::new(0);
         let (tx, rx) = mpsc::sync_channel::<WorkerMsg>(CHANNEL_CHUNKS);
         let background = self.config.background;
+        let cancel = Arc::clone(&self.cancel);
         let mut state = Coordinator::new(jobs.len());
 
         let outcome = thread::scope(|scope| -> Result<(), IndexError> {
             for i in 0..workers {
                 let tx = tx.clone();
                 let next = &next;
+                let cancel = &*cancel;
                 thread::Builder::new()
                     .name(format!("indexer-{i}"))
                     .spawn_scoped(scope, move || {
-                        worker(jobs, next, &tx, background.then_some(recent_cutoff));
+                        worker(jobs, next, &tx, background.then_some(recent_cutoff), cancel);
                     })?;
             }
             drop(tx);
@@ -449,6 +477,7 @@ impl Indexer {
         progress.phase = IndexPhase::Done;
         on_event(IndexEvent::Progress(progress));
         report.files_indexed = progress.files_done;
+        report.cancelled = progress.files_done + report.files_failed < jobs.len();
         warn_on_drift(&report);
         self.store.release_memory()?;
         Ok(report)
@@ -498,6 +527,13 @@ impl Indexer {
         }
         merge_chunk_meta(&mut spec, &chunk);
         state.had_events[job] |= !chunk.events.is_empty();
+        if let (Some(first), Some(last)) = (chunk.first_ts, chunk.last_ts) {
+            report.sessions.insert(session);
+            report.ts_range = Some(match report.ts_range {
+                Some((a, b)) => (a.min(first), b.max(last)),
+                None => (first, last),
+            });
+        }
 
         for raw in chunk.events {
             let model_id = self.model_for(&raw.model)?;
@@ -873,11 +909,15 @@ fn worker(
     next: &AtomicUsize,
     tx: &mpsc::SyncSender<WorkerMsg>,
     background_before: Option<i64>,
+    cancel: &AtomicBool,
 ) {
     let parser = LineParser::default();
     let mut reader = LineReader::default();
     let mut in_background = false;
     loop {
+        if cancel.load(Ordering::Relaxed) {
+            return;
+        }
         let job = next.fetch_add(1, Ordering::Relaxed);
         let Some(j) = jobs.get(job) else { return };
         if !in_background && background_before.is_some_and(|cutoff| j.entry.mtime < cutoff) {

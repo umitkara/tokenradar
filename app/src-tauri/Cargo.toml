@@ -22,6 +22,8 @@ tauri-plugin-single-instance.workspace = true
 [target.'cfg(windows)'.dependencies]
 webview2-com = "0.39"
 windows-core = "0.62"
+# Local time for the temporary Step 05 tray tooltip.
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Time"] }
 
 [features]
 # Compiles the Step 02 measurement scenario (`TOKENRADAR_SPIKE`) into release builds.

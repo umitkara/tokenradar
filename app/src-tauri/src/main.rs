@@ -1,8 +1,9 @@
-//! TokenRadar desktop app: tray icon, on-demand windows and (later) the core runtime.
+//! TokenRadar desktop app: tray icon, on-demand windows and the core runtime.
 
 // Release builds use the GUI subsystem so no console window flashes up on start.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod core_bridge;
 mod panel;
 #[cfg(any(debug_assertions, feature = "spike"))]
 mod spike;
@@ -22,7 +23,9 @@ fn main() {
             panel::report(panel::show(app));
         }))
         .setup(|app| {
+            // Tray first, so it shows within its 300 ms budget; the core starts behind it.
             tray::create(app.handle())?;
+            core_bridge::start(app.handle());
             #[cfg(any(debug_assertions, feature = "spike"))]
             spike::start(app.handle());
             Ok(())
@@ -30,15 +33,14 @@ fn main() {
         .build(tauri::generate_context!())
         .expect("failed to build the TokenRadar app");
 
-    app.run(|_app, event| {
+    app.run(|app, event| match event {
         // The app lives in the tray: closing the last window must not quit it.
         // `code` is `None` only for that implicit request; `AppHandle::exit` (tray menu) passes
         // `Some(code)` and is allowed through.
-        if let RunEvent::ExitRequested {
+        RunEvent::ExitRequested {
             code: None, api, ..
-        } = event
-        {
-            api.prevent_exit();
-        }
+        } => api.prevent_exit(),
+        RunEvent::Exit => core_bridge::shutdown(app),
+        _ => {}
     });
 }

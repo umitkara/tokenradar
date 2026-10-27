@@ -3,7 +3,7 @@
 
 use std::collections::HashMap;
 
-use rusqlite::{Connection, Transaction, params};
+use rusqlite::{Connection, OptionalExtension, Transaction, params};
 
 use super::{Result, StoreError, catalog, events};
 use crate::domain::{AccountId, SessionId, SessionKind, SessionSpec, Timestamp, UsageEvent};
@@ -99,6 +99,39 @@ pub(crate) fn files(
     for row in rows {
         let row = row?;
         out.insert(row.path.clone(), row);
+    }
+    Ok(out)
+}
+
+/// The rows of these paths that exist, keyed by path.
+pub(crate) fn files_at(
+    conn: &Connection,
+    account: AccountId,
+    paths: &[String],
+) -> Result<HashMap<String, SourceFileState>> {
+    let mut stmt = conn.prepare_cached(
+        "SELECT kind, size, mtime, offset, session_id, deleted_at
+         FROM source_files WHERE account_id = ?1 AND path = ?2",
+    )?;
+    let mut out = HashMap::new();
+    for path in paths {
+        let row = stmt
+            .query_row(params![account, path], |r| {
+                Ok(SourceFileState {
+                    account_id: account,
+                    path: path.clone(),
+                    kind: catalog::parse_col(r, 0)?,
+                    size: from_sql(r.get(1)?),
+                    mtime: r.get(2)?,
+                    offset: from_sql(r.get(3)?),
+                    session_id: r.get(4)?,
+                    deleted_at: r.get(5)?,
+                })
+            })
+            .optional()?;
+        if let Some(row) = row {
+            out.insert(path.clone(), row);
+        }
     }
     Ok(out)
 }

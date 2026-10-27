@@ -24,6 +24,8 @@ allow = [
     "BSD-3-Clause",
     # Permissive, no attribution required in binaries (xxhash-rust, the dedup key hash).
     "BSL-1.0",
+    # Public-domain dedication, no conditions at all (notify, the file watcher).
+    "CC0-1.0",
     "ISC",
     "Unicode-3.0",
     "Zlib",

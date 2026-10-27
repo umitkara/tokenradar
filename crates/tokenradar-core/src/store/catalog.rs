@@ -143,6 +143,17 @@ pub(crate) fn upsert_session(conn: &Connection, spec: &SessionSpec) -> Result<Se
     Ok(id)
 }
 
+pub(crate) fn session_id_by_uuid(
+    conn: &Connection,
+    account: AccountId,
+    uuid: &str,
+) -> Result<Option<SessionId>> {
+    Ok(conn
+        .prepare_cached("SELECT id FROM sessions WHERE account_id = ?1 AND uuid = ?2")?
+        .query_row(params![account, uuid], |r| r.get(0))
+        .optional()?)
+}
+
 pub(crate) fn session(conn: &Connection, id: SessionId) -> Result<Option<Session>> {
     conn.prepare_cached(
         "SELECT account_id, uuid, kind, parent_id, root_id, project_id, title, git_branch,

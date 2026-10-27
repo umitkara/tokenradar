@@ -15,6 +15,7 @@ tokenradar-i18n.workspace = true
 directories = "6.0.0"
 jiff = { version = "0.2.38", default-features = false, features = ["std"] }
 memchr = "2.8.3"
+notify = "8.2.1"
 rusqlite = { version = "0.41.0", features = ["bundled"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
@@ -22,6 +23,8 @@ serde_json = "1.0.154"
 specta = { version = "=2.0.0-rc.26", features = ["derive"] }
 thiserror = "2.0.21"
 toml = { version = "1.1.8", default-features = false, features = ["std", "parse", "serde"] }
+# Only `sync` for the event bus: the core runs on its own threads, not on a runtime (ADR-027).
+tokio = { version = "1.54.1", default-features = false, features = ["sync"] }
 tracing = "0.1.44"
 xxhash-rust = { version = "0.8.19", features = ["xxh3"] }
 zeroize = "1.9.1"
@@ -38,7 +41,7 @@ simd-json = "0.18.1"
 tempfile = "3"
 
 [target."cfg(windows)".dependencies]
-windows-sys = { version = "0.61", features = ["Win32_System_Threading"] }
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Threading"] }
 
 [target."cfg(windows)".dev-dependencies]
 windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_ProcessStatus", "Win32_System_Threading"] }

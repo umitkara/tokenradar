@@ -174,6 +174,20 @@ impl Store {
     ) -> Result<std::collections::HashMap<String, SourceFileState>> {
         self.read(|c| index::files(c, account))
     }
+
+    /// Read positions of the given files (by [`SourceFileState::path`]) that are known.
+    pub fn source_files_at(
+        &self,
+        account: AccountId,
+        paths: &[String],
+    ) -> Result<std::collections::HashMap<String, SourceFileState>> {
+        self.read(|c| index::files_at(c, account, paths))
+    }
+
+    /// Id of a session by uuid, if it has been indexed.
+    pub fn session_id_by_uuid(&self, account: AccountId, uuid: &str) -> Result<Option<SessionId>> {
+        self.read(|c| catalog::session_id_by_uuid(c, account, uuid))
+    }
 }
 
 /// Sends work to the writer thread and waits for the result.
