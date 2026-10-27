@@ -11,6 +11,7 @@ synthetic or sanitized (content, thinking, signatures and tool payloads removed;
 | `claude/projects/C--Work-Alpha/0a1f…a001/subagents/agent-a1b2c3.jsonl` | Synthetic subagent of Alpha. A fork copy of a main-session message (cross-session tie) and a record without `requestId`. |
 | `claude/projects/C--Work-Alpha/0a1f…a001/tool-results/toolu_1.jsonl` | Contains usage-looking lines; must never be indexed. |
 | `claude/projects/C--Work-Beta/0b2e…b001.jsonl` | Synthetic session with no `cwd` (unresolved project), a `<synthetic>` model and an `agent-name` title. |
+| `statusline/sample.json` | Synthetic Claude Code statusline payload (S1): escaped Windows paths, both `rate_limits` windows with past `resets_at` values, plus fields TokenRadar ignores (`workspace`, `prompt_cache`, `effort`). |
 | `claude/projects/C--Work-Gamma/0c3d…c001/subagents/agent-ffee01.jsonl` | Synthetic subagent whose main session file does not exist (placeholder parent); `cwd` with forward slashes and a trailing separator. |
 
 ## Sanitizer

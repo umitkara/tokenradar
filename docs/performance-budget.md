@@ -32,8 +32,8 @@
 | Panel açılışı — soğuk (webview oluşturma dahil) | ≤ 400 ms |
 | Ana pencere açılışı — soğuk | ≤ 600 ms |
 | JSONL'e yeni satır yazılmasından UI/tray güncellemesine | ≤ 2 s (debounce dahil) |
-| `tokenradar statusline` (daemon açık) | p95 ≤ 30 ms |
-| `tokenradar statusline` (daemon kapalı, spool) | p95 ≤ 40 ms |
+| `tokenradar statusline` (daemon açık) | p95 ≤ 30 ms. Adım 07: 13,3 ms (`docs/perf/2026-10-27-statusline.md`) |
+| `tokenradar statusline` (daemon kapalı, spool) | p95 ≤ 40 ms. Adım 07: 25,5 ms |
 
 ## İndeksleme
 
@@ -49,7 +49,7 @@
 |---|---|
 | Installer (NSIS) | ≤ 12 MB |
 | `tokenradar-app.exe` | ≤ 15 MB |
-| `tokenradar.exe` (CLI) | ≤ 3 MB |
+| `tokenradar.exe` (CLI) | ≤ 3 MB. Adım 07: 2,95 MiB (`opt-level = "s"` ile 2,05 MiB, uygulanmadı) |
 | Frontend bundle (panel sayfası, gzip) | ≤ 60 KB JS + ≤ 15 KB CSS |
 | Frontend bundle (ana pencere, gzip) | ≤ 180 KB JS |
 | Veritabanı büyümesi | ≤ 30 MB/ay (referans kullanım). Ham olaylar 90 gün sonra silinir, `usage_5m` kalıcıdır. |

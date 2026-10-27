@@ -57,6 +57,13 @@ Claude Code, `settings.json` içindeki `statusLine.command` komutunu çalıştı
 - Kullanıcının mevcut bir statusline komutu olabilir (örneğin `statusline.py`). Kurulum sırasında bu komut **zincirleme modunda** korunmalı (bkz. ADR-009).
 - Çıktı genişliği için `COLUMNS` ortam değişkeni kullanılmalı. ANSI renkleri ve OSC 8 linkleri destekleniyor.
 
+**Windows'ta komutun çalıştırılması (Adım 07, ADR-029):**
+- Resmî belgelere göre Claude Code komutu Windows'ta Git Bash kuruluysa onunla, değilse PowerShell ile çalıştırır. Git Bash yolu `CLAUDE_CODE_GIT_BASH_PATH` ile değiştirilebilir.
+- Git Bash **tırnaksız ters bölüleri siler**: `python C:\Users\…\statusline.py` komutu `python C:Users…statusline.py` olarak çalışır ve sessizce hiçbir şey basmaz. Bu, `bash -c` ile doğrulandı. Planın varsaydığı "ters bölülü örnek çalışıyor" bilgisi bu yüzden büyük olasılıkla yanlıştı.
+- Güvenli biçim: düz bölülü, tırnaksız yol (`D:/…/tokenradar.exe statusline`). Hem Git Bash hem PowerShell bunu aynen çalıştırır. **Gerçek bir Claude Code 2.1.311 oturumunda** bu biçimle kurulan komut her güncellemede çalıştı; uygulama kapalıyken okumalar spool'a, açıkken IPC'ye gitti.
+- Boşluk içeren yollar için önce 8.3 kısa yol, o da yoksa kabuğa göre tırnaklama kullanılır. Bu durum gerçek oturumda **test edilmedi**; geliştirme makinesinin yolunda boşluk yok.
+- Gerçek payload'da plandaki alt kümenin tamamı vardı (`rate_limits` dahil); CLI yalnızca bu alanları saklar.
+
 ---
 
 ## S2 — OAuth usage API (tamamlayıcı, onaylı)

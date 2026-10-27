@@ -102,7 +102,7 @@ TokenRadar/
 | Zaman | `jiff` | Saat dilimi farkındalıklı |
 | Dosya izleme | `notify` + `notify-debouncer-full` | |
 | HTTP | `reqwest` (rustls, minimum feature) | Tauri updater ile paylaşılır, kopya bağımlılık olmaz |
-| IPC | `interprocess` (local socket / named pipe) | |
+| IPC | `tokio` named pipe (sunucu), `std::fs` + `windows-sys` (CLI istemcisi) | ADR-029; Unix soketi Adım 21 |
 | Tray ikonu | Tauri tray API + `tiny-skia` ile bitmap çizimi | |
 | i18n | Fluent (`fluent-bundle`, `@fluent/bundle`) | Özel fonksiyonlar (§12) |
 | Log | `tracing` + dönen dosya appender | |
@@ -123,7 +123,7 @@ Sürümler uygulama anında güncel stable olarak seçilir ve lock dosyalarıyla
 | `LiveSessions` | `sessions/*.json` dosyalarını okur, pid canlılığını doğrular, `busy`/`idle` durumunu izler. |
 | `LimitEngine` | Kaynakları (S1/S2/tahmin) birleştirir. Snapshot'ları ve pencereleri yönetir, burn rate ve projeksiyon hesaplar. |
 | `UsageApiPoller` | S2 istemcisi: onay kapısı, token'ı salt-okunur kullanma, adaptif zamanlama, geri çekilme. |
-| `StatuslineIngest` | IPC'den ve spool dosyalarından gelen S1 verisini işler. |
+| `StatuslineIngest` | IPC'den ve spool dosyalarından gelen S1 verisini işler. `core-ipc` thread'i push'ları `core-limits`'e iletir; `core-limits` spool'u açılışta ve 5 dakikada bir içe aktarır (ADR-029). |
 | `Calibrator` (v0.2) | %/maliyet katsayısı k'yı tahmin eder, güven skorunu ve sapmayı (drift) izler. |
 | `Attributor` (v0.2) | Δ%'yi oturumlara dağıtır, "Diğer" kovasını yönetir. |
 | `Notifier` | Eşik, projeksiyon ve reset kurallarını uygular. Histerezis ve tekilleştirme yapar, sessiz saatlere uyar. |
@@ -332,7 +332,7 @@ S2 yalnızca **açık onay** varsa kullanılır.
 
 ## 11. IPC protokolü ve CLI
 
-- **Taşıma:** `interprocess` local socket kullanılır. Windows'ta `\\.\pipe\tokenradar-<kullanıcı-SID-hash>`, Unix'te `$XDG_RUNTIME_DIR/tokenradar.sock` (yoksa `~/.local/state/tokenradar/…`).
+- **Taşıma (ADR-029):** Sunucu tarafında `tokio` named pipe, CLI tarafında runtime'sız senkron istemci kullanılır. Windows'ta `\\.\pipe\tokenradar-<kullanıcı-SID-hash>`, Unix'te `$XDG_RUNTIME_DIR/tokenradar.sock` (yoksa `~/.local/state/tokenradar/…`).
 - **Güvenlik:**
   - Named pipe için **açık bir DACL** tanımlanır: yalnızca mevcut kullanıcı SID'i erişebilir. Windows'un varsayılan DACL'i *Everyone* grubuna okuma izni verdiği için bu adım şart.
   - `PIPE_REJECT_REMOTE_CLIENTS` bayrağı set edilir.
@@ -344,10 +344,11 @@ S2 yalnızca **açık onay** varsa kullanılır.
   3. Satır stdin verisiyle biçimlendirilir; varsa daemon'dan gelen ekstra bilgiyle (oturumun pencere payı, projeksiyon) zenginleştirilir.
   4. Daemon yoksa veri `spool/statusline-YYYYMMDD.jsonl` dosyasına eklenir (günlük en fazla 5 MB). Uygulama açıldığında spool dosyaları içe aktarılır. Böylece **uygulama kapalıyken bile % geçmişi kaybolmaz**.
   5. Zincirleme modu (`--chain`): Kullanıcının önceki statusline komutu aynı stdin ile çalıştırılır ve çıktısı bizim segmentimizle birleştirilir. Zaman aşımı 300 ms'dir.
+  6. Yüzdeler ve reset süreleri stdin'deki payload'dan, projeksiyon ve oturum payı uygulamadan gelir (ADR-029).
 - **Diğer komutlar:**
   - `tokenradar status [--json]`, `limits`, `sessions`: Uygulama çalışmıyorsa SQLite'tan salt-okunur okunur.
   - `doctor`: Anonim bir tanılama paketi üretir.
-  - `statusline install|uninstall`: `settings.json` dosyasını yedekler, değişikliği diff olarak gösterir, atomik olarak yazar ve önceki komutu korur.
+  - `statusline install|uninstall`: `settings.json` dosyasını yedekler, değişikliği diff olarak gösterir, atomik olarak yazar ve önceki komutu korur. Yalnızca `statusLine` üyesinin baytları değişir; `install → uninstall` dosyayı bayt düzeyinde geri getirir (ADR-029).
 
 ## 12. i18n mimarisi
 
