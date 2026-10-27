@@ -71,15 +71,21 @@ OKLCH ile tanımlanır. Her token CSS `light-dark(açık, koyu)` çiftidir; etki
 ### Limit satırı
 
 `[ikon] Etiket ........ %72  ·  1 sa 48 dk` ve altında ince bir çubuk. Scoped limitler (örneğin "Fable · haftalık") girintili bir alt satırda gösterilir.
+- **Panelde (`stacked`):** Halkanın yanındaki dar sütunda geri sayım çubuğun altına iner: `Etiket ..... %72`, çubuk, `1 sa 48 dk sonra yenilenir`. Haftalık ve scoped limitler mutlak zamanı gösterir (`Cum 17:35'te yenilenir`). (ADR-032)
 
 ### Oturum satırı
 
-`● ad (proje)   busy   ≈ %9 bu pencere   12,4k tok/dk`
-- Durum noktası: busy → nabız atan nokta (yalnızca 2 kez atar, sürekli değil); idle → içi boş daire.
+İki satır (ADR-032; tek satır 360 px'te çevirilerle sığmıyordu):
+```
+● ad  proje                 ≈ %9 bu pencere
+  Meşgul · 12,4k tok/dk
+```
+- Ad sırası: oturum adı → başlık → proje → "Adsız oturum". Proje ad olarak kullanıldıysa tekrar yazılmaz.
+- Durum noktası: busy → nabız atan nokta (yalnızca 2 kez atar, sürekli değil); idle → içi boş daire. Canlı olmayan satırlar soluktur.
 
 ### Kaynak rozeti
 
-Her limit kartının köşesinde küçük bir rozet bulunur: `canlı` (S1), `API` (S2) veya `tahmini`. Rozetin tooltip'i son güncelleme zamanını gösterir.
+Küçük bir rozet: `canlı` (S1), `API` (S2) veya `tahmini`. Rozetin tooltip'i son güncelleme zamanını gösterir. Panelde tek rozet alt bilgidedir ve birincil limitin (5 saatlik, yoksa haftalık) kaynağını gösterir; tahmini değerler satırlarda ayrıca `≈` ile işaretlenir.
 
 ### Tray ikonu
 

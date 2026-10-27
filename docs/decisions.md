@@ -352,3 +352,41 @@
   - Tüm metni Rust'ta biçimleyip hazır göndermek (her saniyelik geri sayım için IPC gerekir).
   - `prefers-color-scheme`'e bırakıp açılış betiği kullanmamak (kullanıcı teması sistemden farklıysa ilk kare yanlış).
   - specta-typescript 0.0.14 ve specta rc.27 (tauri-specta rc.26 ile uyumsuz).
+
+### ADR-032 — Tray paneli: ikona ortalı konum, GPU'suz WebView, hover ön ısıtması, panel görünüm kuralları
+**Durum:** Kabul (2026-10-27, Adım 10)
+- **Bağlam:**
+  - Plan, konumlama için `tauri-plugin-positioner` ya da özel hesaplama arasında seçim bırakıyordu. Eklentinin `TrayBottomCenter` vb. konumları görev çubuğu kenarını ve çalışma alanını bilmiyor; sol veya sağ görev çubuğunda ve DPI'ı farklı ikinci monitörde panel ekran dışına taşabiliyor.
+  - Adım 02, `--disable-gpu` ile panel belleğinin ~%33 düştüğünü gördü (n=1); kararı gerçek panele bıraktı.
+  - Gerçek panelde (release, sahte veri, 3 koşu × 3 tur) GPU açıkken soğuk açılış medyanı 432 ms (391–983), panel açık 118–122 MB, tepe 131,6 MB oldu: iki bütçe birden sınırda ya da aşılmış. Faz dökümü, gizli pencere ilk kez görünür olduğunda GPU birleştirmesiyle ilk karenin ~470 ms geciktiğini gösterdi (yazılım birleştirmesinde 17 ms). Pencere örtülme hesabını kapatmak (`CalculateNativeWinOcclusion`) etkisizdi.
+  - GPU kapalıyken bile soğuk açılış medyanı 407 ms (386–492; bütçe 400): sürenin ~%70'i WebView2 tarayıcı sürecinin başlaması (`build()` 267–316 ms). `warm_ttl` sonunda tüm WebView2 süreçleri çıktığı için (ADR-023) her soğuk açılış bunu yeniden öder.
+  - Tauri `hide()` yalnızca pencereyi gizler; WebView2 controller görünür kaldığı için sayfa `hidden` olmaz, saati ve olay dinleyicisi çalışmaya devam eder, bellek seviyesi düşürülse de sayfa uyumaz.
+  - `PanelSnapshot` ilk indekslemenin ilerlemesini ve şema sapmasını taşımıyordu (yalnızca olay olarak geliyordu); panel kapalıyken gelen olaylar kayboluyordu.
+  - Plandaki tek satırlı oturum satırı (nokta, ad, proje, pay, hız) 360 px'te çevirilerle sığmıyordu.
+- **Karar (kullanıcıyla kararlaştırıldı):**
+  - **Konum:** Özel hesaplama, eklenti yok. Panel tray ikonuna ortalanır, görev çubuğu kenarına 12 mantıksal px boşlukla yaslanır, ikonun monitörünün çalışma alanına sıkıştırılır. Kenar `SHAppBarMessage(ABM_GETTASKBARPOS)`, çalışma alanı `MonitorFromPoint` + `GetMonitorInfoW`, ölçek `GetDpiForMonitor`'dan gelir; otomatik gizlenen görev çubuğunun da payı bırakılır. Hesap fiziksel pikselde ve saf bir fonksiyondur (`panel/place.rs`, birim testli). Ölçeği farklı bir monitöre geçerken sıra konum → boyut → konumdur. Köşeler `DWMWA_WINDOW_CORNER_PREFERENCE = DWMWCP_ROUND`.
+  - **GPU:** Tüm pencereler `--disable-gpu` ile açılır (`chrome::BROWSER_ARGS`; wry'nin varsayılan argümanları korunur, aynı WebView2 ortamını paylaşan pencerelerin argümanları aynı olmalıdır). Sonuç: soğuk açılış 407 ms medyan, sıcak 47 ms, panel açık 74–77 MB (tepe 80,6), `warm_ttl + 10 s` 4,5 MB; soğuk açılış + 10 s açık CPU'su 1,48–1,62 s'den 1,14–1,38 s'ye indi. %125 ölçekte görsel fark yok. Bir `gpu-process` yine çalışır (yazılım yolu).
+  - **Soğuk açılış bütçesi:** Değişmez (≤ 400 ms). Ölçülen 407 ms "sınırda" diye kaydedilir; kalan iyileştirme açık iştir.
+  - **Hover ön ısıtması:** `TrayIconEvent::Enter` panel yoksa pencereyi arka planda oluşturur. Sayfa hazır olunca WebView gizlenir ve düşük bellek seviyesine alınır (sıcak gizli panelle aynı durum: gösterilince sayfa görünür olur ve snapshot'ı yeniden çeker); kullanılmazsa `warm_ttl` sonunda yok edilir. Sayfa hâlâ yüklenirken gelen açma isteği hazır olunca gösterilir. Durum makinesi `Page { Absent, Loading { reveal }, Ready }`.
+  - **Gizleme:** `window.hide()` + `Webview::hide()` (controller `IsVisible = false`, sayfa `hidden` olur) + `MemoryUsageTargetLevel = Low`; gösterirken tersi. Bellek seviyesi çağrısı ana thread'i beklemez (blur işleyicisinden çağrılır).
+  - **`PanelShown` olayı:** Her gösterişte sayfaya gider; soğuk açılışta `visibilitychange` olmadığı için girişi ve odağı bu olay tetikler. Odak ilk butona değil panel kabına gider (ilk buton her açılışta ipucunu açıyordu); `Tab` ayarlar butonundan başlar. Plandaki "odak ilk etkileşimli öğeye" maddesinden sapmadır.
+  - **Tray tıklaması:** Basış panelin açık olduğunu (ya da son 200 ms içinde blur ile kapandığını) hatırlar, bırakış buna göre ya kapatır ya açar.
+  - **`IndexState` genişletildi:** `progress`, `recent_ready`, `drift` (`SchemaDriftView`). `CoreStatus` bunları tutar, `panel_snapshot()` güncel indeks durumunu snapshot'a bindirir.
+  - **"Yenile":** Yeni bir API isteği yolu açılmaz; `CoreHandle::panel_opened()` çağrılır (60 s'den eski veriyi yeniler, backoff'a uyar). Buton API kapalıysa gizli, son istekten 60 s geçmediyse (yerel tıklama dahil) veya istemci engelliyse pasiftir.
+  - **Sustur:** Durumun sahibi tray thread'idir; panel `MuteChanged` olayıyla güncellenir.
+  - **Projeksiyon satırı:** Önce 5 saatlik, sonra haftalık pencerede "dolacak" uyarısı aranır (kritik renk). Yoksa 5 saatlik pencerenin reset anındaki tahmini, `eta_100_at` yoksa "Tüketim yok". Düşük güvende "≈" ve soluk renk.
+  - **Çevrimdışı uyarısı:** Yalnızca birincil limitin kaynağı statusline değilse gösterilir (statusline taze veri getiriyorsa API'nin çevrimdışı olması kullanıcıyı ilgilendirmez).
+  - **Görünüm:** `SessionRow` iki satırdır (ad · proje · pay / durum · hız). Ad sırası: ad → başlık → proje → "Adsız oturum"; proje ad olarak kullanıldıysa tekrar yazılmaz. `LimitBar` panelde `stacked` düzende (geri sayım çubuğun altında).
+  - **Test kancaları (yalnızca debug veya `spike`):** `TOKENRADAR_FAKE_LIMITS=panel:<sahne>` (14 sahne) ve `fake_panel_scene` komutu; `TOKENRADAR_PANEL_SCENARIO=lifecycle|prewarm|open`; `TOKENRADAR_PANEL_LOG` (`painted`, `phase` satırları). Ölçüm `scripts/measure-panel.ps1`.
+- **Bedel:**
+  - Soğuk açılış bütçeyi ~7 ms aşıyor; klavye, menü veya ikinci başlatmayla açılış ön ısıtmadan yararlanmaz.
+  - Ön ısıtma, imleç ikonun üzerinden geçerken tıklanmasa da bir pencereyi 60 s yaşatır. Hover işleyicisi `build()` süresince (~270 ms) ana thread'i meşgul eder; bu sürede gelen tıklama sıraya girer.
+  - GPU'suz çizim, gelecekte ağır animasyon veya büyük grafikler (ana pencere, v0.2) için CPU maliyeti doğurabilir; o adımda yeniden ölçülmeli. ADR-019 sürekli animasyonu zaten yasaklıyor.
+  - Konumlama Windows'a özgü; macOS ve Linux Adım 21'de ayrı ele alınır.
+  - `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` ortam değişkeni koddaki argümanları ezer (CDP ile geliştirirken `--disable-gpu` elle eklenmeli).
+- **Alternatifler:**
+  - `tauri-plugin-positioner` (kenar ve çalışma alanı farkındalığı yok).
+  - GPU açık + hover ön ısıtması (bellek bütçesi tepe değerde aşılıyor, ilk kare gecikmesi ön ısıtmayla gizlenmiyor: gecikme gösterildikten sonra oluşuyor).
+  - Pencereyi ekran dışında görünür tutarak GPU yüzeyini önceden kurmak (odak, Alt+Tab ve örtülme hesabıyla karmaşık; bellek kazancı yok).
+  - WebView2 tarayıcı sürecini `warm_ttl` sonrası canlı tutmak (soğuk açılış kalkar ama boşta bellek bütçesi ≤ 30 MB aşılır; ADR-023).
+  - Soğuk açılış bütçesini 450 ms'ye çekmek (kullanıcı bütçeyi korumayı seçti).
