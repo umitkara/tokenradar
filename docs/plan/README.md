@@ -32,7 +32,7 @@
 | 05 | [Dosya izleme, canlı oturumlar, olay veri yolu](05-izleme-ve-canli-oturumlar.md) | 04 | ✅ |
 | 06 | [Limit motoru ve OAuth usage API istemcisi](06-limit-motoru-ve-api.md) | 03, 05 | ✅ |
 | 07 | [IPC, CLI ve statusline köprüsü](07-ipc-cli-statusline.md) | 06 | ✅ |
-| 08 | [Tray: dinamik ikili halka ve menü](08-tray.md) | 06 | ⬜ |
+| 08 | [Tray: dinamik ikili halka ve menü](08-tray.md) | 06 | ✅ |
 | 09 | [Frontend temeli: token'lar, tema, i18n, tipli köprü](09-frontend-temeli.md) | 02, 03 | ⬜ |
 | 10 | [Tray paneli](10-tray-paneli.md) | 07, 08, 09 | ⬜ |
 | 11 | [Bildirimler, ayarlar ve onboarding](11-bildirim-ayar-onboarding.md) | 10 | ⬜ |

@@ -75,14 +75,32 @@ Her limit kartının köşesinde küçük bir rozet bulunur: `canlı` (S1), `API
 
 ### Tray ikonu
 
-- **Boyutlar:** 16, 20, 24 ve 32 px üretilir. DPI ölçeğine göre doğru boyut seçilir.
-- **Halka kalınlıkları:** 16 px'te dış halka 2 px, iç halka 3 px; boşluk 1 px.
-- **Tema uyumu:** Görev çubuğu teması (açık/koyu) registry'deki `SystemUsesLightTheme` değerinden okunur ve track rengi buna göre seçilir. Yüksek kontrast modunda monokrom ikon kullanılır.
+- **Boyutlar:** İkon, görev çubuğunun DPI'ına göre `SM_CXSMICON` boyutunda çizilir (16 @%100, 20 @%125, 24 @%150, 32 @%200). Golden testler bu dört boyutu kapsar.
+- **Geometri** (`s = px / 16`; kalınlıklar tam piksele yuvarlanır, halkalar 12 yönünden saat yönünde dolar):
+
+  | px | Dış halka | Boşluk | İç halka | Çentik | Nokta (çap) | Halo | Duraklat çubuğu |
+  |---|---|---|---|---|---|---|---|
+  | 16 | 2 | 1 | 3 | 1,5 | 5 | 1 | 1 × 5 |
+  | 20 | 3 | 1 | 4 | 1,9 | 6 | 1 | 1 × 6 |
+  | 24 | 3 | 2 | 5 | 2,3 | 8 | 2 | 2 × 8 |
+  | 32 | 4 | 2 | 6 | 3 | 10 | 2 | 2 × 10 |
+
+- **Renk:** Her halka kendi önemine göre renklenir (ok / warn / crit, eşikler 75/90). Track tray'de **opaktır**: koyu `rgb(68 72 77)`, açık `rgb(201 206 212)`. Paneldeki yarı saydam track 16 px'te görev çubuğunda kayboluyordu (ADR-030).
+- **Tema uyumu:** Görev çubuğu teması `SystemUsesLightTheme` değerinden okunur. Yüksek kontrastta ikon tek renktir: mürekkep `COLOR_WINDOWTEXT`, track 1 px ve tam piksele hizalı. Tema, ölçek veya kontrast değişince ikon yeniden çizilir.
 - **Durum işaretleri:**
-  - Kritik: iç halkanın ucunda küçük bir boşluk (çentik).
-  - Veri bayat (> 30 dk): ikon %50 opaklıkta çizilir.
-  - Hata: köşede bir nokta.
-- **Tooltip:** `TokenRadar — 5s: %72 (1 sa 48 dk) · Haftalık: %34 (Çar 10:59)`
+  - Kritik: kritik olan her halkanın ucunda küçük bir boşluk (çentik). Halka doluysa çentik 12 yönündedir.
+  - Veri bayat (> 30 dk): halkalar %50 opaklıkta çizilir; işaretler tam opak kalır.
+  - Hata: sağ üst köşede kritik renkte bir nokta.
+  - Bildirimler susturulmuş: sağ altta iki dikey çubuk (duraklat işareti).
+  - Hata noktası ve duraklat işareti saydam bir halo ile halkalardan ayrılır.
+  - Veri yok: yalnızca track'ler ve ortada küçük bir nokta.
+- **Tooltip:** Çok satırlı, en fazla 127 UTF-16 birimi. Sığmazsa önce başlık düşer, sonra kısa biçim kullanılır.
+  ```
+  TokenRadar
+  5s: %72 · 1 sa 48 dk sonra yenilenir
+  Haftalık: %34 · Çar 10:59'da yenilenir
+  ```
+  Kapsamlı haftalık limitler (`Fable · haftalık: %80`) yalnızca %75 ve üstündeyse ayrı bir satır olarak eklenir. Tahminler `≈` taşır.
 
 ### Widget (kompakt şerit, v0.3)
 

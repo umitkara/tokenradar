@@ -290,3 +290,36 @@
   - `serde_json` `preserve_order` ile yeniden yazmak (biçimi normalize eder, bayt eşitliği sağlanmaz).
   - Kabuk bağımsızlığı için her zaman `cmd /c` veya bir `.cmd` sarmalayıcı (Claude Code komutu kendi kabuğunda çalıştırır; sarmalayıcı ek süreç ve gecikme getirir).
   - Satırı uygulamanın snapshot'ından basmak (bir önceki yanıtın değerini gösterebilir).
+
+### ADR-030 — Tray: gizli pencereyle ortam izleme, halka başına önem rengi, çok satırlı tooltip
+**Durum:** Kabul (2026-10-27, Adım 08)
+- **Bağlam:**
+  - Plan tema değişikliğini `RegNotifyChangeKeyValue` ile ayrı bir thread'de beklemeyi öngörüyordu. Ancak ikonun yeniden çizilmesini gerektiren beş olay daha var: DPI/ölçek değişimi, monitör değişimi, yüksek kontrast açılıp kapanması, sistem renk değişimi ve görev çubuğunun yeniden oluşması. Registry beklemesi bunların yalnızca birini görür.
+  - Plan "Paused" durumunu sayıyor ama nasıl görüneceğini tanımlamıyordu. Kritik çentik yalnızca iç halka için tanımlıydı; haftalık limit kritikken dış halka diğer durumlardan ayırt edilemiyordu.
+  - `design-language.md`'deki tooltip örneği tek satırdı. Sonekli tam TR cümleleri (`Çar 10:59'da yenilenir`) 127 UTF-16 birimine her durumda sığmıyor.
+  - Model kapsamlı haftalık limitler (`WeeklyScoped`, ör. "Fable · haftalık") ikonda yer almıyordu; kullanıcı bunlara yaklaştığında tray hiçbir şey söylemiyordu.
+  - Track token'ı koyu temada `/0.5` alfa taşıyor. 16 px'te bu track görev çubuğunun üzerinde neredeyse kayboluyor ve kritik çentiği gizliyordu.
+- **Karar (kullanıcıyla kararlaştırıldı):**
+  - **Ortam izleme:** Kendi thread'inde (`tray-env`) `GetMessageW` ile uyuyan tek bir gizli üst düzey pencere (`WS_POPUP`, `WS_EX_TOOLWINDOW`). `WM_SETTINGCHANGE`, `WM_DISPLAYCHANGE`, `WM_DPICHANGED`, `WM_THEMECHANGED`, `WM_SYSCOLORCHANGE` ve `TaskbarCreated` mesajlarında ortam (ikon boyutu + tema) yeniden okunur. Değer aynıysa hiçbir şey çizilmez. Polling yok.
+  - **Boyut:** Görev çubuğu penceresinin DPI'ı (`GetDpiForWindow(Shell_TrayWnd)`, yoksa `GetDpiForSystem`) ile `GetSystemMetricsForDpi(SM_CXSMICON)`; 16–64 aralığına sıkıştırılır.
+  - **Görev çubuğunun yeniden oluşması:** `tray-icon` 0.25 `TaskbarCreated`'ı zaten ele alıyor (kayıtlı ikon ve tooltip'i yeniden ekliyor); ek kod gerekmedi. Eski HICON `DestroyIcon` ile bırakılıyor.
+  - **Önem rengi:** Her halka kendi önemine göre renklenir (`Severity::of`, 75/90). Çentik, kritik olan **her** halkanın ucuna konur; halka doluysa (≥ %100 − çentik) 12 yönüne.
+  - **Susturulmuş:** Sağ altta iki dikey çubuktan oluşan duraklat işareti, saydam bir halo ile halkalardan ayrılır. Hata noktası sağ üstte, kritik renkte. Bayat veride tüm ikon %50 opaklık; işaretler opaklığı düşürüldükten sonra çizilir, tam opak kalır.
+  - **Track:** Tray'de opaktır (koyu `rgb(68 72 77)`, açık `rgb(201 206 212)`). Yüksek kontrastta mürekkep `GetSysColor(COLOR_WINDOWTEXT)`'tir, track 1 px ve tam piksele hizalıdır.
+  - **Tooltip:** Çok satırlı, tam cümle: başlık, 5s satırı (dakikaya yukarı yuvarlanmış geri sayım), haftalık satırı (yerel gün + saat, `TR_SUFFIX`), gerekirse kapsamlı limit satırları, bayat/hata/susturma satırı. Sığmazsa sırayla başlıksız biçime, sonra kısa biçime düşer; o da sığmazsa satır sınırında kesilir. Yüzdeler tam puana yuvarlanır, böylece tooltip ikonla aynı sıklıkta değişir. Tahminler `≈` taşır.
+  - **Kapsamlı haftalık limitler:** İkona girmez. `WARN_AT` (%75) ve üstündeyse tooltip'e kendi satırı eklenir (yüksekten düşüğe).
+  - **`TR_SUFFIX`:** Sayının yanında biçimlenmiş metni de kabul eder (`%23,5`, `10:59`, `Çar 10:59`): son okunan kelimeye göre çekimlenir; `:00` saate, diğer dakikalar dakikaya bakar. Planlanan beş hale `poss` (iyelik, `%72'si`) eklendi.
+  - **Saat biçimi:** 12/24 saat tercihi `GetLocaleInfoEx(LOCALE_STIMEFORMAT)`'tan okunur; TR her zaman 24 saattir.
+  - **Susturma:** `kv` anahtarı `notify_snoozed_until`, değeri Unix milisaniye metni. Süre dolunca menü etiketi ve ikon kendiliğinden geri döner; tray thread'i bir sonraki dakika sınırında veya susturma bitiminde uyanır.
+  - **Sahte mod:** `TOKENRADAR_FAKE_LIMITS=cycle|sweep|stress` (yalnızca debug veya `spike` özelliği) çekirdeği **hiç başlatmaz**: veritabanı, indeksleme ve API yoktur. `TOKENRADAR_FAKE_LOG` release ölçümlerinde log dosyası verir.
+- **Bedel:**
+  - Bir thread ve bir gizli pencere daha (uyurken CPU sıfır, bellek birkaç KiB).
+  - Tray track'i panel track'inden (yarı saydam) farklıdır; tasarım dili bunu ayrıca belirtir.
+  - Yüksek kontrast mürekkebinin görev çubuğunun gerçek rengiyle uyumu gerçek bir HC temasında denenmedi.
+  - Kapsamlı limitler yalnızca uyarı eşiğinden sonra görünür; altında tray onlar hakkında bir şey söylemez.
+- **Alternatifler:**
+  - `RegNotifyChangeKeyValue` (yalnızca tema; DPI ve HC için ikinci bir mekanizma gerekirdi).
+  - Tauri pencere olaylarını dinlemek (WebView penceresi her zaman açık değil; ADR-003).
+  - Duraklatılmışken ikonu soluklaştırmak (bayat durumla karışır) veya halkaları griye çevirmek (değerler okunmaz olur).
+  - Yalnızca iç halkada çentik (haftalık kritik durum görünmez kalır).
+  - Tek satırlı kısa tooltip (Windows çok satırı destekliyor; tam cümle ekran okuyucuda daha iyi okunuyor).

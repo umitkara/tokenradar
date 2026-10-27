@@ -357,7 +357,7 @@ S2 yalnızca **açık onay** varsa kullanılır.
   - `NUM(n, decimals)`: yerel ayara göre gruplama ve ondalık ayırıcı. TR: `1.234,5`, EN: `1,234.5`.
   - `PCT(n)`: TR `%72`, EN `72%`.
   - `DUR(ms, style)`: TR `1 sa 48 dk`, EN `1h 48m`.
-  - `TR_SUFFIX(n, case)`: Türkçe sayı ekleri. Örnekler: `5'te`, `6'da`, `%72'si`, `10'dan`, `3'e`. Ek, sayının okunuşunun son hecesine göre seçilir (bir, iki, üç … on, yirmi … yüz, bin, milyon).
+  - `TR_SUFFIX(n, case)`: Türkçe sayı ekleri. Örnekler: `5'te`, `6'da`, `%72'si`, `10'dan`, `3'e`. Ek, sayının okunuşunun son hecesine göre seçilir (bir, iki, üç … on, yirmi … yüz, bin, milyon). Girdi sayı veya biçimlenmiş metin olabilir (`%23,5`, `10:59`, `Çar 10:00`); saatte `:00` saate, diğer dakikalar dakikaya göre çekimlenir. Haller: `loc`, `abl`, `dat`, `acc`, `gen`, `poss` (ADR-030).
   - Parite garantisi: `testdata/i18n-vectors.json` dosyasındaki ortak test vektörleri hem Rust hem TS testlerinde çalıştırılır.
 - **Tarih ve saat:**
   - TS tarafında `Intl.DateTimeFormat` ve `Intl.RelativeTimeFormat` kullanılır.
