@@ -58,9 +58,24 @@ fn spike_ready(window: WebviewWindow, ready: tauri::State<'_, Ready>, event: Str
     }
 }
 
-/// Registers the readiness command on the app builder.
-pub fn register(builder: tauri::Builder<Wry>) -> tauri::Builder<Wry> {
-    builder.invoke_handler(tauri::generate_handler![spike_ready])
+/// Registers the readiness command next to the app's `typed` commands. Tauri keeps only the
+/// last `invoke_handler`, so both go through one dispatcher.
+pub fn register(
+    builder: tauri::Builder<Wry>,
+    typed: impl Fn(tauri::ipc::Invoke<Wry>) -> bool + Send + Sync + 'static,
+) -> tauri::Builder<Wry> {
+    let spike = spike_handler();
+    builder.invoke_handler(move |invoke| {
+        if invoke.message.command() == "spike_ready" {
+            spike(invoke)
+        } else {
+            typed(invoke)
+        }
+    })
+}
+
+fn spike_handler() -> impl Fn(tauri::ipc::Invoke<Wry>) -> bool + Send + Sync + 'static {
+    tauri::generate_handler![spike_ready]
 }
 
 /// Starts the scenario named by `TOKENRADAR_SPIKE`, if any.

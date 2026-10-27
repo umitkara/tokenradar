@@ -3,5 +3,5 @@
   "identifier": "default",
   "description": "Baseline for the panel and settings windows. Grant new permissions per feature.",
   "windows": ["panel", "settings"],
-  "permissions": []
+  "permissions": ["core:event:allow-listen", "core:event:allow-unlisten"]
 }

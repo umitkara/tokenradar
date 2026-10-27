@@ -8,7 +8,7 @@
   },
   "files": {
     "ignoreUnknown": true,
-    "includes": ["**", "!src-tauri", "!dist"]
+    "includes": ["**", "!src-tauri", "!dist", "!src/lib/ipc/bindings.ts"]
   },
   "formatter": {
     "enabled": true,

@@ -35,4 +35,6 @@ tray-menu-mute = Mute notifications for 1 hour
 tray-menu-unmute = Unmute notifications
 tray-menu-settings = Settings…
 tray-menu-about = About TokenRadar
+# Development builds only.
+tray-menu-gallery = Component gallery (development)
 tray-menu-quit = Quit

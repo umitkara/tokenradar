@@ -6,7 +6,7 @@
 //! menu when what the user sees actually changed.
 
 mod render;
-mod system;
+pub(crate) mod system;
 mod tooltip;
 mod visual;
 
@@ -39,6 +39,8 @@ const MENU_MUTE: &str = "mute";
 const MENU_SETTINGS: &str = "settings";
 const MENU_ABOUT: &str = "about";
 const MENU_QUIT: &str = "quit";
+#[cfg(debug_assertions)]
+const MENU_GALLERY: &str = "gallery";
 
 /// `kv` key holding the end of the notification mute, in Unix milliseconds. Survives restarts
 /// (step 08); the notifier (Step 11) reads the same key.
@@ -95,6 +97,8 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
             MENU_MUTE => send(app, TrayMsg::ToggleMute),
             MENU_SETTINGS | MENU_ABOUT => panel::report(settings::show(app)),
             MENU_QUIT => app.exit(0),
+            #[cfg(debug_assertions)]
+            MENU_GALLERY => panel::report(crate::gallery::show(app)),
             _ => {}
         })
         .on_tray_icon_event(|tray, event| {
@@ -172,6 +176,9 @@ fn build_menu(
             &item(MENU_QUIT, "tray-menu-quit")?,
         ],
     )?;
+    // Development builds only: the component gallery (Step 09).
+    #[cfg(debug_assertions)]
+    menu.insert(&item(MENU_GALLERY, "tray-menu-gallery")?, 5)?;
     Ok((menu, mute))
 }
 

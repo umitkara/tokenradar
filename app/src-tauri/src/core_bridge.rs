@@ -18,6 +18,7 @@ use tokenradar_core::runtime::{
     CoreConfig, CoreHandle, CoreRuntime, CoreStatus, IpcConfig, SHUTDOWN_TIMEOUT,
 };
 
+use crate::ipc;
 use crate::tray::{self, TrayMsg};
 
 /// The running core, once it has started.
@@ -98,7 +99,14 @@ fn open() -> Result<CoreHandle, Box<dyn std::error::Error>> {
     Ok(CoreRuntime::start(&config)?)
 }
 
-/// Hands the core's limit snapshots to the tray.
+/// The panel's view model, or `None` while the core is not running (starting, failed, or
+/// replaced by fake limits).
+pub fn panel_snapshot(app: &AppHandle) -> Option<PanelSnapshot> {
+    let state = app.try_state::<CoreState>()?;
+    status(&state.0).and_then(|s| s.limits)
+}
+
+/// Hands the core's limit snapshots to the tray and its events to the visible windows.
 async fn forward(app: AppHandle, mut sub: Subscription, state: Arc<Mutex<Option<CoreHandle>>>) {
     let log = std::env::var_os("TOKENRADAR_DEBUG_EVENTS").is_some();
     while let Some(delivery) = sub.recv().await {
@@ -106,14 +114,18 @@ async fn forward(app: AppHandle, mut sub: Subscription, state: Arc<Mutex<Option<
             log_delivery(&delivery);
         }
         match delivery {
-            Delivery::Event(CoreEvent::LimitsUpdated(snapshot)) => {
-                tray::send(&app, TrayMsg::Snapshot(snapshot));
+            Delivery::Event(event) => {
+                if let CoreEvent::LimitsUpdated(snapshot) = &event {
+                    tray::send(&app, TrayMsg::Snapshot(snapshot.clone()));
+                }
+                ipc::emit_core_event(&app, event);
             }
-            Delivery::Event(_) => {}
             // Missed events: rebuild from the full state instead of patching.
             Delivery::Resync { .. } => {
                 if let Some(limits) = status(&state).and_then(|s| s.limits) {
-                    tray::send(&app, TrayMsg::Snapshot(Box::new(limits)));
+                    let limits = Box::new(limits);
+                    tray::send(&app, TrayMsg::Snapshot(limits.clone()));
+                    ipc::emit_core_event(&app, CoreEvent::LimitsUpdated(limits));
                 }
             }
         }

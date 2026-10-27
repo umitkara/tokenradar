@@ -23,5 +23,9 @@
     "typescript": "^6.0.3",
     "vite": "^8.3.5",
     "vitest": "^5.0.5"
+  },
+  "dependencies": {
+    "@fluent/bundle": "^0.19.1",
+    "@tauri-apps/api": "^2.12.4"
   }
 }

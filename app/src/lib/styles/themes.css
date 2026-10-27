@@ -1,0 +1,51 @@
+/*
+ * Theme and backdrop. `data-theme` (light | dark) and `data-os` (win11 | win10) are written on
+ * <html> by lib/settings. Before that runs, `prefers-color-scheme` already matches: the window
+ * theme set in Rust drives it.
+ */
+
+:root {
+  color-scheme: light dark;
+}
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+}
+
+/* Windows 11: the system draws Mica or Acrylic behind a transparent page. */
+html,
+body {
+  background: transparent;
+}
+
+/* Windows 10 has no usable backdrop: opaque window, opaque cards. */
+:root[data-os="win10"] {
+  --surface-1: light-dark(oklch(1 0 0), oklch(0.25 0.01 250));
+  --surface-2: light-dark(oklch(0.95 0.005 250), oklch(0.29 0.01 250));
+}
+:root[data-os="win10"] body {
+  background: var(--surface-0-solid);
+}
+
+/* High contrast: system colors only. Severity stays readable through glyphs and notches. */
+@media (forced-colors: active) {
+  :root {
+    --surface-1: Canvas;
+    --surface-2: Canvas;
+    --stroke: CanvasText;
+    --text-1: CanvasText;
+    --text-2: CanvasText;
+    --text-3: GrayText;
+    --track: GrayText;
+    --signal-ok: Highlight;
+    --signal-warn: Highlight;
+    --signal-crit: Highlight;
+    --signal-other: CanvasText;
+    --focus-ring: Highlight;
+  }
+  body {
+    background: Canvas;
+  }
+}

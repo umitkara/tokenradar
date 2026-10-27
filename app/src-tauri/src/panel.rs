@@ -2,6 +2,8 @@
 
 use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 
+use crate::chrome::{self, Surface};
+
 pub const LABEL: &str = "panel";
 
 const WIDTH: f64 = 360.0;
@@ -32,7 +34,8 @@ fn build(app: &AppHandle) -> tauri::Result<WebviewWindow> {
 /// The panel's window configuration, shared with the Step 02 measurement scenario.
 pub fn builder(app: &AppHandle) -> WebviewWindowBuilder<'_, tauri::Wry, AppHandle> {
     // Positioning next to the tray and hide-on-blur arrive in Step 10.
-    WebviewWindowBuilder::new(app, LABEL, WebviewUrl::App("panel.html".into()))
+    let builder = WebviewWindowBuilder::new(app, LABEL, WebviewUrl::App("panel.html".into()));
+    chrome::dress(app, builder, Surface::Transient)
         .title("TokenRadar")
         .inner_size(WIDTH, HEIGHT)
         .resizable(false)

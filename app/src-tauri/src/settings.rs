@@ -3,16 +3,21 @@
 
 use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
 
+use crate::chrome::{self, Surface};
+
 pub const LABEL: &str = "settings";
 
 /// Shows and focuses the settings window, creating it if needed.
 pub fn show(app: &AppHandle) -> tauri::Result<()> {
-    let window = match app.get_webview_window(LABEL) {
-        Some(window) => window,
-        None => WebviewWindowBuilder::new(app, LABEL, WebviewUrl::App("settings.html".into()))
+    let window = if let Some(window) = app.get_webview_window(LABEL) {
+        window
+    } else {
+        let builder =
+            WebviewWindowBuilder::new(app, LABEL, WebviewUrl::App("settings.html".into()));
+        chrome::dress(app, builder, Surface::Window)
             .title("TokenRadar")
             .inner_size(640.0, 480.0)
-            .build()?,
+            .build()?
     };
     window.show()?;
     window.set_focus()

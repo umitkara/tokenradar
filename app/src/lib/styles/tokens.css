@@ -1,0 +1,73 @@
+/*
+ * Design tokens (docs/design-language.md). Colors are `light-dark(light, dark)` pairs; the
+ * active pair follows `color-scheme`, which themes.css sets from `data-theme`.
+ * `tokens.test.ts` checks every text and signal color against the Mica/Acrylic backdrop range.
+ */
+
+@font-face {
+  font-family: "Geist Mono";
+  src: url("../fonts/GeistMono-subset.woff2") format("woff2");
+  font-weight: 100 900;
+  font-display: block;
+}
+
+:root {
+  /* Surfaces. `--surface-0` is the window itself: transparent over Mica, solid on Windows 10
+     (themes.css). Keep `--surface-0-solid` in sync with SOLID_* in src-tauri/src/chrome.rs. */
+  --surface-0-solid: light-dark(oklch(0.97 0.005 250), oklch(0.2 0.01 250));
+  --surface-1: light-dark(oklch(1 0 0 / 0.7), oklch(0.26 0.01 250 / 0.72));
+  --surface-2: light-dark(oklch(1 0 0 / 0.9), oklch(0.31 0.01 250 / 0.8));
+  --stroke: light-dark(oklch(0 0 0 / 0.08), oklch(1 0 0 / 0.09));
+
+  /* Text. `--text-3` is for dimmed, low-confidence values and only sits on a card. */
+  --text-1: light-dark(oklch(0.22 0.01 250), oklch(0.96 0.005 250));
+  --text-2: light-dark(oklch(0.42 0.01 250), oklch(0.78 0.01 250));
+  --text-3: light-dark(oklch(0.5 0.01 250), oklch(0.68 0.01 250));
+
+  /* Data ink. Signals draw arcs, bars and glyphs (>= 3:1), never body text. */
+  --track: light-dark(oklch(0.86 0.01 250), oklch(0.42 0.01 250 / 0.6));
+  --signal-ok: light-dark(oklch(0.5 0.11 200), oklch(0.82 0.13 190));
+  --signal-warn: light-dark(oklch(0.53 0.13 65), oklch(0.84 0.15 80));
+  --signal-crit: light-dark(oklch(0.52 0.19 25), oklch(0.72 0.18 25));
+  --signal-other: light-dark(oklch(0.5 0.09 300), oklch(0.74 0.07 300));
+  --signal-est: var(--text-2);
+  /* Text on an accent (phosphor) fill: primary buttons, the toggle thumb. */
+  --accent: var(--signal-ok);
+  --on-accent: light-dark(oklch(1 0 0), oklch(0.2 0.01 250));
+  --focus-ring: var(--text-1);
+
+  /* Type. UI text is the system face; the mono face is for readouts only. */
+  --font-ui: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, "Cascadia Mono", monospace;
+  --type-display: 500 32px / 36px var(--font-mono);
+  --type-title: 600 15px / 20px var(--font-ui);
+  --type-body: 400 13px / 18px var(--font-ui);
+  --type-caption: 400 11px / 14px var(--font-ui);
+  --type-micro: 400 10px / 12px var(--font-ui);
+
+  /* Space (4 px grid) and shape. Radius follows hierarchy: windows and cards 8, controls 4. */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --radius-card: 8px;
+  --radius-control: 4px;
+  --radius-pill: 999px;
+
+  /* Motion (ADR-019: only on change, at most 600 ms). Windows' decelerate curve. */
+  --dur-fast: 120ms;
+  --dur-base: 200ms;
+  --dur-slow: 400ms;
+  --dur-sweep: 600ms;
+  --ease-out: cubic-bezier(0, 0, 0, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur-fast: 0ms;
+    --dur-base: 0ms;
+    --dur-slow: 0ms;
+    --dur-sweep: 0ms;
+  }
+}

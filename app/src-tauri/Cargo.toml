@@ -18,6 +18,11 @@ tokenradar-i18n.workspace = true
 tauri.workspace = true
 tauri-plugin-single-instance.workspace = true
 tiny-skia = { version = "0.12", default-features = false, features = ["std", "simd"] }
+tauri-specta = { version = "=2.0.0-rc.26", features = ["derive", "typescript"] }
+specta = "=2.0.0-rc.26"
+specta-typescript = "=0.0.13"
+serde_json = "1.0.154"
+serde = { version = "1.0.229", features = ["derive"] }
 
 # Raw WebView2 access for the Step 02 lifecycle spike. Same versions as wry's, so the COM types match.
 [target.'cfg(windows)'.dependencies]
@@ -45,4 +50,5 @@ spike = []
 workspace = true
 
 [dev-dependencies]
+tempfile = "3.27.0"
 tiny-skia = { version = "0.12", default-features = false, features = ["std", "simd", "png-format"] }

@@ -45,6 +45,10 @@ jobs:
       - name: Release build
         run: pnpm tauri build --no-bundle
 
+      # The release build above ran `pnpm build`, so app/dist holds the production bundle.
+      - name: Bundle budget
+        run: node scripts/check-bundle-size.mjs
+
   deny:
     name: Dependency policy
     # cargo-deny-action is a container action, so it needs a Linux runner.

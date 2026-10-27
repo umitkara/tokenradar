@@ -52,7 +52,9 @@ mod imp {
     use windows_sys::Win32::Globalization::{GetLocaleInfoEx, LOCALE_STIMEFORMAT};
     use windows_sys::Win32::Graphics::Gdi::{COLOR_WINDOWTEXT, GetSysColor};
     use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
-    use windows_sys::Win32::System::Registry::{HKEY_CURRENT_USER, RRF_RT_REG_DWORD, RegGetValueW};
+    use windows_sys::Win32::System::Registry::{
+        HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, RRF_RT_REG_DWORD, RRF_RT_REG_SZ, RegGetValueW,
+    };
     use windows_sys::Win32::System::Time::{FileTimeToSystemTime, SystemTimeToTzSpecificLocalTime};
     use windows_sys::Win32::UI::Accessibility::{HCF_HIGHCONTRASTON, HIGHCONTRASTW};
     use windows_sys::Win32::UI::HiDpi::{GetDpiForSystem, GetDpiForWindow, GetSystemMetricsForDpi};
@@ -147,6 +149,33 @@ mod imp {
             )
         };
         status == ERROR_SUCCESS && value != 0
+    }
+
+    /// The Windows build number (`CurrentBuildNumber`): 22000 and later is Windows 11.
+    pub fn os_build() -> Option<u32> {
+        let key = wide(r"SOFTWARE\Microsoft\Windows NT\CurrentVersion");
+        let name = wide("CurrentBuildNumber");
+        let mut buf = [0u16; 16];
+        #[allow(clippy::cast_possible_truncation)]
+        let mut size = size_of_val(&buf) as u32;
+        // SAFETY: `buf` and `size` are valid for writes and `size` is the buffer's byte length;
+        // RRF_RT_REG_SZ makes the call fail instead of writing anything but a string.
+        let status = unsafe {
+            RegGetValueW(
+                HKEY_LOCAL_MACHINE,
+                key.as_ptr(),
+                name.as_ptr(),
+                RRF_RT_REG_SZ,
+                std::ptr::null_mut(),
+                buf.as_mut_ptr().cast::<c_void>(),
+                &raw mut size,
+            )
+        };
+        if status != ERROR_SUCCESS {
+            return None;
+        }
+        let len = buf.iter().position(|&c| c == 0).unwrap_or(buf.len());
+        String::from_utf16_lossy(&buf[..len]).trim().parse().ok()
     }
 
     impl LocalClock for SystemClock {
@@ -327,6 +356,10 @@ mod imp {
         Ok(())
     }
 
+    pub fn os_build() -> Option<u32> {
+        None
+    }
+
     impl LocalClock for SystemClock {
         fn local(&self, t: Timestamp) -> Option<LocalTime> {
             let secs = t.as_millis().div_euclid(1000);
@@ -354,4 +387,4 @@ mod imp {
 
 #[cfg(any(debug_assertions, feature = "spike"))]
 pub use imp::gui_objects;
-pub use imp::{environment, watch};
+pub use imp::{environment, os_build, watch};
