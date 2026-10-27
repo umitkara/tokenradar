@@ -1,0 +1,71 @@
+# Step 04 indexer runs: index_real example, release, real ~/.claude (11.39 GiB, 5,192 files).
+# Warm or partially warm file cache. Totals and counts deliberately not printed.
+
+## args: []
+workers: 4 · background: true
+== first pass
+elapsed:        4678 ms
+recent ready:   2051 ms
+cpu:            7344 ms
+peak memory:    working set 42.1 MiB · private 50.3 MiB
+db size:        34.2 MiB
+fingerprint:    2230cb6ddeab21fa
+== second (unchanged) pass
+elapsed:        107 ms
+recent ready:   106 ms
+cpu:            94 ms
+peak memory:    working set 42.1 MiB · private 50.3 MiB
+db size:        34.2 MiB
+fingerprint:    2230cb6ddeab21fa
+## args: []
+workers: 4 · background: true
+== first pass
+elapsed:        3664 ms
+recent ready:   1118 ms
+cpu:            7141 ms
+peak memory:    working set 44.4 MiB · private 52.9 MiB
+db size:        32.7 MiB
+fingerprint:    2230cb6ddeab21fa
+== second (unchanged) pass
+elapsed:        113 ms
+recent ready:   112 ms
+cpu:            94 ms
+peak memory:    working set 44.4 MiB · private 52.9 MiB
+db size:        32.7 MiB
+fingerprint:    2230cb6ddeab21fa
+## args: [--workers 1]
+workers: 1 · background: true
+== first pass
+elapsed:        8609 ms
+recent ready:   2386 ms
+cpu:            7484 ms
+peak memory:    working set 32.2 MiB · private 32.1 MiB
+db size:        34.6 MiB
+fingerprint:    2230cb6ddeab21fa
+== second (unchanged) pass
+elapsed:        113 ms
+recent ready:   112 ms
+cpu:            109 ms
+peak memory:    working set 34.4 MiB · private 32.1 MiB
+db size:        34.6 MiB
+fingerprint:    2230cb6ddeab21fa
+## args: [--foreground]
+workers: 4 · background: false
+== first pass
+elapsed:        3676 ms
+recent ready:   1073 ms
+cpu:            7766 ms
+peak memory:    working set 43.4 MiB · private 51.4 MiB
+db size:        34.1 MiB
+fingerprint:    2230cb6ddeab21fa
+== second (unchanged) pass
+elapsed:        118 ms
+recent ready:   116 ms
+cpu:            125 ms
+peak memory:    working set 43.4 MiB · private 51.4 MiB
+db size:        34.1 MiB
+fingerprint:    2230cb6ddeab21fa
+
+## after reading files older than 7 days twice (tries to evict the recent subset; cutoff moved, so fingerprints differ)
+evicted run 1: elapsed 4693 ms · recent ready 1965 ms · fingerprint 4d2f36a080ddcf46
+evicted run 2: elapsed 4659 ms · recent ready 2046 ms · fingerprint e60a23fabec06a40

@@ -193,3 +193,30 @@
   - Yeni bir model çıktığında tablo satırı elle eklenir. O zamana kadar model aile yedeğiyle fiyatlanır ve `model_known = false` olarak işaretlenir.
   - `inference_geo` alanı JSONL'de bulunuyor, ama varsayılan değer `global`. US-only kullanan bir kullanıcıda maliyet %10 düşük çıkar. Kalibrasyon (k) oransal olduğu için limit tahminini etkilemez, yalnızca "API karşılığı $" gösterimini etkiler. Gerekirse Adım 04'te alan okunup çarpan eklenebilir.
 - **Alternatifler:** Plandaki aile bazlı tablo. Reddedildi: aynı ailede %25-200 fiyat farkı var.
+
+### ADR-026 — İndeksleyici kuralları: advisor olayları, sıra bağımsız eşitlik, başlık önceliği ve hibrit öncelik
+**Durum:** Kabul (2026-10-27, Adım 04)
+- **Bağlam:** Adım 04'ün gerçek veri keşfi, plandaki varsayımlardan dört noktada ayrıldı (`data-sources.md` S3, tuzak 2, 9, 11, 12):
+  - `iterations` dizisinde `advisor_message` elemanları var. Bunlar başka bir modelin tüketimini taşıyor ve üst düzey `usage` toplamına dahil değil.
+  - Aynı `msg_key` birden fazla oturum dosyasında, çoğunlukla eşit `output_tokens` ile görülüyor (resume, fork). "Eşitlikte en son görülen kazanır" kuralı, çok worker'lı indekslemede olayın hangi oturuma yazılacağını işlem sırasına bağlı hale getiriyor.
+  - Başlık için üç ayrı meta kayıt var: `ai-title`, `agent-name`, `custom-title`.
+  - Tamamen arka plan önceliğinde `RecentReady` sıcak önbellekte bile 7-9 s sürdü (bütçe 5 s).
+- **Karar (advisor ve öncelik kullanıcıyla kararlaştırıldı):**
+  - **Advisor elemanları ayrı olaydır.** Her `advisor_message` elemanı kendi modeliyle bir `UsageEvent` olur. Anahtar `MsgKey::from_ids_tagged(message.id, requestId, "advisor#<i>")`. Üst düzey `usage` olduğu gibi kalır.
+  - **Eşitlik kuralı sıra bağımsızdır.** `output_tokens` eşitse:
+    - aynı oturumda son satır kazanır (streaming tekrarı);
+    - farklı oturumlarda ana oturum subagent'ı yener, sonra küçük `sessions.uuid` kazanır.
+    Bu tam bir sıralama olduğu için sonuç worker sayısından ve dosya sırasından bağımsızdır (1/2/4 worker aynı parmak izini veriyor).
+  - **Başlık önceliği:** `custom` (3) > `agent` (2) > `ai` (1). Aynı kaynakta son gelen kazanır. Kaynak `sessions.title_source` sütununda tutulur, böylece artımlı turlarda düşük öncelikli bir başlık yüksek öncelikliyi ezmez.
+  - **Hibrit öncelik:** Worker'lar mtime'ı son 7 gün içindeki dosyaları normal öncelikte işler. İlk eski dosyaya geçtiklerinde `THREAD_MODE_BACKGROUND_BEGIN` moduna girerler. İşler en yeniden en eskiye sıralı olduğu için geri dönüş gerekmez.
+  - **Uzun satırlar:** 4 MiB'ı aşan satırlar belleğe alınmadan atlanır ve sayılır (`oversized_lines`). Bu, Adım 02'de görülen ~165 MiB tepe bellek riskini kapatır.
+  - **Worker tarafında tekilleştirme:** Worker'lar her parça (2.000 olay) içinde aynı anahtarı birleştirir. Yazıcıya giden güncelleme sayısı gerçek veride ~%99,8 azaldı.
+- **Bedel:**
+  - Advisor olayları DB'de ayrı bir işaret taşımaz; yalnızca anahtar türetmesinden ayırt edilir. UI'da "advisor" etiketi gerekirse şema değişir.
+  - Hibrit öncelik, ilk birkaç saniye boyunca indeksleyicinin kullanıcının işiyle normal öncelikte yarışması demektir. Ölçülen CPU süresi değişmedi (~7-9 s); yalnızca zamanlama değişti.
+  - Farklı oturumlar arasındaki eşitlikte kazanan sahip "en mantıklı" değil, yalnızca deterministik olandır.
+  - 4 MiB'tan uzun bir `assistant` satırı çıkarsa tüketimi kaybolur. Bu durumda `oversized_suspect` sayacı ve uyarı devreye girer.
+- **Alternatifler:**
+  - Advisor tüketimini yok saymak (eksik sayım) veya üst düzey toplama eklemek (model yanlış atanır).
+  - Tamamen arka plan önceliği (bütçeyi aşıyor) veya tamamen normal öncelik (eski veri için kullanıcıyla gereksiz yarış).
+  - Eşitlikte "ilk yazılan kalır" (yine sıraya bağımlı).

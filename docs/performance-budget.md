@@ -9,7 +9,7 @@
 | Durum | Bütçe | Not |
 |---|---|---|
 | Yalnızca tray (pencere yok, indeksleme bitmiş) | **≤ 25 MB** | Ana hedef. "Görünmez ayak izi" vaadi bu değere dayanıyor. |
-| Tray + ilk indeksleme sürüyor | ≤ 120 MB (tepe) | İndeksleme bitince ≤ 25 MB'a dönmeli. Adım 02: 22 MiB'lık satırlar biriktirilirse 4 worker ~165 MiB'a çıkıyor. Uzun satırlar biriktirilmeden atlanmalı (Adım 04). |
+| Tray + ilk indeksleme sürüyor | ≤ 120 MB (tepe) | İndeksleme bitince ≤ 25 MB'a dönmeli. Adım 02: 22 MiB'lık satırlar biriktirilirse 4 worker ~165 MiB'a çıkıyor. Adım 04: 4 MiB üstü satırlar biriktirilmeden atlanıyor; indeksleyici süreci tepe private 50-57 MiB (tray ve UI hariç). |
 | Panel açık | ≤ 130 MB | WebView2 süreçleri dahil |
 | Ana pencere açık (v0.2) | ≤ 180 MB | Büyük listeler sanallaştırılmış |
 | Tüm pencereler kapandıktan `warm_ttl + 10 s` sonra | ≤ 30 MB | **Adım 02'de doğrulandı:** WebView2 süreçleri `destroy()` sonrası ~0,4 s'de çıkıyor, 60 s sonra 3,6 MB (ADR-023). |
@@ -21,7 +21,7 @@
 |---|---|
 | Boşta (oturum yok) | 10 dk ortalaması < %0,1. Saniyede gereksiz uyanma (wakeup) yok. |
 | Aktif oturumlar yazarken | Debounce partisi başına ≤ 50 ms CPU, ortalama < %1 |
-| İlk indeksleme | Arka plan önceliğinde, en fazla `min(4, çekirdek/2)` thread |
+| İlk indeksleme | En fazla `min(4, çekirdek/2)` thread. Son 7 günün dosyaları normal, eskileri arka plan önceliğinde (hibrit, ADR-026). |
 
 ## Gecikme
 
@@ -39,9 +39,9 @@
 
 | İşlem | Bütçe |
 |---|---|
-| İlk indeksleme — referans veri seti, soğuk disk önbelleği | ≤ 60 s. Adım 02'de yalnızca parse 12,6 s ölçüldü (arka plan önceliği, 4 worker). SQLite yazımıyla birlikte Adım 04'te doğrulanır. |
-| İlk indeksleme — kullanılabilir ilk görünüm (mevcut pencere + bu hafta) | ≤ 5 s (en yeni dosyalardan başlanır) |
-| Yeniden başlatma sonrası artımlı tarama (değişmemiş 5.200 dosya) | ≤ 500 ms (yalnızca metadata/stat). Adım 02: dizin yürüyüşü + `DirEntry::metadata` 177 ms. |
+| İlk indeksleme — referans veri seti, soğuk disk önbelleği | ≤ 60 s. Adım 04 (parse + SQLite, hibrit öncelik): **sıcak önbellekte 3,7-6,5 s**. Soğuk ölçülemedi; Adım 02'nin önbelleksiz okuma hızlarından tahmin **≈ 10 s** (`docs/perf/2026-10-27-indexer.md`). |
+| İlk indeksleme — kullanılabilir ilk görünüm (mevcut pencere + bu hafta) | ≤ 5 s (en yeni dosyalardan başlanır). Adım 04: **sıcak önbellekte 1,1-2,4 s**, soğuk tahmini **≈ 2-3 s**. Yeniden başlatma sonrası soğuk ölçüm açık iş. |
+| Yeniden başlatma sonrası artımlı tarama (değişmemiş 5.200 dosya) | ≤ 500 ms (yalnızca metadata/stat). Adım 02: dizin yürüyüşü + `DirEntry::metadata` 177 ms. Adım 04 (envanter + `source_files` karşılaştırması): 107-123 ms, sıcak metadata önbelleği. |
 
 ## Disk ve boyut
 

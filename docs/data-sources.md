@@ -171,14 +171,40 @@ projects/
 **Kritik tuzaklar (test vakası olarak yazılmalı):**
 
 1. **Tekrarlanan kayıtlar:** Aynı `(message.id, requestId)` çifti birden çok satırda görünür. Gözlemde satırların **%55-63'ü** tekrardı. Bunun nedeni, Claude Code'un her içerik bloğu için ayrı bir satır yazması.
-2. **Tekrarlar her zaman aynı değil:** Bazı tekrarlarda `usage` **kısmidir** (streaming ara durumu, `iterations: []`). Tekilleştirme kuralı: anahtar başına **`output_tokens` değeri en büyük olan (eşitlikte en son görülen) kayıt** kazanır. "İlk kaydı tut" yaklaşımı yanlıştır.
+2. **Tekrarlar her zaman aynı değil:** Bazı tekrarlarda `usage` **kısmidir** (streaming ara durumu, `iterations: []`). Tekilleştirme kuralı: anahtar başına **`output_tokens` değeri en büyük olan kayıt** kazanır. "İlk kaydı tut" yaklaşımı yanlıştır. Eşitlikte aynı oturum içinde son görülen satır kazanır. Farklı oturumlar arasında ise sıra bağımsız bir kural uygulanır: önce ana oturum, sonra küçük `uuid` (ADR-026).
 3. **Satır boyutu:** Tek bir satır onlarca KB olabilir (thinking imzaları, araç çıktıları). Tam parse pahalı olduğu için önce `memchr` ile `"usage"` ön filtresi uygulanır, ardından yalnızca gereken alanlar seçici deserialize edilir (`serde` + `IgnoredAny`; `content` asla materyalize edilmez).
-4. **Subagent'lar:** `subagents/agent-*.jsonl` dosyalarında `isSidechain: true` bulunur. Dosyanın üst dizini ana oturumun id'sidir. Oturum toplamları hesaplanırken **subagent tüketimi ana oturuma eklenir** ve ağaç yapısı korunur. `sessionId` alanının ana oturumu gösterip göstermediği Adım 04'te doğrulanacak.
+4. **Subagent'lar:** `subagents/agent-*.jsonl` dosyalarında `isSidechain: true` bulunur. Dosyanın üst dizini ana oturumun id'sidir. Oturum toplamları hesaplanırken **subagent tüketimi ana oturuma eklenir** ve ağaç yapısı korunur. Adım 04'te doğrulandı: subagent dosyalarındaki satırların %100'ünde `sessionId` üst dizin adına (ana oturuma), `agentId` ise dosya adındaki `<id>`'ye eşit.
 5. **Proje kimliği:** Dizin adı (`D--Projects-…`) kayıplı bir kodlamadır. Proje kimliği olarak kayıtlardaki **`cwd`** kullanılır (normalize edilmiş, büyük-küçük harf duyarsız Windows yolu). Dizin adı yalnızca yedek kaynak.
 6. **Yarım satırlar:** Dosyaya yazılmakta olan son satır yarım olabilir. Offset yalnızca `\n` ile biten tam satırların sonuna ilerletilir.
 7. **Kesme ve silme:** Dosya küçülürse (truncate) veya silinirse offset sıfırlanır ve dosya yeniden işlenir. Tekilleştirme sayesinde bu idempotent kalır. Claude Code'un sildiği dosyaların agregasyonları **bizde kalır**.
 8. **Fiyatlandırmayı etkileyen alanlar:** `speed` (fast mode, `"fast"` değeri olası), `service_tier`, `cache_creation.ephemeral_1h` ve `ephemeral_5m` ayrımı. Ağırlıklı token hesabında hepsi kullanılır.
-9. Bu makinede `iterations` dizisinde birden fazla eleman gözlemlenmedi. Adım 04 üst düzey `usage` alanlarının toplam değer olduğunu doğrulamalı. Çok elemanlı durum çıkarsa toplama kuralı netleştirilmeli.
+9. **`iterations` ve advisor:** Kayıtların çoğunda `iterations` tek elemanlıdır veya hiç yoktur. Adım 04'te 13 satırda üç elemanlı dizi görüldü: `message` + `advisor_message` + `message`. Üst düzey `usage` yalnızca `type: "message"` elemanlarının toplamıdır. `advisor_message` elemanı kendi `model` alanını taşır (ör. advisor olarak çağrılan başka bir model) ve üst düzey toplama **dahil değildir**. İndeksleyici her advisor elemanını kendi modeliyle **ayrı bir olay** olarak kaydeder (anahtar: `MsgKey::from_ids_tagged(message.id, requestId, "advisor#<i>")`, ADR-026). Yalnızca üst düzey `usage` okunursa advisor tüketimi kaybolur.
+10. **Usage taşıyan başka kayıtlar:** `attachment.attachment.usage` ve `user.toolUseResult.usage` alanları subagent özetleri taşır. Bunlar zaten subagent dosyasında sayılan tüketimin özetidir, **sayılmaz**. Ön filtre `"usage"` geçen satırda üst düzey `type` alanını kontrol eder; yalnızca `assistant` kabul edilir.
+11. **Aynı anahtar birden fazla dosyada:** Anahtarların ~%0,16'sı birden fazla dosyada görüldü. Desenler: ana + ana (`--resume`), subagent + subagent ve ana + subagent (`fork-context-ref`, fork edilen bağlam subagent dosyasına kopyalanır). Çoğunda `output_tokens` eşittir; bu yüzden eşitlik kuralı sıra bağımsız olmalıdır (tuzak 2).
+12. **Çok uzun satırlar:** `api-request-blob` satırları onlarca MB'a çıkabilir. 4 MiB'ı aşan satırlar belleğe alınmadan atlanır. Gerçek veride atlanan satırların tamamı `api-request-blob` idi. `{"type":"` ile başlamayan atlanmış satır "şüpheli" sayılır ve uyarı loglanır.
+
+**Adım 04 keşif bulguları (gerçek veri, 5.192 dosya, 11,4 GiB, ~1,28 milyon satır):**
+
+| Kayıt tipi | Satır payı | Not |
+|---|---|---|
+| `assistant` | %25,9 | Tek tüketim kaynağı (`message.usage`). |
+| `attachment` | %25,9 | Bazılarında subagent özeti `usage` var; sayılmaz (tuzak 10). |
+| `user` | %16,9 | `toolUseResult.usage` subagent özeti; sayılmaz. |
+| `api-request-blob` | %8,4 | `usage` yok. En uzun satırlar bunlar (tuzak 12). |
+| `api-request` | %5,0 | `usage` yok. Assistant kayıtlarıyla çift sayım riski yok. |
+| `atis-latch`, `mode`, `queue-operation`, `permission-mode`, `system`, `cost-state`, `api-request-shape`, `bridge-session`, `file-history-*`, `pr-link`, `tools-used`, `continued-in`, `agent-color` | toplam ~%11 | Yok sayılır. |
+| `last-prompt` | %4,2 | **İstem metni içerir; asla parse edilmez.** |
+| `ai-title` | %2,2 | Başlık (kaynak `ai`). |
+| `agent-name` | %0,18 | Başlık (kaynak `agent`). |
+| `custom-title` | <%0,01 | Başlık (kaynak `custom`, `/rename`). |
+| `fork-context-ref` | <%0,01 | Fork edilen bağlam; tuzak 11. |
+
+- **Başlık önceliği:** `custom-title` > `agent-name` > `ai-title`. Aynı kaynaktan gelen başlıklarda en son görülen kazanır. Başlık kayıtları yalnızca ana oturum dosyalarında görüldü. `sessions/*.json` içindeki `name` alanı S4 kapsamındadır (Adım 05). Başlık için içerik okunmaz.
+- **`speed`:** Kayıtların ~%82'sinde `"standard"`, kalanında alan yok. `"fast"` gözlemlenmedi; desteklenir ve `Speed::Fast` olarak eşlenir.
+- **`inference_geo`:** `global` veya `not_available`. `us` gözlemlenmedi (ADR-025 "Bedel").
+- **`requestId` eksikliği:** Çok az sayıda satırda (`< %0,01`) `requestId` yok. Anahtar `(message.id, "")` olarak üretilir. `message.id` eksik satır görülmedi; görülürse anahtar `uuid` hash'inden üretilir ve `fallback_keys` sayacı artar.
+- **`cwd`:** Her dosyada en az bir satırda `cwd` var. Yine de `cwd`'siz dosyalar için dizin adından `unresolved:<dizin>` yedeği uygulanır.
+
 
 ---
 

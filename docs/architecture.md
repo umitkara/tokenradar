@@ -118,7 +118,7 @@ Sürümler uygulama anında güncel stable olarak seçilir ve lock dosyalarıyla
 |---|---|
 | `Store` | SQLite bağlantı havuzu: tek yazar thread + okuyucular. Migration'lar, tipli sorgular, saklama ve sıkıştırma işleri. |
 | `Discovery` | Hesapları ve kaynak köklerini bulur: `~/.claude`, `CLAUDE_CONFIG_DIR`, kullanıcı tanımlı dizinler, çalışan WSL dağıtımları (v0.3). |
-| `Indexer` | Artımlı JSONL okuma (offset), ön filtre, seçici parse, tekilleştirme (UPSERT, "max output kazanır"), 5 dakikalık rollup, oturum ve proje çözümleme. |
+| `Indexer` | Artımlı JSONL okuma (offset), ön filtre, seçici parse, tekilleştirme (UPSERT, "max output kazanır"; eşitlikte sıra bağımsız kural, ADR-026), 5 dakikalık rollup, oturum ve proje çözümleme. Worker'lar parse eder ve parça içinde tekilleştirir; tek yazıcı oturumları, olayları ve `source_files` offset'lerini aynı transaction'da yazar. Son 7 günün dosyaları normal, eskileri arka plan önceliğinde işlenir. |
 | `Watcher` | `notify` olaylarını debounce eder (≥ 750 ms) ve indeksleyiciye "kirli dosya" kuyruğu olarak verir. |
 | `LiveSessions` | `sessions/*.json` dosyalarını okur, pid canlılığını doğrular, `busy`/`idle` durumunu izler. |
 | `LimitEngine` | Kaynakları (S1/S2/tahmin) birleştirir. Snapshot'ları ve pencereleri yönetir, burn rate ve projeksiyon hesaplar. |
@@ -143,6 +143,12 @@ Tüm zamanlar **UTC epoch milisaniye** (`INTEGER`) olarak saklanır. Para birimi
 > - İndeksler: `ix_sessions_root`, `ix_sessions_project`, `ix_sessions_last`, `ix_5m_acct_bucket`, `ix_calib`.
 > - `kv` tablosu `WITHOUT ROWID` oldu.
 > - Yeni veritabanında `auto_vacuum = INCREMENTAL`.
+>
+> Adım 04'te eklenenler (ADR-026):
+> - `sessions.title_source` (`ai` | `agent` | `custom`). Başlık yalnızca eşit veya daha yüksek öncelikli bir kaynaktan gelirse değişir.
+> - Ana oturumlarda `root_id` NULL'dur; yalnızca subagent'larda ana oturumu gösterir. Ağaç toplamlarında `COALESCE(root_id, id)` kullanılır.
+> - `cwd`'si bilinmeyen projelerin `path_norm` değeri `unresolved:<dizin adı>` biçimindedir.
+> - Advisor tüketimi ayrı `usage_events` satırlarıdır (anahtar `from_ids_tagged(…, "advisor#<i>")`).
 
 ```sql
 CREATE TABLE accounts (
@@ -165,7 +171,7 @@ CREATE TABLE sessions (
   id INTEGER PRIMARY KEY, account_id INTEGER NOT NULL, uuid TEXT NOT NULL,  -- subagent: 'agent-<id>'
   kind TEXT NOT NULL,                                       -- 'main' | 'subagent'
   parent_id INTEGER REFERENCES sessions, root_id INTEGER,   -- subagent → ana oturum
-  project_id INTEGER REFERENCES projects, title TEXT, git_branch TEXT,
+  project_id INTEGER REFERENCES projects, title TEXT, title_source TEXT, git_branch TEXT,
   entrypoint TEXT, cc_version TEXT, first_ts INTEGER, last_ts INTEGER,
   UNIQUE (account_id, uuid));
 
@@ -392,6 +398,8 @@ S2 yalnızca **açık onay** varsa kullanılır.
 - **`tokenradar doctor`:** Sürümler, yollar, dosya ve olay sayıları, son hatalar, ayarlar (sırlar hariç) ve performans ölçümleri tek bir zip dosyasında toplanır.
 
 ## 16. Provider soyutlaması
+
+> **Adım 04 notu:** Claude provider'ı şimdilik serbest fonksiyonlar olarak yazıldı (`providers::claude::{discover, classify_path, LineParser}`). Aşağıdaki trait, ikinci provider'ın (Codex) ihtiyaçları belli olunca Adım 20'de çıkarılır. Tek uygulamadan trait tasarlamak arayüzü yanlış yerde dondurur.
 
 ```rust
 pub trait Provider: Send + Sync {
