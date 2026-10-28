@@ -584,3 +584,23 @@
   - WebView2 tarayıcı sürecini canlı tutmak: soğuk açılışı ~150 ms kısaltır ama boşta ~50 MB ekler. Bu, "görünmez ayak izi" vaadini ve ≤ 30 MB bütçesini bozar.
   - Bütçeyi koruyup sürümü ertelemek: ulaşılabilir kazanç 400 ms'nin altına inmeyi garanti etmiyor.
   - "Bilinen aşım" olarak kaydedip bütçeyi değiştirmemek: belgelenmiş bir kapının sürekli aşık durması onu anlamsızlaştırır.
+
+### ADR-038 — `notify` Windows watcher'ı yamalı kopyayla; boşta CPU döngü ve uyanma sayısıyla ölçülür
+**Durum:** Kabul (2026-10-28, Adım 12)
+- **Bağlam:**
+  - Kurulu v0.1.0 ile gerçek boşta ölçüm (Claude Code kapalı, 10 dk): bellek 11,6 MB (bütçe ≤ 25 MB), `TotalProcessorTime` farkı %0,169 (bütçe < %0,1).
+  - `scripts/measure-threads.ps1` ile thread başına bakıldı: `notify-rs windows loop` thread'i boşta saniyede tam 10 kez uyanıyor. Diğer thread'ler dakikada birkaç kez uyanıyor.
+  - Sebep `notify` 8.2.1'deki `WaitForSingleObjectEx(wakeup_sem, 100, TRUE)` çağrısı (`src/windows.rs`). Her komuttan sonra `wakeup_server()` semaforu zaten serbest bırakıyor, `ReadDirectoryChangesW` tamamlama rutinleri de alertable beklemede APC olarak çalışıyor. Zaman aşımının tek etkisi boşta uyanma. 9.0.0-rc.7'de de aynı.
+  - Bu, bütçedeki "saniyede gereksiz uyanma yok" kuralını bozuyor.
+  - `TotalProcessorTime` 15,6 ms'lik saat tikiyle örneklenir; kısa ve sık uyanmaları doğru ölçmez. `QueryThreadCycleTime` ile aynı uygulama boşta (Claude Code açık ama sessiz, 60 s) bir çekirdeğin ~%0,02'sini kullandı.
+- **Karar (kullanıcıyla kararlaştırıldı):**
+  - `notify` 8.2.1, `vendor/notify` altına kopyalanır ve `[patch.crates-io]` ile kullanılır. Tek değişiklik bekleme süresinin `INFINITE` olması; satır işaretli. Kopya workspace'ten `exclude` ile çıkarılır, bu yüzden lint ve fmt kapsamında değildir; lisans listesinde üçüncü parti olarak kalır.
+  - Değişiklik upstream'e önerilir (kullanıcı onayıyla). Kabul edilen sürüme geçilince kopya ve patch kaldırılır.
+  - Boşta CPU artık `scripts/measure-threads.ps1` ile ölçülür: thread başına context switch (uyanma) ve CPU döngüsü. `measure-memory.ps1`'in CPU sütunu yalnızca kaba bir gösterge.
+- **Bedel:**
+  - `notify` güncellemeleri elle taşınır. Dependabot, patch edilen crate'i güncelleyemez.
+  - Kurulu v0.1.0 kopyaları yeni koddan geride kalır; aynı sürüm numarası olduğu için updater bunu göstermez. Gerçek boşta ölçüm ve bir günlük bildirim değerlendirmesi yeni build ile yeniden yapılır.
+- **Alternatifler:**
+  - `ReadDirectoryChangesW` üzerine kendi watcher'ımız: bağımlılık kalkar ama iş büyür ve v0.5'te macOS/Linux için yine `notify` gerekir.
+  - v0.1.1'e bırakmak: sürüm, bilinen bir bütçe ihlaliyle çıkardı.
+  - `PollWatcher`: periyodik tarama, sorunu büyütür.

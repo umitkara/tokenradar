@@ -6,6 +6,8 @@ members = [
     "crates/tokenradar-cli",
     "app/src-tauri",
 ]
+# Patched third-party sources (vendor/README.md) are not ours to lint or format.
+exclude = ["vendor"]
 
 [workspace.package]
 version = "0.1.0"
@@ -25,6 +27,11 @@ lexopt = "0.3"
 tauri = { version = "2.12", features = ["tray-icon"] }
 tauri-build = { version = "2.7", features = [] }
 tauri-plugin-single-instance = "2.5"
+
+[patch.crates-io]
+# Idle watcher woke 10 times a second on Windows (ADR-038). Remove once upstream waits without a
+# timeout.
+notify = { path = "vendor/notify" }
 
 [workspace.lints.rust]
 # Crates that need Windows FFI opt out locally with `#![allow(unsafe_code)]`.
