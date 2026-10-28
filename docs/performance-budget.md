@@ -65,7 +65,7 @@
 ## Ölçüm yöntemi
 
 - **Bellek:** `scripts/measure-memory.ps1`, `tokenradar-app` sürecini ve **tüm alt süreçlerini** (`msedgewebview2.exe` ağacı) ebeveyn bağlantıları üzerinden bulur. Private working set (bütçenin esası), private bytes (`PrivateMemorySize64`), working set ve CPU süresi toplamlarını CSV'ye yazar. Senaryo adımları: başlat → 60 s bekle → paneli aç → 10 s → paneli kapat → `warm_ttl + 10 s` → tekrar ölç. Pencere yaşam döngüsü senaryosu için `scripts/spike-lifecycle.ps1` (Adım 02) kullanılır.
-- **CPU:** Aynı script, 10 dakikalık boşta CPU süresi farkını ölçer.
+- **CPU:** `scripts/measure-threads.ps1 -DurationSec 600`, boşta CPU'yu thread başına context switch (uyanma) ve CPU döngüsü (`QueryThreadCycleTime`) olarak ölçer. `measure-memory.ps1`'in CPU sütunu 15,6 ms'lik saat tikiyle örneklenir; kısa ve sık uyanmaları doğru göstermez, yalnızca kaba göstergedir (ADR-038).
 - **İndeksleme:** `cargo bench -p tokenradar-core --bench indexer` (sentetik) ve `tokenradar-app --measure-index <dir>` (gerçek veri). Soğuk ölçümden önce dosya önbelleği temizlenir (RAMMap "Empty Standby List" veya yeniden başlatma).
 - **Statusline:** `scripts/measure-statusline.ps1`, 200 çağrı yapıp p50/p95 değerlerini raporlar.
 - Sonuçlar `docs/perf/YYYY-MM-DD-<sürüm>.md` dosyasına tablo olarak işlenir. Gerileme olursa bir issue açılır.
