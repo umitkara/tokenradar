@@ -259,7 +259,10 @@ gh workflow run release.yml   # veya tag push sonrası otomatik
    2. `bucket/tokenradar.json` artifact'tan alınıp commit'lenir.
    3. Release yayınlanır.
    4. winget-pkgs PR'ı açılır (onayla).
-6. **README görselleri:** Panel ve tray görüntüsü sahte sahneyle çekilir.
+6. ✅ **README görselleri** (2026-10-28):
+   - Panel `panel:ok` sahnesiyle, debug build'de çekildi. `docs/img/panel-{light,dark}.png` README'de `<picture>` ile okuyucunun temasına göre gösteriliyor.
+   - Debug exe'nin yanına geçici `portable` işareti kondu. Tema değişikliği (`set_theme`) böylece kullanıcının gerçek `config.toml` dosyasına değil `target/debug/data` altına yazıldı.
+   - **Sapma:** Tray görseli eklenmedi. Elimizdeki tek kaynak `tray_contact_sheet` kontak sayfası; bu sayfa büyütülmüş 16–32 px simgelerden oluştuğu için README'de bulanık ve teknik görünüyor. Simge README'de metinle anlatılıyor.
 
 #### Sonraki adımlar için notlar
 - **Toast tıklaması:** Bildirim Merkezi'nden toast'a tıklamak uygulamayı açmıyor, çünkü COM activator yok. Seçenekler: protocol activation (`tokenradar://`) veya Tauri deep-link eklentisi.

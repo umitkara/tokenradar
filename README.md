@@ -6,6 +6,15 @@ TokenRadar sits in the Windows tray and shows how much of your **Claude Code** 5
 
 **Status: v0.1, the first public release.** Windows 10/11 (x64). Codex, macOS and Linux come later (see [Roadmap](#roadmap)).
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/img/panel-dark.png">
+    <img src="docs/img/panel-light.png" width="360" alt="The TokenRadar tray panel: a two-ring gauge at 42 % of the 5-hour window, the weekly limits, a projection to the reset and three running sessions">
+  </picture>
+  <br>
+  <sub>The tray panel (sample data).</sub>
+</p>
+
 ## Features
 
 - **Live limits in the tray.** A two-ring icon shows the weekly limit (outer ring) and the 5-hour window (inner ring). The tooltip has the exact numbers and reset times.
