@@ -250,7 +250,7 @@ gh workflow run release.yml   # veya tag push sonrası otomatik
      - Önbelleksiz release işinde Git Bash'in açılması 300 ms'lik zincir süresini aştı. Süre `Deps`'e taşındı; çıktıyı kontrol eden testler 10 s bekliyor.
    - Dependabot ilk taramada major sürüm PR'ları açtı (TypeScript 7, `@types/node` 26, `windows-core` 0.100, `sha2` 0.11). Bunlar birleştirilmedi; v0.1 sonrasında tek tek değerlendirilmeli.
 3. **Adım 11'in üç açık işi** kurulu build ile yapılır:
-   - Bir günlük bildirim gürültüsü değerlendirmesi. Kurulu kopyada AUMID'li kısayol var; toast tıklaması da bu sırada denenmeli.
+   - ✅ Bir günlük bildirim gürültüsü değerlendirmesi (2026-10-28, kurulu `11a5748` build'i): kullanıcı sorun bildirmedi. Toast'a Bildirim Merkezi'nden tıklamak paneli açmıyordu; kullanıcının kararıyla tag'den önce düzeltildi (ADR-040, 7. madde).
    - Gerçek boşta bellek ölçümü (Claude Code kapalıyken):
      - **İlk koşu, 2026-10-28, kurulu `3138bf3` build'i:** Bellek 11,6 MB, bütçe içinde. CPU `TotalProcessorTime` ile %0,169 çıktı, bütçe < %0,1.
      - **Teşhis:** Yeni `scripts/measure-threads.ps1` ile `notify`'ın Windows thread'inin boşta saniyede 10 kez uyandığı bulundu. Thread 100 ms zaman aşımıyla bekliyordu. `vendor/notify` yamasıyla, boşta 30 s'deki uyanma sayısı 302'den 0'a indi (ADR-038).
@@ -262,7 +262,7 @@ gh workflow run release.yml   # veya tag push sonrası otomatik
      - Onboarding'de statusline zincirli kuruldu ve API onayı verildi.
      - `settings.json`'daki komut, kurulu CLI'ı ileri eğik çizgili yolla ve `--chain` ile çağırıyor. PATH'te tek girdi var.
      - `tokenradar status`, 5 saatlik ve haftalık limitleri statusline'dan, model bazlı haftalık limiti API'den gösterdi. Canlı oturum `≈` paylı listelendi.
-4. **Temiz makine testi:** Windows Home'da Sandbox yok. Ayrı bir kullanıcı hesabında şu akış denenir: installer → onboarding → statusline → panel → bildirim → güncelleme kontrolü → kaldırma.
+4. ✅ **Temiz makine testi** (2026-10-28, `11a5748` build'i): Windows Home'da Sandbox olmadığı için ayrı bir kullanıcı hesabında yapıldı. Akış: installer → onboarding → statusline → panel → bildirim → güncelleme kontrolü → kaldırma. Kullanıcı sorun bildirmedi.
 5. **Yayın** (kullanıcı onayıyla):
    1. `v0.1.0` tag'i atılır; taslak release oluşur.
    2. `bucket/tokenradar.json` artifact'tan alınıp commit'lenir.
@@ -273,8 +273,12 @@ gh workflow run release.yml   # veya tag push sonrası otomatik
    - Debug exe'nin yanına geçici `portable` işareti kondu. Tema değişikliği (`set_theme`) böylece kullanıcının gerçek `config.toml` dosyasına değil `target/debug/data` altına yazıldı.
    - **Sapma:** Tray görseli eklenmedi. Elimizdeki tek kaynak `tray_contact_sheet` kontak sayfası; bu sayfa büyütülmüş 16–32 px simgelerden oluştuğu için README'de bulanık ve teknik görünüyor. Simge README'de metinle anlatılıyor.
 
+7. **Son build ile duman testi** (tag'den önce):
+   - `11a5748`'den sonra iki kod değişikliği var: genişletilmiş `notify` yaması (ADR-039) ve toast tıklaması (ADR-040). Kullanıcının kararıyla bunlar için tam tur değil, kısa bir duman testi yapılır.
+   - Son commit için elle tetiklenen `release.yml` build'i kurulur. Denenecekler: açılış, panel, canlı bir oturumun panele yansıması, "Test bildirimi gönder", toast'a hem ekrandayken hem Bildirim Merkezi'nden tıklama (uygulama açıkken ve kapalıyken), çıkış, kaldırma (`HKCU\Software\Classes\tokenradar` silinmeli).
+
 #### Sonraki adımlar için notlar
-- **Toast tıklaması:** Bildirim Merkezi'nden toast'a tıklamak uygulamayı açmıyor, çünkü COM activator yok. Seçenekler: protocol activation (`tokenradar://`) veya Tauri deep-link eklentisi.
+- **Toast tıklaması:** ✅ ADR-040 ile çözüldü (protocol activation). Toast'a eylem düğmesi eklenirse her düğme ayrı bir `tokenradar://` yolu taşımalı ve soğuk başlatmada yalnızca bilinen yollar kabul edilmeli.
 - **Portable ve Scoop:**
   - AUMID'li kısayol olmadığı için toast görünmeyebilir.
   - Scoop'ta iki şey doğrulanmalı: `current_exe()` yolunun `current` junction'ını kullandığı ve statusline komutunun güncellemelerden sonra geçerli kaldığı. Bu makinede Scoop kurulu değil.

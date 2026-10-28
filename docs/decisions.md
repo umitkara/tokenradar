@@ -616,3 +616,23 @@
   - Upstream'e aynı değişiklik 9.0 dalı için önerilir.
 - **Doğrulama:** notify'ın test paketi (37 + 5) ve core'un 253 testi geçti. Deneme programı: `configure` 20 µs'de dönüyor; 3 s boşta kaldıktan sonra olay anında geliyor; 200 watcher oluşturup bırakınca handle sayısı değişmiyor ve sunucu thread'leri çıkıyor.
 - **Bedel:** Kurulu ve ölçülen build (`11a5748`) ilk yamayı içeriyor. Fark yalnızca `configure` (kullanılmıyor) ve kapanıştaki handle ömrü; boşta ölçüm sonucu geçerli. Temiz makine testi ve tag son build ile yapılır.
+
+### ADR-040 — Toast tıklaması protocol activation ile (`tokenradar://panel`)
+**Durum:** Kabul (2026-10-28, Adım 12; ADR-033 ve ADR-036'daki "Bildirim Merkezi'nden tıklama uygulamayı açmaz" bedelinin yerini alır)
+- **Bağlam:**
+  - Windows, Bildirim Merkezi'ndeki bir toast'a tıklamayı yalnızca COM activator kaydetmiş bir uygulamaya iletir. Ekrandaki toast'a tıklama ise `tauri-plugin-notification` üzerinden çalışıyordu (ADR-033).
+  - Eklenti (2.7 → `notify-rust` → `tauri-winrt-notification` 0.8) toast XML'ine `launch` veya `activationType` yazmaya izin vermiyor.
+  - Kullanıcı bu kısıtla sürüm çıkarmak yerine tag'den önce düzeltmeyi seçti.
+- **Karar:**
+  - Windows'ta toast `notify.rs` içinde `windows` 0.62 crate'iyle (`UI_Notifications`, `Data_Xml_Dom`) kurulur. Eklentinin ürettiği toast'la aynıdır (sessiz, `short`, `ToastGeneric`). Tek fark `activationType="protocol"` ve `launch="tokenradar://panel"`. Metin DOM üzerinden yazılır, bu yüzden işaretlemeyi değiştiremez. Gönderen kimliği kuralı eklentininkiyle aynı (cargo build'leri PowerShell AUMID'iyle).
+  - Şema `tauri.conf.json > plugins > deep-link > desktop > schemes` ile tanımlanır. Tauri'nin NSIS şablonu (kopyamız dahil) şemayı kurulumda HKCU `Software\Classes\tokenradar` altına yazar ve kaldırmada, komut bu kuruluma aitse siler. `tauri-plugin-deep-link` eklenmez.
+  - Tıklama `tokenradar-app.exe tokenradar://panel` başlatır. Uygulama çalışıyorsa single-instance eklentisi bu başlatmayı ona iletir ve panel açılır (her ikinci başlatmada olduğu gibi). Çalışmıyorsa yeni süreç argümanı görür ve paneli açar; argüman yalnızca tam eşleşmeyle kabul edilir.
+  - macOS ve Linux'ta eklenti kullanılmaya devam eder.
+- **Güvenlik:** Herhangi bir web sayfası veya program `tokenradar://` açabilir. Tek etkisi panelin açılması; başka bir argüman hiçbir şey tetiklemez (soğuk başlatmada yok sayılır, sıcak durumda zaten her ikinci başlatma paneli açıyordu).
+- **Bedel:**
+  - Portable ve Scoop kopyaları şemayı kaydetmez; orada toast tıklaması hiçbir şey yapmaz (toast zaten görünmeyebilir).
+  - Toast kodu Windows'ta eklentiden ayrıldı; eklenti güncellemeleri (ör. ikon, eylem düğmeleri) kendiliğinden gelmez.
+- **Alternatifler:**
+  - COM activator (`INotificationActivationCallback` + CLSID kaydı + kısayolda `ToastActivatorCLSID`): Tauri şablonunda kısayol özelliği yok; daha fazla registry ve COM sunucusu kodu.
+  - `tauri-plugin-deep-link`: yalnızca argüman ayrıştırması için bağımlılık; single-instance zaten yeterli.
+  - Kısıtı v0.1'de bırakmak: kullanıcı reddetti.
