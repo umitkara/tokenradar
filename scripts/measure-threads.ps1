@@ -138,7 +138,20 @@ $sum = ($rows | Measure-Object switches -Sum).Sum
 $cyc = ($rows | Measure-Object cycles_m -Sum).Sum
 $cpu = ($rows | Measure-Object cpu_ms -Sum).Sum
 $inv = [Globalization.CultureInfo]::InvariantCulture
-Write-Host ("total: {0} switches ({1}/min), {2} M cycles, {3} ms CPU ({4} % of one core)" -f $sum,
-    ($sum / ($DurationSec / 60)).ToString('0.0', $inv), $cyc.ToString('0.0', $inv), $cpu.ToString('0', $inv),
-    ($cpu / 10 / $DurationSec).ToString('0.000', $inv))
-if ($Out) { $rows | Export-Csv -NoTypeInformation -Encoding utf8 $Out; Write-Host "rows written to $Out" }
+# Cycles at the nominal clock; turbo makes the real share a little smaller.
+$mhz = (Get-CimInstance Win32_Processor | Select-Object -First 1).MaxClockSpeed
+Write-Host ("total: {0} switches ({1}/min), {2} M cycles (~{3} % of one {4} MHz core), {5} ms tick-sampled CPU" -f $sum,
+    ($sum / ($DurationSec / 60)).ToString('0.0', $inv), $cyc.ToString('0.0', $inv),
+    ($cyc / $mhz / $DurationSec * 100).ToString('0.000', $inv), $mhz, $cpu.ToString('0', $inv))
+if ($Out) {
+    # Invariant culture, so the CSV parses the same on every locale (like measure-memory.ps1).
+    $rows | ForEach-Object {
+        [pscustomobject]@{
+            tid = $_.tid; name = $_.name; switches = $_.switches
+            cycles_m = if ($null -ne $_.cycles_m) { ([double]$_.cycles_m).ToString($inv) }
+            cpu_ms = if ($null -ne $_.cpu_ms) { ([double]$_.cpu_ms).ToString($inv) }
+            state = $_.state
+        }
+    } | Export-Csv -NoTypeInformation -Encoding utf8 $Out
+    Write-Host "rows written to $Out"
+}
