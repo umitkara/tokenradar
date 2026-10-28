@@ -240,11 +240,15 @@ gh workflow run release.yml   # veya tag push sonrası otomatik
    - Kullanıcı kendi makinesinde `pnpm -C app tauri signer generate -w <repo dışı yol>` komutunu çalıştırır.
    - **Anahtar dosyasını ve parolayı repo dışında, güvenli bir yerde (örneğin bir şifre yöneticisinde) saklayın.** GitHub Secrets'taki değer geri okunamaz. Anahtar kaybolursa kurulu hiçbir kopya güncellenemez.
    - ✅ 2026-10-28: Kullanıcı anahtarı üretti. Açık anahtar (key id `C960EC8ABFFE2454`) `tauri.conf.json > plugins.updater.pubkey` alanında. Testlerde kullanılan geçici anahtar hiç commit'lenmedi ve silindi.
-   - Özel anahtar `TAURI_SIGNING_PRIVATE_KEY`, parolası `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` secret'ına eklenir.
-2. **Repo:**
-   - `gh repo create umitkara/tokenradar --public` ile oluşturulur. Konu etiketleri: `claude-code`, `usage-tracker`, `tauri`, `rust`, `windows`, `tray`.
-   - Push yapılır ve CI'ın yeşil olduğu doğrulanır.
-   - Ayarlardan "Private vulnerability reporting" açılır; SECURITY.md buna dayanıyor.
+   - ✅ Özel anahtar `TAURI_SIGNING_PRIVATE_KEY`, parolası `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` secret'ında (kullanıcı ekledi). Tag'siz, elle tetiklenen `release.yml` çalıştırması installer'ı imzaladı; `release-assets.mjs` imzayı açık anahtarla doğruladı ("signature verified with key C960EC8ABFFE2454"). Hiçbir şey yayınlanmadı.
+2. ✅ **Repo** (2026-10-28):
+   - `umitkara/tokenradar` herkese açık olarak oluşturuldu. Konu etiketleri eklendi, "Private vulnerability reporting" açık.
+   - İlk push'tan önce geçmişin tamamı yeniden yazıldı. Yazar ve committer e-postası artık GitHub'ın noreply adresi; kullanıcının kararıyla kişisel e-posta herkese açık commit'lere girmedi.
+   - İlk CI çalıştırmaları temiz makinede üç sorun buldu. Üçü de düzeltildi; CI ve release yeşil:
+     - Bundle kaynakları (CLI ve notices) yalnızca `tauri build` sırasında üretiliyordu, bu yüzden `cargo test` temiz klonda düşüyordu. `build.rs` artık debug build'lerde işaretli yer tutucu yazıyor, release build'leri yer tutucuyu reddediyor.
+     - Runner yerleşik Yönetici hesabıyla çalışıyor. Pipe DACL testi SID'i SDDL metninde arıyordu, Windows ise SID'i `LA` kısaltmasıyla yazıyor. Test artık `canonical_sid` ile karşılaştırıyor.
+     - Önbelleksiz release işinde Git Bash'in açılması 300 ms'lik zincir süresini aştı. Süre `Deps`'e taşındı; çıktıyı kontrol eden testler 10 s bekliyor.
+   - Dependabot ilk taramada major sürüm PR'ları açtı (TypeScript 7, `@types/node` 26, `windows-core` 0.100, `sha2` 0.11). Bunlar birleştirilmedi; v0.1 sonrasında tek tek değerlendirilmeli.
 3. **Adım 11'in üç açık işi** kurulu build ile yapılır:
    - Bir günlük bildirim gürültüsü değerlendirmesi. Kurulu kopyada AUMID'li kısayol var; toast tıklaması da bu sırada denenmeli.
    - Gerçek boşta bellek ölçümü (Claude Code kapalıyken).
