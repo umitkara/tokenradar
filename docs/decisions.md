@@ -565,3 +565,22 @@
   - `externalBin` ile CLI'ı ekleyip adını hook'ta değiştirmek.
   - Updater'ı frontend'den sürmek (geniş izin, iş mantığı UI'da olurdu).
   - Release'de imzayı doğrulamamak (anahtar uyuşmazlığı ilk güncellemede ortaya çıkardı).
+
+### ADR-037 — Panel soğuk açılış bütçesi 400 ms'den 500 ms'ye
+**Durum:** Kabul (2026-10-28, Adım 12; ADR-032'deki "bütçe değişmez" maddesinin yerini alır)
+- **Bağlam:**
+  - Adım 10'da soğuk açılış medyanı 407 ms ölçülmüş, bütçeyi 7 ms aştığı hâlde "sınırda" kaydedilmişti (ADR-032).
+  - v0.1.0 doğrulamasında iki ayrı ölçüm yapıldı (her biri 3 koşu × 3 tur). Medyanlar 443 ve 440 ms çıktı.
+  - Aynı gün ölçülen Adım 11c build'i 468 ms verdi. Yani aşımı Adım 12 getirmedi. Değer makinenin o anki durumuna göre 400–470 ms arasında oynuyor; WebView2 sürümü değişmedi.
+  - Sürenin ~%70'i WebView2 tarayıcı sürecinin başlaması (`build()` 267–316 ms). Bu süreç ADR-023 gereği `warm_ttl` sonunda kapatılıyor; böylece "kapandıktan sonra ≤ 30 MB" bütçesi tutuyor. İki bütçe birbirini çekiştiriyor.
+  - Gerçek tray tıklamasında hover ön ısıtması bu sürenin çoğunu gizliyor (ADR-032). Klavye, tray menüsü ve ikinci başlatma ise soğuk süreyi tam öder.
+- **Karar (kullanıcıyla kararlaştırıldı):**
+  - Panel soğuk açılış bütçesi **≤ 500 ms**. Sıcak açılış bütçesi (≤ 50 ms) ve bellek bütçeleri değişmedi.
+  - Sayfa fazındaki iyileştirme açık iş olarak kalır: snapshot'ı açılış betiğiyle göndermek tahminen 10–40 ms kazandırır.
+- **Bedel:**
+  - Hover olmadan açılan panel (klavye, menü, ikinci başlatma) yarım saniyeye yakın gecikebilir.
+  - Bütçe ölçülen değere yaklaştırıldı. 500 ms'yi aşan bir gerileme yine sürüm kapısıdır.
+- **Alternatifler:**
+  - WebView2 tarayıcı sürecini canlı tutmak: soğuk açılışı ~150 ms kısaltır ama boşta ~50 MB ekler. Bu, "görünmez ayak izi" vaadini ve ≤ 30 MB bütçesini bozar.
+  - Bütçeyi koruyup sürümü ertelemek: ulaşılabilir kazanç 400 ms'nin altına inmeyi garanti etmiyor.
+  - "Bilinen aşım" olarak kaydedip bütçeyi değiştirmemek: belgelenmiş bir kapının sürekli aşık durması onu anlamsızlaştırır.

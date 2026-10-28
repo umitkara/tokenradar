@@ -50,7 +50,7 @@ const SPKI_ED25519 = Buffer.from("302a300506032b6570032100", "hex");
 
 function publicKey() {
   const conf = JSON.parse(readFileSync(join(root, "app", "src-tauri", "tauri.conf.json"), "utf8"));
-  const raw = Buffer.from(lines(conf.plugins.updater.pubkey)[1], "base64");
+  const raw = Buffer.from(lines(conf.plugins.updater.pubkey)[1] ?? "", "base64");
   if (raw.length !== 42 || raw.subarray(0, 2).toString() !== "Ed") {
     throw new Error("tauri.conf.json: plugins.updater.pubkey is not a minisign public key");
   }

@@ -2,7 +2,7 @@
 
 | Sürüm | Bağımlılık | Tahmini süre | Durum |
 |---|---|---|---|
-| v0.1 | 11 | 1-2 oturum | ⬜ |
+| v0.1 | 11 | 1-2 oturum | 🟨 kod tamam; sürüm kapıları açık (devir notu) |
 
 ## Amaç
 
@@ -127,7 +127,7 @@ gh workflow run release.yml   # veya tag push sonrası otomatik
 
 ## Devir notu
 
-**Tarih:** 2026-10-28 · **Dal:** `step/12-packaging-v0.1` · **Karar:** ADR-036
+**Tarih:** 2026-10-28 · **Dal:** `step/12-packaging-v0.1` · **Karar:** ADR-036, ADR-037
 
 #### Kullanıcı kararları
 - Adım tek oturumda yapıldı. Adım 11'in üç açık işi kurulu build ile, **tag'den önce** yapılacak (sürüm kapısı).
@@ -224,7 +224,7 @@ gh workflow run release.yml   # veya tag push sonrası otomatik
     - Run ve StartupApproved değerleri, kısayol, Kaldır kaydı ve kurulum dizini silindi.
     - Veri dizini ve kullanıcının kendi statusline'ı korundu.
   - Bu sırada bulunan kusur düzeltildi: yeniden başlatmadan sonra "Son denetim" satırı görünmüyordu.
-- **Performans:** `docs/perf/2026-10-28-v0.1.0.md`.
+- **Performans:** `docs/perf/2026-10-28-v0.1.0.md`. Ölçülen bütün v0.1 satırları bütçe içinde. İstisna panelin soğuk açılışıydı: medyan 440 ms, Adım 11c build'i aynı gün 468 ms. Kullanıcı kararıyla bütçe 400 ms'den 500 ms'ye çıktı (ADR-037).
 
 #### Plandan sapmalar
 - **Kurulum dizini** `%LOCALAPPDATA%\Programs\TokenRadar` oldu. Tauri'nin varsayılanı veri dizinimizle çakışıyordu; bunun için şablon kopyalandı (ADR-036).
@@ -239,7 +239,7 @@ gh workflow run release.yml   # veya tag push sonrası otomatik
 1. **İmzalama anahtarı:**
    - Kullanıcı kendi makinesinde `pnpm -C app tauri signer generate -w <repo dışı yol>` komutunu çalıştırır.
    - **Anahtar dosyasını ve parolayı repo dışında, güvenli bir yerde (örneğin bir şifre yöneticisinde) saklayın.** GitHub Secrets'taki değer geri okunamaz. Anahtar kaybolursa kurulu hiçbir kopya güncellenemez.
-   - Açık anahtar `tauri.conf.json > plugins.updater.pubkey` alanına yazılır. Çalışma ağacında şu an geçici test anahtarı var; commit'lenmedi.
+   - Açık anahtar `tauri.conf.json > plugins.updater.pubkey` alanına yazılır. Şu an orada bir yer tutucu var. Uygulama yer tutucuyla çalışır, ama güncelleme kurulumu imza hatası verir; `release-assets.mjs` de release'i "not a minisign public key" hatasıyla durdurur. Testlerde kullanılan geçici anahtar hiç commit'lenmedi ve silindi.
    - Özel anahtar `TAURI_SIGNING_PRIVATE_KEY`, parolası `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` secret'ına eklenir.
 2. **Repo:**
    - `gh repo create umitkara/tokenradar --public` ile oluşturulur. Konu etiketleri: `claude-code`, `usage-tracker`, `tauri`, `rust`, `windows`, `tray`.

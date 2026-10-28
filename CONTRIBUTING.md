@@ -67,6 +67,7 @@ The implementation follows [`docs/plan/`](docs/plan/README.md), one step per bra
 
 ## Releasing (maintainers)
 
+0. Once: generate the updater key outside the repository (`pnpm -C app tauri signer generate -w <path>`), put the contents of the `.pub` file into `plugins.updater.pubkey` in `app/src-tauri/tauri.conf.json`, and add the private key and its password as the `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` secrets. Until then the release workflow stops with "not a minisign public key".
 1. Update `CHANGELOG.md` and bump the version in `Cargo.toml` (workspace) and `app/package.json`.
 2. Tag `vX.Y.Z` on `main` and push the tag. `release.yml` checks the tag against the version, builds the installer and the portable zip, verifies the updater signature against the public key in `tauri.conf.json`, and creates a **draft** release with `latest.json` and `SHA256SUMS.txt`.
 3. From the workflow's `release-assets` artifact, copy `manifests/scoop/tokenradar.json` to `bucket/tokenradar.json` and commit it; open a pull request to [winget-pkgs](https://github.com/microsoft/winget-pkgs) with the files under `manifests/winget/`.

@@ -6,7 +6,7 @@
   "build": {
     "beforeDevCommand": "pnpm dev",
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "pnpm build && cargo build --release --locked -p tokenradar-cli",
+    "beforeBuildCommand": "pnpm build && cargo build --profile release-cli --locked -p tokenradar-cli && node ../scripts/third-party-notices.mjs",
     "frontendDist": "../dist"
   },
   "app": {
@@ -17,7 +17,39 @@
     }
   },
   "bundle": {
-    "active": false,
-    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.ico"]
+    "active": true,
+    "targets": ["nsis"],
+    "publisher": "Ümit Kara",
+    "copyright": "© 2026 Ümit Kara. MIT license.",
+    "homepage": "https://github.com/umitkara/tokenradar",
+    "license": "MIT",
+    "category": "DeveloperTool",
+    "shortDescription": "Tray radar for AI coding agent usage limits",
+    "longDescription": "TokenRadar shows the 5-hour and weekly usage limits of Claude Code in the Windows tray. Local only, no telemetry.",
+    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.ico"],
+    "resources": {
+      "../../target/release-cli/tokenradar.exe": "bin/tokenradar.exe",
+      "../../target/third-party/THIRD-PARTY-NOTICES.txt": "THIRD-PARTY-NOTICES.txt"
+    },
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser",
+        "languages": ["English", "Turkish"],
+        "displayLanguageSelector": false,
+        "template": "windows/installer.nsi",
+        "installerHooks": "windows/hooks.nsh",
+        "installerIcon": "icons/icon.ico",
+        "compression": "lzma"
+      }
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "REPLACE-WITH-THE-RELEASE-MINISIGN-PUBLIC-KEY (CONTRIBUTING.md, Releasing)",
+      "endpoints": ["https://github.com/umitkara/tokenradar/releases/latest/download/latest.json"],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
   }
 }

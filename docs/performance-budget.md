@@ -29,7 +29,7 @@
 |---|---|
 | Uygulama başlangıcından tray ikonunun görünmesine | ≤ 300 ms |
 | Panel açılışı — sıcak (warm_ttl içinde) | ≤ 50 ms |
-| Panel açılışı — soğuk (webview oluşturma dahil) | ≤ 400 ms |
+| Panel açılışı — soğuk (webview oluşturma dahil) | ≤ 500 ms. ADR-037 (önce 400 ms). v0.1.0: medyan 440 ms (`docs/perf/2026-10-28-v0.1.0.md`) |
 | Ana pencere açılışı — soğuk | ≤ 600 ms |
 | JSONL'e yeni satır yazılmasından UI/tray güncellemesine | ≤ 2 s (debounce dahil) |
 | `tokenradar statusline` (daemon açık) | p95 ≤ 30 ms. Adım 07: 13,3 ms (`docs/perf/2026-10-27-statusline.md`) |

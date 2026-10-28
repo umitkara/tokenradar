@@ -144,7 +144,7 @@ $summaries = foreach ($i in 1..$Runs) {
 $fmt = { param($v) if ([double]::IsNaN($v)) { '–' } else { $v.ToString('0.0', $inv) } }
 $all = { param($pattern) @($summaries | ForEach-Object { $s = $_; $s.PSObject.Properties.Name | Where-Object { $_ -like $pattern } | ForEach-Object { [double]$s.$_ } }) }
 $budget = @(
-    @('Cold open (median of all rounds)', (Get-Median (& $all 'cold*_ms')), 400, 'ms'),
+    @('Cold open (median of all rounds)', (Get-Median (& $all 'cold*_ms')), 500, 'ms'),  # ADR-037
     @('Warm open (median of all rounds)', (Get-Median (& $all 'warm*_ms')), 50, 'ms'),
     @('Panel open, private WS (max of round medians)', (& $all 'open*_ws' | Measure-Object -Maximum).Maximum, 130, 'MB'),
     @('warm_ttl + 10 s, private WS (max)', (& $all 'ttl*_ws' | Measure-Object -Maximum).Maximum, 30, 'MB')
