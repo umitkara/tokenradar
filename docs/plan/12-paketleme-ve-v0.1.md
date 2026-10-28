@@ -251,7 +251,12 @@ gh workflow run release.yml   # veya tag push sonrası otomatik
    - Dependabot ilk taramada major sürüm PR'ları açtı (TypeScript 7, `@types/node` 26, `windows-core` 0.100, `sha2` 0.11). Bunlar birleştirilmedi; v0.1 sonrasında tek tek değerlendirilmeli.
 3. **Adım 11'in üç açık işi** kurulu build ile yapılır:
    - Bir günlük bildirim gürültüsü değerlendirmesi. Kurulu kopyada AUMID'li kısayol var; toast tıklaması da bu sırada denenmeli.
-   - Gerçek boşta bellek ölçümü (Claude Code kapalıyken).
+   - Gerçek boşta bellek ölçümü (Claude Code kapalıyken):
+     - **İlk koşu, 2026-10-28, kurulu `3138bf3` build'i:** Bellek 11,6 MB, bütçe içinde. CPU `TotalProcessorTime` ile %0,169 çıktı, bütçe < %0,1.
+     - **Teşhis:** Yeni `scripts/measure-threads.ps1` ile `notify`'ın Windows thread'inin boşta saniyede 10 kez uyandığı bulundu. Thread 100 ms zaman aşımıyla bekliyordu. `vendor/notify` yamasıyla, boşta 30 s'deki uyanma sayısı 302'den 0'a indi (ADR-038).
+     - **Açık:** Yamalı build ile yeniden kurulum ve 10 dakikalık ölçüm. Komut: `.\scripts\measure-threads.ps1 -DurationSec 600` ve `.\scripts\measure-memory.ps1 -ProcessName tokenradar-app -IntervalMs 1000 -DurationSec 600`. İki ölçüm aynı anda çalışabilir.
+     - Kod değiştiği için bir günlük bildirim değerlendirmesi de yeni build ile yapılır.
+     - **Upstream PR:** `notify-rs/notify`'a aynı değişiklik önerilecek (kullanıcı onayıyla).
    - ✅ Onboarding'den gerçek statusline kurulumu ve panelde canlı veri (2026-10-28):
      - Kullanıcı, release çalıştırması `40653436476`'nın imzalı installer'ını kurdu (commit `3138bf3`; tag'lenecek koddan farkı yalnızca dokümanlar). SHA-256 değeri `SHA256SUMS.txt` ile eşleşti.
      - Onboarding'de statusline zincirli kuruldu ve API onayı verildi.
