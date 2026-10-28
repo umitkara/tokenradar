@@ -36,7 +36,7 @@
 | 09 | [Frontend temeli: token'lar, tema, i18n, tipli köprü](09-frontend-temeli.md) | 02, 03 | ✅ |
 | 10 | [Tray paneli](10-tray-paneli.md) | 07, 08, 09 | ✅ |
 | 11 | [Bildirimler, ayarlar ve onboarding](11-bildirim-ayar-onboarding.md) | 10 | ✅ (11a, 11b, 11c). Açık: gürültü değerlendirmesi, gerçek boşta ölçüm, gerçek statusline kurulumu (Adım 12 ön koşulu) |
-| 12 | [Paketleme, güncelleme ve v0.1 sürümü](12-paketleme-ve-v0.1.md) | 11 | 🟨 Kod, CI/release, dokümanlar ve kurulum/güncelleme testi tamam. Açık (sürüm kapısı): imzalama anahtarı, repo + CI, Adım 11 açıkları, temiz makine, tag |
+| 12 | [Paketleme, güncelleme ve v0.1 sürümü](12-paketleme-ve-v0.1.md) | 11 | 🟨 Kod, CI/release, dokümanlar ve kurulum/güncelleme testi tamam. İmzalama anahtarı eklendi. Açık (sürüm kapısı): signing secret'ları, repo + CI, Adım 11 açıkları, temiz makine, tag |
 
 ### v0.2 — Analitik ve Atıf
 

@@ -45,7 +45,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "REPLACE-WITH-THE-RELEASE-MINISIGN-PUBLIC-KEY (CONTRIBUTING.md, Releasing)",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEM5NjBFQzhBQkZGRTI0NTQKUldSVUpQNi9pdXhneVdTZWZJSkx5S0tsM05VRlZ3NHlrRXFDZVgvbGQ2dzg5SVowZGMzYWhRdVEK",
       "endpoints": ["https://github.com/umitkara/tokenradar/releases/latest/download/latest.json"],
       "windows": {
         "installMode": "passive"

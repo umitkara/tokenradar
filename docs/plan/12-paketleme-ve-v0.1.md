@@ -239,7 +239,7 @@ gh workflow run release.yml   # veya tag push sonrası otomatik
 1. **İmzalama anahtarı:**
    - Kullanıcı kendi makinesinde `pnpm -C app tauri signer generate -w <repo dışı yol>` komutunu çalıştırır.
    - **Anahtar dosyasını ve parolayı repo dışında, güvenli bir yerde (örneğin bir şifre yöneticisinde) saklayın.** GitHub Secrets'taki değer geri okunamaz. Anahtar kaybolursa kurulu hiçbir kopya güncellenemez.
-   - Açık anahtar `tauri.conf.json > plugins.updater.pubkey` alanına yazılır. Şu an orada bir yer tutucu var. Uygulama yer tutucuyla çalışır, ama güncelleme kurulumu imza hatası verir; `release-assets.mjs` de release'i "not a minisign public key" hatasıyla durdurur. Testlerde kullanılan geçici anahtar hiç commit'lenmedi ve silindi.
+   - ✅ 2026-10-28: Kullanıcı anahtarı üretti. Açık anahtar (key id `C960EC8ABFFE2454`) `tauri.conf.json > plugins.updater.pubkey` alanında. Testlerde kullanılan geçici anahtar hiç commit'lenmedi ve silindi.
    - Özel anahtar `TAURI_SIGNING_PRIVATE_KEY`, parolası `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` secret'ına eklenir.
 2. **Repo:**
    - `gh repo create umitkara/tokenradar --public` ile oluşturulur. Konu etiketleri: `claude-code`, `usage-tracker`, `tauri`, `rust`, `windows`, `tray`.
