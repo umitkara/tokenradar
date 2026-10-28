@@ -17,7 +17,7 @@ The first public release: Claude Code's usage limits in the Windows tray.
 - Limit sources in order of trust: Claude Code's status line (`rate_limits`), the usage API (only with your consent) and an estimate from local logs, marked `≈`.
 - Statusline bridge: `tokenradar statusline install` shows the change to `~/.claude/settings.json`, asks, keeps a backup and chains to an existing status line command.
 - Incremental indexer for Claude Code's local logs that reads only usage and metadata fields.
-- Notifications: thresholds, a projection warning, a last warning before full, reset announcements and quiet hours.
+- Notifications: thresholds, a projection warning, a last warning before full, reset announcements and quiet hours. Clicking a notification, also from the Action Center, opens the panel.
 - Settings, a first-run onboarding window and a tray-pin helper.
 - CLI: `status`, `limits`, `sessions` (with `--json`), `doctor` (privacy-safe diagnostics bundle) and `path add|remove`.
 - Per-user installer that puts the CLI on the user `PATH`, and a portable zip.

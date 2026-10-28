@@ -41,6 +41,8 @@ tauri-plugin-updater = { version = "2.14", default-features = false, features = 
 # wry's, so the COM types match.
 [target.'cfg(windows)'.dependencies]
 webview2-com = "0.39"
+# Toasts with protocol activation, so an Action Center click opens the panel (ADR-040).
+windows = { version = "0.62", features = ["Data_Xml_Dom", "UI_Notifications"] }
 windows-core = "0.62"
 # Tray: local time, icon size (DPI), taskbar theme, high contrast and the change watcher window.
 # Panel: monitor work area, taskbar edge and rounded corners.

@@ -37,7 +37,7 @@ TokenRadar sits in the Windows tray and shows how much of your **Claude Code** 5
 | Portable | `TokenRadar_<version>_x64-portable.zip` from [Releases](https://github.com/umitkara/tokenradar/releases) | download the new zip |
 
 - The installer is per user and needs no administrator rights. It installs to `%LOCALAPPDATA%\Programs\TokenRadar` and adds the `tokenradar` CLI to your user `PATH`.
-- The portable zip and Scoop keep everything in a `data` folder next to the app. Windows may not show notifications for a portable copy, because it is not registered with a Start menu shortcut.
+- The portable zip and Scoop keep everything in a `data` folder next to the app. Windows may not show notifications for a portable copy, because it is not registered with a Start menu shortcut, and clicking a notification does not open the panel.
 - Every release lists SHA-256 checksums in `SHA256SUMS.txt`.
 
 ### Why does SmartScreen warn me?

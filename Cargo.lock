@@ -5311,6 +5311,7 @@ dependencies = [
  "tracing-appender",
  "tracing-subscriber",
  "webview2-com",
+ "windows",
  "windows-core",
  "windows-sys 0.61.2",
 ]
