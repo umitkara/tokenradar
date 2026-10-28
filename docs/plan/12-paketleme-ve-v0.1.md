@@ -256,7 +256,7 @@ gh workflow run release.yml   # veya tag push sonrası otomatik
      - **Teşhis:** Yeni `scripts/measure-threads.ps1` ile `notify`'ın Windows thread'inin boşta saniyede 10 kez uyandığı bulundu. Thread 100 ms zaman aşımıyla bekliyordu. `vendor/notify` yamasıyla, boşta 30 s'deki uyanma sayısı 302'den 0'a indi (ADR-038).
      - ✅ **Yamalı build** (release çalıştırması `40710181973`, commit `11a5748`; SHA-256 `a148afb9…e871`): kullanıcı üzerine kurdu ve Claude Code kapalıyken 10 dakika ölçtü. Bellek 8,3 MB, CPU döngüyle ≈ %0,033, `notify` thread'i 0 uyanma (`docs/perf/2026-10-28-v0.1.0-idle.md`).
      - Kod değiştiği için bir günlük bildirim değerlendirmesi de yeni build ile yapılır.
-     - **Upstream PR:** `notify-rs/notify`'a aynı değişiklik önerilecek (kullanıcı onayıyla).
+     - **Upstream PR:** [notify-rs/notify#1056](https://github.com/notify-rs/notify/pull/1056) (kullanıcı onayıyla açıldı). PR hazırlanırken `configure` kilitlenmesi ve `Drop` sırası bulundu; yama genişletildi (ADR-039). Kurulu `11a5748` build'i ilk yamayı içeriyor; temiz makine testi ve tag son build ile yapılır.
    - ✅ Onboarding'den gerçek statusline kurulumu ve panelde canlı veri (2026-10-28):
      - Kullanıcı, release çalıştırması `40653436476`'nın imzalı installer'ını kurdu (commit `3138bf3`; tag'lenecek koddan farkı yalnızca dokümanlar). SHA-256 değeri `SHA256SUMS.txt` ile eşleşti.
      - Onboarding'de statusline zincirli kuruldu ve API onayı verildi.
