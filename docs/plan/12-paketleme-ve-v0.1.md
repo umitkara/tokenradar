@@ -254,7 +254,7 @@ gh workflow run release.yml   # veya tag push sonrası otomatik
    - Gerçek boşta bellek ölçümü (Claude Code kapalıyken):
      - **İlk koşu, 2026-10-28, kurulu `3138bf3` build'i:** Bellek 11,6 MB, bütçe içinde. CPU `TotalProcessorTime` ile %0,169 çıktı, bütçe < %0,1.
      - **Teşhis:** Yeni `scripts/measure-threads.ps1` ile `notify`'ın Windows thread'inin boşta saniyede 10 kez uyandığı bulundu. Thread 100 ms zaman aşımıyla bekliyordu. `vendor/notify` yamasıyla, boşta 30 s'deki uyanma sayısı 302'den 0'a indi (ADR-038).
-     - **Açık:** Yamalı build ile yeniden kurulum ve 10 dakikalık ölçüm. Komut: `.\scripts\measure-threads.ps1 -DurationSec 600` ve `.\scripts\measure-memory.ps1 -ProcessName tokenradar-app -IntervalMs 1000 -DurationSec 600`. İki ölçüm aynı anda çalışabilir.
+     - ✅ **Yamalı build** (release çalıştırması `40710181973`, commit `11a5748`; SHA-256 `a148afb9…e871`): kullanıcı üzerine kurdu ve Claude Code kapalıyken 10 dakika ölçtü. Bellek 8,3 MB, CPU döngüyle ≈ %0,033, `notify` thread'i 0 uyanma (`docs/perf/2026-10-28-v0.1.0-idle.md`).
      - Kod değiştiği için bir günlük bildirim değerlendirmesi de yeni build ile yapılır.
      - **Upstream PR:** `notify-rs/notify`'a aynı değişiklik önerilecek (kullanıcı onayıyla).
    - ✅ Onboarding'den gerçek statusline kurulumu ve panelde canlı veri (2026-10-28):
