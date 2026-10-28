@@ -79,6 +79,24 @@ struct WatchState {
     complete_sem: HANDLE,
 }
 
+/// TokenRadar patch (ADR-038): the wakeup semaphore, closed when both the watcher and the server
+/// have dropped it. With an untimed wait the watcher must release the semaphore *after* sending
+/// `Stop`, so the server must not close it while the watcher can still release it.
+#[derive(Debug)]
+struct WakeupSem(HANDLE);
+
+impl Drop for WakeupSem {
+    fn drop(&mut self) {
+        unsafe {
+            CloseHandle(self.0);
+        }
+    }
+}
+
+// A semaphore handle may be used from any thread.
+unsafe impl Send for WakeupSem {}
+unsafe impl Sync for WakeupSem {}
+
 struct ReadDirectoryChangesServer {
     tx: Sender<Action>,
     rx: Receiver<Action>,
@@ -86,7 +104,7 @@ struct ReadDirectoryChangesServer {
     meta_tx: Sender<MetaEvent>,
     cmd_tx: Sender<Result<PathBuf>>,
     watches: HashMap<PathBuf, WatchState>,
-    wakeup_sem: HANDLE,
+    wakeup_sem: Arc<WakeupSem>,
 }
 
 impl ReadDirectoryChangesServer {
@@ -94,17 +112,14 @@ impl ReadDirectoryChangesServer {
         event_handler: Arc<Mutex<dyn EventHandler>>,
         meta_tx: Sender<MetaEvent>,
         cmd_tx: Sender<Result<PathBuf>>,
-        wakeup_sem: HANDLE,
+        wakeup_sem: Arc<WakeupSem>,
     ) -> Sender<Action> {
         let (action_tx, action_rx) = unbounded();
-        // it is, in fact, ok to send the semaphore across threads
-        let sem_temp = wakeup_sem as u64;
         let _ = thread::Builder::new()
             .name("notify-rs windows loop".to_string())
             .spawn({
                 let tx = action_tx.clone();
                 move || {
-                    let wakeup_sem = sem_temp as HANDLE;
                     let server = ReadDirectoryChangesServer {
                         tx,
                         rx: action_rx,
@@ -154,17 +169,13 @@ impl ReadDirectoryChangesServer {
                 // TokenRadar patch (ADR-038): wait without a timeout. Every action is followed by
                 // `wakeup_server()` and completion routines run as APCs, so the 100 ms timeout only
                 // woke an idle watcher 10 times a second.
-                let waitres = WaitForSingleObjectEx(self.wakeup_sem, INFINITE, 1);
+                let waitres = WaitForSingleObjectEx(self.wakeup_sem.0, INFINITE, 1);
                 if waitres == WAIT_OBJECT_0 {
                     let _ = self.meta_tx.send(MetaEvent::WatcherAwakened);
                 }
             }
         }
-
-        // we have to clean this up, since the watcher may be long gone
-        unsafe {
-            CloseHandle(self.wakeup_sem);
-        }
+        // TokenRadar patch: `wakeup_sem` is closed by `WakeupSem::drop` once the watcher is gone.
     }
 
     fn add_watch(&mut self, path: PathBuf, is_recursive: bool) -> Result<PathBuf> {
@@ -471,7 +482,7 @@ unsafe extern "system" fn handle_event(
 pub struct ReadDirectoryChangesWatcher {
     tx: Sender<Action>,
     cmd_rx: Receiver<Result<PathBuf>>,
-    wakeup_sem: HANDLE,
+    wakeup_sem: Arc<WakeupSem>,
 }
 
 impl ReadDirectoryChangesWatcher {
@@ -485,9 +496,10 @@ impl ReadDirectoryChangesWatcher {
         if wakeup_sem.is_null() || wakeup_sem == INVALID_HANDLE_VALUE {
             return Err(Error::generic("Failed to create wakeup semaphore."));
         }
+        let wakeup_sem = Arc::new(WakeupSem(wakeup_sem));
 
         let action_tx =
-            ReadDirectoryChangesServer::start(event_handler, meta_tx, cmd_tx, wakeup_sem);
+            ReadDirectoryChangesServer::start(event_handler, meta_tx, cmd_tx, wakeup_sem.clone());
 
         Ok(ReadDirectoryChangesWatcher {
             tx: action_tx,
@@ -501,7 +513,7 @@ impl ReadDirectoryChangesWatcher {
         // so that if you add a watch you don't block for 100ms in watch() while the
         // server sleeps.
         unsafe {
-            ReleaseSemaphore(self.wakeup_sem, 1, ptr::null_mut());
+            ReleaseSemaphore(self.wakeup_sem.0, 1, ptr::null_mut());
         }
     }
 
@@ -582,6 +594,8 @@ impl Watcher for ReadDirectoryChangesWatcher {
     fn configure(&mut self, config: Config) -> Result<bool> {
         let (tx, rx) = bounded(1);
         self.tx.send(Action::Configure(config, tx))?;
+        // TokenRadar patch: the server no longer wakes on its own; wake it for the reply.
+        self.wakeup_server();
         rx.recv()?
     }
 
@@ -592,8 +606,9 @@ impl Watcher for ReadDirectoryChangesWatcher {
 
 impl Drop for ReadDirectoryChangesWatcher {
     fn drop(&mut self) {
+        // TokenRadar patch: send first, then wake. Waking first could let the server check the
+        // queue before `Stop` arrives and sleep forever; `WakeupSem` keeps the handle valid.
         let _ = self.tx.send(Action::Stop);
-        // better wake it up
         self.wakeup_server();
     }
 }

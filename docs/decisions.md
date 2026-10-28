@@ -604,3 +604,15 @@
   - `ReadDirectoryChangesW` üzerine kendi watcher'ımız: bağımlılık kalkar ama iş büyür ve v0.5'te macOS/Linux için yine `notify` gerekir.
   - v0.1.1'e bırakmak: sürüm, bilinen bir bütçe ihlaliyle çıkardı.
   - `PollWatcher`: periyodik tarama, sorunu büyütür.
+
+### ADR-039 — `notify` yamasının kapsamı: semafor ömrü ve `configure`
+**Durum:** Kabul (2026-10-28, Adım 12; ADR-038'i genişletir)
+- **Bağlam:** Upstream PR'ı hazırlanırken, zaman aşımına dayanan iki yol daha bulundu:
+  - `Watcher::configure` komutu gönderip yanıtı bekliyor ama sunucuyu uyandırmıyor. crates.io 8.2.1'de çağrı 104 ms sürüyor (yalnızca zaman aşımı sayesinde dönüyor). Zaman aşımı olmayınca kilitlenir. TokenRadar `configure` çağırmıyor.
+  - `Drop` önce `Stop` gönderip sonra semaforu bırakıyor. Sunucu `Stop`'u erkenden görürse semaforu kapatıyor ve `Drop` kapanmış bir handle'ı bırakıyor (8.2.1'de zaten var). Upstream #1051 sırayı ters çevirmiş; o sıra da zaman aşımı olmadan `Stop`'un kaybolmasına yol açar.
+- **Karar:**
+  - Semafor, watcher ve sunucunun ortak sahip olduğu bir `Arc<WakeupSem>` içinde. Son sahip bırakınca kapanıyor. `Drop` önce `Stop` gönderir, sonra uyandırır.
+  - `configure` gönderdikten sonra sunucuyu uyandırır.
+  - Upstream'e aynı değişiklik 9.0 dalı için önerilir.
+- **Doğrulama:** notify'ın test paketi (37 + 5) ve core'un 253 testi geçti. Deneme programı: `configure` 20 µs'de dönüyor; 3 s boşta kaldıktan sonra olay anında geliyor; 200 watcher oluşturup bırakınca handle sayısı değişmiyor ve sunucu thread'leri çıkıyor.
+- **Bedel:** Kurulu ve ölçülen build (`11a5748`) ilk yamayı içeriyor. Fark yalnızca `configure` (kullanılmıyor) ve kapanıştaki handle ömrü; boşta ölçüm sonucu geçerli. Temiz makine testi ve tag son build ile yapılır.
