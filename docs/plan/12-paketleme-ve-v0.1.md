@@ -127,4 +127,141 @@ gh workflow run release.yml   # veya tag push sonrası otomatik
 
 ## Devir notu
 
-_(Oturum sonunda doldurulur: yapılanlar · sapmalar · açık konular · sonraki adıma notlar)_
+**Tarih:** 2026-10-28 · **Dal:** `step/12-packaging-v0.1` · **Karar:** ADR-036
+
+#### Kullanıcı kararları
+- Adım tek oturumda yapıldı. Adım 11'in üç açık işi kurulu build ile, **tag'den önce** yapılacak (sürüm kapısı).
+- Ad TokenRadar olarak kaldı.
+  - Repo `umitkara/tokenradar` (public).
+  - winget kimliği `umitkara.TokenRadar`.
+  - Scoop manifesti ana repodaki `bucket/` altında.
+- **Ad kontrolü (2026-10-28):**
+  - GitHub'da `umitkara/tokenradar`, winget'te ve crates.io'da `tokenradar` adı boşta.
+  - GitHub'da aynı adı taşıyan, aynı alanda iki küçük proje var: bir Claude Code dashboard'u ve bir macOS menü çubuğu uygulaması. İkisi de 0 yıldızlı.
+  - Ad korundu.
+
+#### Yapılanlar
+- **Installer (NSIS, currentUser):**
+  - `app/src-tauri/windows/installer.nsi`: Tauri şablonunun kopyası. İşaretli iki değişiklik var:
+    - Kurulum dizini `%LOCALAPPDATA%\Programs\TokenRadar`.
+    - Yeniden kurulumda eski kaldırıcı her zaman `/UPDATE` ile çalışır.
+  - `scripts/check-nsis-template.mjs`, kopyayı kurulu tauri-cli şablonuyla karşılaştırır. CI'da çalışır.
+  - `windows/hooks.nsh`:
+    - Kurulumda `tokenradar path add` çalışır.
+    - Kaldırmada sırasıyla: uygulama kapatılır, `statusline uninstall --all --yes` çalışır, `path remove` çalışır, autostart değerleri silinir.
+    - Veri yalnızca "Uygulama verilerini sil" kutusu işaretliyse silinir.
+    - Mesajlar TR ve EN.
+  - CLI pakete `bundle.resources` ile `bin\tokenradar.exe` olarak girer. `beforeBuildCommand`, CLI'ı `release-cli` profiliyle derler ve lisans listesini üretir.
+  - Paket bilgileri ayarlandı: diller English ve Turkish, `publisher`, `copyright`, açıklamalar, ikon.
+- **CLI:**
+  - `tokenradar path add|remove` (`user_path.rs`):
+    - `REG_EXPAND_SZ` tipi korunur ve yineleme önlenir.
+    - Sonuç 2047 karakteri aşacaksa çıkış kodu 3 olur.
+    - Değişiklikten sonra `WM_SETTINGCHANGE` yayınlanır.
+  - `statusline uninstall --all`, `config.toml`'de kurulu görünen her hesabı geri alır.
+  - `paths.rs`: `bin\` altındaki CLI, portable işaretini bir üst dizinde de bulur.
+- **Updater (`updater.rs`):**
+  - `tauri-plugin-updater` (rustls) kullanılır.
+  - Günlük denetim yalnızca release build'de çalışır: açılıştan 120 s sonra başlar, zaman `kv.update_checked_at` içinde tutulur, ayardan kapatılabilir.
+  - Durum `UpdateView` ve `UpdateChanged` ile taşınır. Komutlar: `get_update`, `check_for_update`, `install_update`.
+  - Arayüz:
+    - Tray menüsünün başında "Güncelleme var: X…" girdisi.
+    - Hakkında'da Güncellemeler kartı: durum satırları, sürüm notları, "Şimdi denetle", "Kur ve yeniden başlat".
+    - Portable kopyada bunun yerine sürümler sayfası önerilir.
+  - Kurulum `/UPDATE /P` ile çalışır; uygulama çıkmadan önce çekirdek kapatılır.
+- **Lisanslar:**
+  - `scripts/third-party-notices.mjs` üç kaynağı birleştirir: Rust bağımlılık grafiği, Vite'ın bundle'a koyduğu npm paketleri ve font.
+  - Çıktı: 347 bileşen, 229 ayrı lisans metni.
+  - Hakkında'da "Üçüncü parti lisanslar" düğmesi var.
+- **Portable zip:** `scripts/package-portable.ps1`, `TokenRadar_<sürüm>_x64-portable.zip` dosyasını üretir. İçerik: `tokenradar-app.exe`, `bin\tokenradar.exe`, `portable`, `LICENSE.txt`, `THIRD-PARTY-NOTICES.txt`.
+- **CI/CD:**
+  - `ci.yml`: tam bundle ve portable zip derlenir, NSIS şablonu kontrol edilir. Ayrıca bir `pnpm audit` işi var.
+  - `release.yml`, `v*` tag'iyle tetiklenir. Adımlar sırasıyla:
+    1. Tag ile sürüm karşılaştırılır.
+    2. `check:all` çalışır.
+    3. İmzalı build alınır (`tauri.release.conf.json` overlay'i).
+    4. Bundle bütçesi kontrol edilir.
+    5. Portable zip üretilir.
+    6. `release-assets.mjs` çalışır.
+    7. Artifact yüklenir.
+    8. **Taslak** release oluşturulur.
+  - `scripts/release-assets.mjs`:
+    - Installer imzasını `tauri.conf.json`'daki açık anahtarla doğrular.
+    - `latest.json`, `SHA256SUMS.txt`, `notes.md` (CHANGELOG bölümü) ve Scoop/winget manifestlerini üretir.
+  - Dependabot (cargo, npm, github-actions) eklendi.
+  - `deny.toml`: RUSTSEC-2024-0436 (`paste`) gerekçesiyle yok sayıldı. `cargo deny` bu adımdan önce de bu yüzden kırmızıydı.
+- **Dokümanlar:**
+  - README (EN): özellikler, kurulum, statusline, gizlilik, SSS.
+  - CHANGELOG.
+  - CONTRIBUTING: geliştirme ortamı ve sürüm çıkarma adımları.
+  - SECURITY: GitHub üzerinden özel bildirim.
+  - Issue ve PR şablonları.
+  - `docs/en/architecture-summary.md`.
+- **Sürüm:** 0.1.0. Workspace `Cargo.toml` ve `app/package.json` güncellendi; `tauri.conf.json` sürümü Cargo'dan alır.
+
+#### Doğrulama
+- **Testler ve denetimler** (`pnpm check:all` eşdeğeri):
+  - fmt ve clippy `-D warnings` temiz.
+  - `cargo test --workspace`: core 252, app 57 + 2 ignored, CLI 25 + 2, i18n 16 + 6.
+  - Biome ve svelte-check temiz, Vitest 81 test geçti.
+  - `cargo deny check` ve `pnpm audit --audit-level high` temiz.
+- **NSIS şablonu:** `check-nsis-template.mjs`, tauri-cli 2.12.4 şablonuyla eşleşiyor.
+- **İmza doğrulaması:**
+  - Geçici bir test anahtarıyla imzalanan installer doğrulandı (key id `84566286825034C5`).
+  - Tek baytı değiştirilmiş installer reddedildi.
+- **Kurulum testi (bu makinede, kullanıcı onayıyla):**
+  - **İlk kurulum:** Yerel endpoint overlay'li 0.0.9 test build'i `/S` ile kuruldu.
+    - Dosyalar `Programs\TokenRadar` altında.
+    - PATH'e `bin` eklendi; tip `ExpandString` olarak kaldı.
+    - Başlat kısayolu ve Kaldır kaydı oluştu.
+  - **Yeniden kurulum:** Aynı sürüm tekrar kuruldu. PATH'te tek girdi kaldı, veri korundu. `path add` tekrar çalıştırıldığında değişiklik olmadı.
+  - **Güncelleme:**
+    - Uygulama içinden (CDP ile) "Check now" çalıştırıldı; 0.1.0 bulundu ve sürüm notları göründü.
+    - "Install and restart" ile imzalı installer indirildi ve passive kuruldu.
+    - Uygulama kendiliğinden yeniden başladı. Kaldır kaydı 0.1.0 oldu.
+  - **Kaldırma** (`uninstall.exe /S`):
+    - PATH test öncesiyle bayt bayt aynı.
+    - Run ve StartupApproved değerleri, kısayol, Kaldır kaydı ve kurulum dizini silindi.
+    - Veri dizini ve kullanıcının kendi statusline'ı korundu.
+  - Bu sırada bulunan kusur düzeltildi: yeniden başlatmadan sonra "Son denetim" satırı görünmüyordu.
+- **Performans:** `docs/perf/2026-10-28-v0.1.0.md`.
+
+#### Plandan sapmalar
+- **Kurulum dizini** `%LOCALAPPDATA%\Programs\TokenRadar` oldu. Tauri'nin varsayılanı veri dizinimizle çakışıyordu; bunun için şablon kopyalandı (ADR-036).
+- **PATH** NSIS yerine CLI'dan (`tokenradar path add|remove`) düzenleniyor. Sebep: Tauri'nin NSIS'i 1024 karakterlik dizgelerle derlenmiş (ADR-036).
+- **Veri silme sorusu** ayrı bir hook diyaloğu değil; Tauri kaldırıcısındaki "Uygulama verilerini sil" kutusu kullanılıyor. Varsayılan: veri korunur.
+- **winget manifestleri** `wingetcreate` ile değil, `release-assets.mjs` ile üretiliyor (1.12.0 şeması; `wingetcreate` bu makinede kurulu değil). Gönderim release sonrasında yapılacak.
+- **`bucket/tokenradar.json`** henüz commit'lenmedi. Hash'in CI'ın ürettiği zip'ten gelmesi gerekiyor (CONTRIBUTING → Releasing, 3. adım).
+- **Ölçüm komutu:** Plandaki `measure-memory.ps1 -Scenario full` komutu mevcut değil. Ölçüm `measure-memory.ps1`, `measure-panel.ps1` ve `measure-statusline.ps1` ile yapıldı.
+- **README'de ekran görüntüsü yok.** Gerçek veriyle çekilen görüntü kişisel kullanım bilgisi içerir; görüntü sahte sahneyle (`TOKENRADAR_FAKE_LIMITS=panel:ok`) çekilmeli.
+
+#### Açık işler (tag'den önce, sürüm kapısı)
+1. **İmzalama anahtarı:**
+   - Kullanıcı kendi makinesinde `pnpm -C app tauri signer generate -w <repo dışı yol>` komutunu çalıştırır.
+   - **Anahtar dosyasını ve parolayı repo dışında, güvenli bir yerde (örneğin bir şifre yöneticisinde) saklayın.** GitHub Secrets'taki değer geri okunamaz. Anahtar kaybolursa kurulu hiçbir kopya güncellenemez.
+   - Açık anahtar `tauri.conf.json > plugins.updater.pubkey` alanına yazılır. Çalışma ağacında şu an geçici test anahtarı var; commit'lenmedi.
+   - Özel anahtar `TAURI_SIGNING_PRIVATE_KEY`, parolası `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` secret'ına eklenir.
+2. **Repo:**
+   - `gh repo create umitkara/tokenradar --public` ile oluşturulur. Konu etiketleri: `claude-code`, `usage-tracker`, `tauri`, `rust`, `windows`, `tray`.
+   - Push yapılır ve CI'ın yeşil olduğu doğrulanır.
+   - Ayarlardan "Private vulnerability reporting" açılır; SECURITY.md buna dayanıyor.
+3. **Adım 11'in üç açık işi** kurulu build ile yapılır:
+   - Bir günlük bildirim gürültüsü değerlendirmesi. Kurulu kopyada AUMID'li kısayol var; toast tıklaması da bu sırada denenmeli.
+   - Gerçek boşta bellek ölçümü (Claude Code kapalıyken).
+   - Onboarding'den gerçek statusline kurulumu ve panelde canlı veri.
+4. **Temiz makine testi:** Windows Home'da Sandbox yok. Ayrı bir kullanıcı hesabında şu akış denenir: installer → onboarding → statusline → panel → bildirim → güncelleme kontrolü → kaldırma.
+5. **Yayın** (kullanıcı onayıyla):
+   1. `v0.1.0` tag'i atılır; taslak release oluşur.
+   2. `bucket/tokenradar.json` artifact'tan alınıp commit'lenir.
+   3. Release yayınlanır.
+   4. winget-pkgs PR'ı açılır (onayla).
+6. **README görselleri:** Panel ve tray görüntüsü sahte sahneyle çekilir.
+
+#### Sonraki adımlar için notlar
+- **Toast tıklaması:** Bildirim Merkezi'nden toast'a tıklamak uygulamayı açmıyor, çünkü COM activator yok. Seçenekler: protocol activation (`tokenradar://`) veya Tauri deep-link eklentisi.
+- **Portable ve Scoop:**
+  - AUMID'li kısayol olmadığı için toast görünmeyebilir.
+  - Scoop'ta iki şey doğrulanmalı: `current_exe()` yolunun `current` junction'ını kullandığı ve statusline komutunun güncellemelerden sonra geçerli kaldığı. Bu makinede Scoop kurulu değil.
+- **`paste` advisory'si:** Tauri ve specta bir fork'a geçince `deny.toml`'den kaldırılmalı.
+- **Tauri yükseltmeleri:** `check-nsis-template.mjs` kırmızı olur. Kopya, yeni şablondan işaretli değişiklikler uygulanarak yeniden oluşturulur.
+- **Build provenance:** Release iş akışına `actions/attest-build-provenance` eklenebilir. İmzasız installer için ek güven sağlar.

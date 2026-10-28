@@ -5289,7 +5289,7 @@ checksum = "fd3ca314f692efd6c868f8408f53fe444634a845f96c028b97d35f6a1f79f0ee"
 
 [[package]]
 name = "tokenradar-app"
-version = "0.0.1"
+version = "0.1.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -5319,7 +5319,7 @@ dependencies = [
 
 [[package]]
 name = "tokenradar-cli"
-version = "0.0.1"
+version = "0.1.0"
 dependencies = [
  "lexopt",
  "serde_json",
@@ -5331,7 +5331,7 @@ dependencies = [
 
 [[package]]
 name = "tokenradar-core"
-version = "0.0.1"
+version = "0.1.0"
 dependencies = [
  "criterion",
  "directories",
@@ -5363,7 +5363,7 @@ dependencies = [
 
 [[package]]
 name = "tokenradar-i18n"
-version = "0.0.1"
+version = "0.1.0"
 dependencies = [
  "fluent-bundle",
  "serde_json",

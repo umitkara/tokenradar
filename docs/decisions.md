@@ -516,3 +516,52 @@
   - Yalnızca talimat göstermek (kayıt yazmadan).
   - Taşma menüsünün ekran görüntüsü (dile ve temaya bağlı, bakımı zor).
   - İndekslemeyi onboarding'in 2. adımına kadar bekletmek.
+
+### ADR-036 — Paketleme ve güncelleme: özel NSIS şablonu, `Programs` kurulum dizini, PATH'i CLI düzenler, el ile tetiklenen updater, release doğrulaması
+**Durum:** Kabul (2026-10-28, Adım 12)
+- **Bağlam:**
+  - Tauri'nin `currentUser` NSIS şablonu uygulamayı `%LOCALAPPDATA%\${PRODUCTNAME}` dizinine kuruyor. Bizim veri dizinimiz de `%LOCALAPPDATA%\TokenRadar`. Exe'ler ile veritabanı aynı yerde olurdu ve kaldırıcının `RmDir` adımı veriyi de silerdi.
+  - Şablonun yeniden kurulum akışı, eski kaldırıcıyı yalnızca kullanıcı "güncelle" seçerse `/UPDATE` ile çalıştırıyor. Aksi hâlde bizim kaldırma hook'larımız çalışır; statusline köprüsü, autostart ve PATH silinip yeni kurulum bunları geri getirmez.
+  - Tauri'nin NSIS'i `NSIS_MAX_STRLEN=1024` ile derlenmiş. Bu makinedeki kullanıcı PATH'i 1254 karakter. NSIS'te okunan PATH kırpılır, geri yazılınca bozulur.
+  - `statusline uninstall` varsayılan Claude dizinini hedefliyor. Köprü başka bir dizine kurulmuş olabilir ya da varsayılan dizin hiç olmayabilir.
+  - Plan, imzalı updater, günlük denetim ve "sessiz yükleme yok" kuralını istiyor. Portable kopyada updater kapalı olmalı.
+  - Updater imzası ile uygulamadaki açık anahtar uyuşmazsa yayınlanan güncellemeyi hiçbir kurulu kopya kabul etmez. Bu hata ancak bir sonraki sürümde fark edilir.
+- **Karar:**
+  - **Şablon:** `app/src-tauri/windows/installer.nsi`, tauri-cli 2.12.4 şablonunun birebir kopyası. Yalnızca `TokenRadar:` ile işaretli iki değişiklik var:
+    1. Kurulum dizini `%LOCALAPPDATA%\Programs\TokenRadar`.
+    2. Yeniden kurulumda eski kaldırıcı her zaman `/UPDATE` ile çalışır.
+  - `scripts/check-nsis-template.mjs` işaretli değişiklikleri geri alır ve sonucu kurulu `@tauri-apps/cli` paketinin gömülü şablonuyla karşılaştırır. Tauri yükseltmesinde şablon değiştiyse CI başarısız olur ve kopya elle güncellenir.
+  - **Hook'lar (`windows/hooks.nsh`):**
+    - Kurulum sonrası `bin\tokenradar.exe path add` çalıştırılır.
+    - Kaldırmadan önce (güncelleme değilse) sırasıyla şunlar yapılır: uygulama kapatılır, `statusline uninstall --all --yes` çalıştırılır, `path remove` çalıştırılır, `Run` ve `StartupApproved\Run` altındaki `TokenRadar` değerleri silinir.
+    - Veri dizini yalnızca Tauri'nin "Uygulama verilerini sil" kutusu işaretliyse silinir. Varsayılan: veri korunur.
+  - **PATH'i CLI düzenler (`tokenradar path add|remove`):**
+    - Kayıt defteri Rust'tan okunup yazılır; değer tipi (`REG_EXPAND_SZ`/`REG_SZ`) korunur.
+    - Yineleme kontrolü büyük/küçük harfe, tırnağa, sondaki `\` işaretine ve `%VAR%` genişletmesine duyarsızdır.
+    - Sonuç 2047 karakteri aşacaksa PATH'e yazılmaz, çıkış kodu 3 olur. Installer bu durumda dizini elle eklemeyi anlatan bir mesaj gösterir.
+    - Değişiklikten sonra `WM_SETTINGCHANGE` yayınlanır.
+  - **`statusline uninstall --all`:** `config.toml`'de köprüsü kurulu görünen her hesabın dizinini geri alır. Bir dizin başarısız olsa da diğerleri denenir. Başarısızlıkta installer, yedeklerin `settings.json.tokenradar-….bak` adıyla durduğunu söyler.
+  - **CLI pakete `bundle.resources` ile girer** (`bin/tokenradar.exe`). `externalBin` ada target triple eklediği için kullanılmadı. CLI `beforeBuildCommand` içinde `release-cli` profiliyle derlenir.
+  - **Portable kuralı:** `bin\` altındaki CLI, `portable` işaretini bir üst dizinde de arar. Böylece zip'teki uygulama ve CLI aynı `data\` dizinini kullanır. Scoop aynı zip'i kurar ve `data`'yı `persist` eder.
+  - **Updater:**
+    - Rust'ta `tauri-plugin-updater` (`rustls-tls`) kullanılır. Frontend'e izin verilmez; yalnızca `get_update`, `check_for_update` ve `install_update` komutları açıktır.
+    - Günlük denetim debug build'de çalışmaz. Release build'de açılıştan 120 s sonra başlar ve en fazla 24 saatte bir tekrarlanır. Son denetim zamanı `kv.update_checked_at` içinde tutulur. Ayar kapatılırsa denetim durur; açılınca zamanlayıcı uyanır.
+    - Bulunan sürüm tray menüsünün başına ve Hakkında'ya eklenir. Kurulum yalnızca "Kur ve yeniden başlat" ile başlar. Installer `/UPDATE /P` (passive) ile çalışır; uygulama çıkmadan önce çekirdeği düzgünce kapatır.
+    - Uygulama yalnızca yanında `uninstall.exe` varsa ve portable değilse kurulum yapabilir. Portable kopya sürümü gösterir ve sürümler sayfasını önerir.
+  - **İmza yalnızca release'de:** `createUpdaterArtifacts` ana config'de kapalıdır, `tauri.release.conf.json` overlay'i açar. Yerel `pnpm tauri build` ve CI anahtar gerektirmez.
+  - **Release doğrulaması:** `scripts/release-assets.mjs` installer imzasını `tauri.conf.json`'daki açık anahtarla gerçekten doğrular (Ed25519, BLAKE2b ön özeti, güvenilir yorum imzası). Key id uyuşmazsa veya imza tutmazsa taslak release oluşmaz. Betik `latest.json`, `SHA256SUMS.txt`, sürüm notları (CHANGELOG bölümü) ile Scoop ve winget manifestlerini üretir.
+  - **Lisanslar:** `scripts/third-party-notices.mjs`, Windows hedefinde gönderilen Rust bağımlılık grafiğini (`cargo metadata`, normal bağımlılıklar), Vite'ın bundle'a koyduğu npm paketlerini ve gömülü fontu `THIRD-PARTY-NOTICES.txt` dosyasına yazar. Hakkında bu dosyayı açar.
+  - **`paste` advisory'si (RUSTSEC-2024-0436) yok sayılır.** Paket bakımsız ama güvenlik açığı yok. Tauri ve specta'nın derleme zamanı makrosu; gönderilen binary'de kodu yok.
+- **Bedel:**
+  - Şablon kopyası her tauri-cli yükseltmesinde elle eşitlenmeli; CI bunu hatırlatır.
+  - PATH 2047 karakteri aşıyorsa CLI kendiliğinden PATH'e girmez.
+  - Installer imzasız (ADR-012). İlk indirmelerde SmartScreen uyarı verir.
+  - Portable ve Scoop kopyalarında Başlat menüsü kısayolunda AUMID olmadığı için toast görünmeyebilir (ADR-033).
+  - Bildirim Merkezi'nden toast'a tıklamak uygulamayı açmaz; COM activator kayıtlı değil.
+  - Uygulama 12,04 → 13,02 MiB büyüdü (updater, rustls, `reqwest` paylaşımı). 15 MiB bütçesinin içinde.
+- **Alternatifler:**
+  - Veri dizinini taşımak (mevcut kullanıcıların verisi için migration gerekirdi).
+  - PATH için NSIS `EnVar` eklentisi (ek ikili bağımlılık; uzun PATH'te davranışı belirsiz) ya da ham NSIS registry yazımı (1024 sınırı).
+  - `externalBin` ile CLI'ı ekleyip adını hook'ta değiştirmek.
+  - Updater'ı frontend'den sürmek (geniş izin, iş mantığı UI'da olurdu).
+  - Release'de imzayı doğrulamamak (anahtar uyuşmazlığı ilk güncellemede ortaya çıkardı).
