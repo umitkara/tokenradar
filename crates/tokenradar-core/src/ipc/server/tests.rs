@@ -7,7 +7,7 @@ use super::*;
 use crate::domain::Timestamp;
 use crate::ipc::client::{Client, ClientError};
 use crate::ipc::proto::{ERR_UNSUPPORTED, ERR_VERSION, Hello, HelloReply, Op, StatusQuery};
-use crate::ipc::security::{current_user_sid, dacl_sddl};
+use crate::ipc::security::{canonical_sid, current_user_sid, dacl_sddl};
 use crate::ipc::view::{LimitsReply, Origin, SessionsReply, StatusReply};
 use crate::statusline::{StatuslinePayload, StatuslinePush};
 
@@ -246,7 +246,13 @@ fn only_the_current_user_may_open_the_pipe() {
     let sid = current_user_sid().expect("sid");
     assert!(sddl.starts_with("D:P"), "protected DACL: {sddl}");
     assert_eq!(sddl.matches('(').count(), 1, "exactly one ACE: {sddl}");
-    assert!(sddl.contains(&format!(";;;{sid})")), "{sddl}");
+    // The ACE's trustee may be an SDDL alias (`LA` when running as the built-in Administrator).
+    let trustee = sddl
+        .rsplit(';')
+        .next()
+        .and_then(|t| t.strip_suffix(')'))
+        .expect("trustee");
+    assert_eq!(canonical_sid(trustee).expect("trustee sid"), sid, "{sddl}");
     for group in [";;;WD)", ";;;AN)", ";;;BU)", ";;;AU)"] {
         assert!(
             !sddl.contains(group),

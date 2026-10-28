@@ -13,12 +13,12 @@ use std::ptr;
 use windows_sys::Win32::Foundation::{CloseHandle, HANDLE, HLOCAL, LocalFree};
 use windows_sys::Win32::Security::Authorization::{
     ConvertSecurityDescriptorToStringSecurityDescriptorW, ConvertSidToStringSidW,
-    ConvertStringSecurityDescriptorToSecurityDescriptorW, GetSecurityInfo, SDDL_REVISION_1,
-    SE_KERNEL_OBJECT,
+    ConvertStringSecurityDescriptorToSecurityDescriptorW, ConvertStringSidToSidW, GetSecurityInfo,
+    SDDL_REVISION_1, SE_KERNEL_OBJECT,
 };
 use windows_sys::Win32::Security::{
-    DACL_SECURITY_INFORMATION, GetTokenInformation, PSECURITY_DESCRIPTOR, SECURITY_ATTRIBUTES,
-    TOKEN_QUERY, TOKEN_USER, TokenUser,
+    DACL_SECURITY_INFORMATION, GetTokenInformation, PSECURITY_DESCRIPTOR, PSID,
+    SECURITY_ATTRIBUTES, TOKEN_QUERY, TOKEN_USER, TokenUser,
 };
 use windows_sys::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
 
@@ -164,6 +164,28 @@ pub fn dacl_sddl(object: &impl std::os::windows::io::AsRawHandle) -> io::Result<
     result
 }
 
+/// A SID string in `S-1-…` form. SDDL aliases are resolved: `dacl_sddl` prints well-known
+/// accounts that way, e.g. `LA` for the built-in Administrator that CI runners use.
+pub fn canonical_sid(sid: &str) -> io::Result<String> {
+    let wide: Vec<u16> = sid.encode_utf16().chain(Some(0)).collect();
+    let mut psid: PSID = ptr::null_mut();
+    // SAFETY: `wide` is NUL-terminated; `psid` is LocalAlloc'd by the call and freed below.
+    if unsafe { ConvertStringSidToSidW(wide.as_ptr(), &raw mut psid) } == 0 {
+        return Err(io::Error::last_os_error());
+    }
+    let mut out: *mut u16 = ptr::null_mut();
+    // SAFETY: `psid` is valid until freed below; `out` is LocalAlloc'd by the call.
+    let result = if unsafe { ConvertSidToStringSidW(psid, &raw mut out) } == 0 {
+        Err(io::Error::last_os_error())
+    } else {
+        // SAFETY: NUL-terminated string allocated by the call.
+        Ok(unsafe { take_local_wide(out) })
+    };
+    // SAFETY: allocated by ConvertStringSidToSidW, freed once.
+    unsafe { LocalFree(psid as HLOCAL) };
+    result
+}
+
 /// Copies a NUL-terminated UTF-16 string allocated with `LocalAlloc` and frees it.
 ///
 /// # Safety
@@ -196,5 +218,18 @@ mod tests {
         let sid = current_user_sid().expect("sid");
         SecurityAttributes::only_user(&sid).expect("descriptor");
         assert!(SecurityAttributes::from_sddl("D:P(A;;GA;;;nonsense)").is_err());
+    }
+
+    #[test]
+    fn sddl_aliases_resolve_to_full_sids() {
+        let sid = current_user_sid().expect("sid");
+        assert_eq!(canonical_sid(&sid).expect("own sid"), sid);
+        let admin = canonical_sid("LA").expect("built-in Administrator");
+        assert!(
+            admin.starts_with("S-1-5-21-") && admin.ends_with("-500"),
+            "{admin}"
+        );
+        assert_eq!(canonical_sid("WD").expect("Everyone"), "S-1-1-0");
+        assert!(canonical_sid("nonsense").is_err());
     }
 }
