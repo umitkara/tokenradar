@@ -41,6 +41,8 @@ pub struct Deps<'a> {
     pub spool_dir: Option<PathBuf>,
     /// The previous command and where its output goes, in chain mode.
     pub chain: Option<(String, ChainPosition)>,
+    /// How long the chained command may take; [`CHAIN_TIMEOUT`] outside tests.
+    pub chain_timeout: Duration,
     pub style: Style,
 }
 
@@ -67,7 +69,7 @@ pub fn respond(input: Option<&[u8]>, deps: &Deps<'_>) -> String {
     let Some((chained, position)) = chained else {
         return ours;
     };
-    match chained.finish(CHAIN_TIMEOUT) {
+    match chained.finish(deps.chain_timeout) {
         Some(theirs) if !theirs.is_empty() => match position {
             ChainPosition::Before => format!("{theirs}\n{ours}"),
             ChainPosition::After => format!("{ours}\n{theirs}"),

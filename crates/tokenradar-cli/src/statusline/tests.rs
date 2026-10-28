@@ -28,6 +28,7 @@ fn deps<'a>(l10n: &'a Localizer, pipe: &str, spool: &Path) -> Deps<'a> {
         pipe_name: Some(pipe.to_owned()),
         spool_dir: Some(spool.to_path_buf()),
         chain: None,
+        chain_timeout: CHAIN_TIMEOUT,
         style: Style {
             color: false,
             width: None,
@@ -133,6 +134,9 @@ fn with_the_app_the_reading_is_pushed_and_the_line_is_enriched() {
 fn chained_deps<'a>(l10n: &'a Localizer, spool: &Path, cmd: &str, pos: ChainPosition) -> Deps<'a> {
     let mut d = deps(l10n, &unique_pipe(), spool);
     d.chain = Some((cmd.to_owned(), pos));
+    // Starting a shell on a cold, busy CI runner can take longer than CHAIN_TIMEOUT; these tests
+    // check the output, a_slow_previous_command_is_dropped_after_the_timeout the timeout.
+    d.chain_timeout = Duration::from_secs(10);
     d
 }
 
@@ -181,11 +185,10 @@ fn the_previous_command_reads_the_same_stdin() {
 fn a_slow_previous_command_is_dropped_after_the_timeout() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let l10n = Localizer::new(Locale::En, &[Domain::Cli]);
+    let mut d = chained_deps(&l10n, tmp.path(), "sleep 5", ChainPosition::Before);
+    d.chain_timeout = CHAIN_TIMEOUT;
     let started = Instant::now();
-    let out = respond(
-        Some(&input(10.0)),
-        &chained_deps(&l10n, tmp.path(), "sleep 5", ChainPosition::Before),
-    );
+    let out = respond(Some(&input(10.0)), &d);
     assert!(
         started.elapsed() < Duration::from_secs(2),
         "{:?}",

@@ -65,6 +65,7 @@ fn run(ctx: &Context, command: Command) -> ExitCode {
                 chain: chain
                     .then(|| statusline::chain_from_config(&ctx.config, input.as_deref()))
                     .flatten(),
+                chain_timeout: statusline::CHAIN_TIMEOUT,
                 style: render::Style::from_env(),
             };
             let out = statusline::respond(input.as_deref(), &deps);
