@@ -252,7 +252,11 @@ gh workflow run release.yml   # veya tag push sonrası otomatik
 3. **Adım 11'in üç açık işi** kurulu build ile yapılır:
    - Bir günlük bildirim gürültüsü değerlendirmesi. Kurulu kopyada AUMID'li kısayol var; toast tıklaması da bu sırada denenmeli.
    - Gerçek boşta bellek ölçümü (Claude Code kapalıyken).
-   - Onboarding'den gerçek statusline kurulumu ve panelde canlı veri.
+   - ✅ Onboarding'den gerçek statusline kurulumu ve panelde canlı veri (2026-10-28):
+     - Kullanıcı, release çalıştırması `40653436476`'nın imzalı installer'ını kurdu (commit `3138bf3`; tag'lenecek koddan farkı yalnızca dokümanlar). SHA-256 değeri `SHA256SUMS.txt` ile eşleşti.
+     - Onboarding'de statusline zincirli kuruldu ve API onayı verildi.
+     - `settings.json`'daki komut, kurulu CLI'ı ileri eğik çizgili yolla ve `--chain` ile çağırıyor. PATH'te tek girdi var.
+     - `tokenradar status`, 5 saatlik ve haftalık limitleri statusline'dan, model bazlı haftalık limiti API'den gösterdi. Canlı oturum `≈` paylı listelendi.
 4. **Temiz makine testi:** Windows Home'da Sandbox yok. Ayrı bir kullanıcı hesabında şu akış denenir: installer → onboarding → statusline → panel → bildirim → güncelleme kontrolü → kaldırma.
 5. **Yayın** (kullanıcı onayıyla):
    1. `v0.1.0` tag'i atılır; taslak release oluşur.
