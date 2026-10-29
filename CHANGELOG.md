@@ -6,7 +6,7 @@ All notable changes to TokenRadar are recorded here. The format follows
 
 ## [Unreleased]
 
-## [0.1.0] - 2026-10-28
+## [0.1.0] - 2026-10-30
 
 The first public release: Claude Code's usage limits in the Windows tray.
 

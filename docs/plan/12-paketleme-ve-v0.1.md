@@ -295,3 +295,4 @@ gh workflow run release.yml   # veya tag push sonrası otomatik
 - **`paste` advisory'si:** Tauri ve specta bir fork'a geçince `deny.toml`'den kaldırılmalı.
 - **Tauri yükseltmeleri:** `check-nsis-template.mjs` kırmızı olur. Kopya, yeni şablondan işaretli değişiklikler uygulanarak yeniden oluşturulur.
 - **Build provenance:** Release iş akışına `actions/attest-build-provenance` eklenebilir. İmzasız installer için ek güven sağlar.
+- **Kaldırıcının "verileri de sil" seçeneği:** Duman testinde bu seçenekle kaldırıldı ve `limit_snapshots` geçmişi kalıcı olarak gitti. İndeks transcript'lerden yeniden kurulabilir, ama limit gözlemleri yalnızca uygulama çalışırken toplanır. Kaldırıcı metni bu farkı söylemeli (veya veriyi varsayılan olarak korumalı). Adım 13'ün "en az 1 hafta snapshot verisi" sayacı uygulama yeniden kurulduğunda başlar.
