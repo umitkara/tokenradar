@@ -36,7 +36,7 @@
 | 09 | [Frontend temeli: token'lar, tema, i18n, tipli köprü](09-frontend-temeli.md) | 02, 03 | ✅ |
 | 10 | [Tray paneli](10-tray-paneli.md) | 07, 08, 09 | ✅ |
 | 11 | [Bildirimler, ayarlar ve onboarding](11-bildirim-ayar-onboarding.md) | 10 | ✅ (11a, 11b, 11c). Açık işler Adım 12'de kurulu build ile kapandı |
-| 12 | [Paketleme, güncelleme ve v0.1 sürümü](12-paketleme-ve-v0.1.md) | 11 | 🟨 Tüm sürüm kapıları geçildi (Adım 11 açıkları, temiz makine, son build duman testi). Açık: yayın (tag, Scoop bucket, release, winget) |
+| 12 | [Paketleme, güncelleme ve v0.1 sürümü](12-paketleme-ve-v0.1.md) | 11 | ✅ v0.1.0 yayınlandı (2026-10-30). Açık: winget-pkgs PR'ı |
 
 ### v0.2 — Analitik ve Atıf
 

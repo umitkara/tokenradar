@@ -2,7 +2,7 @@
 
 | Sürüm | Bağımlılık | Tahmini süre | Durum |
 |---|---|---|---|
-| v0.1 | 11 | 1-2 oturum | 🟨 sürüm kapıları geçildi; yayın açık (devir notu) |
+| v0.1 | 11 | 1-2 oturum | ✅ v0.1.0 yayınlandı (2026-10-30). Açık: winget-pkgs PR'ı |
 
 ## Amaç
 
@@ -110,11 +110,11 @@ TokenRadar'ı ilk kez dış dünyaya çıkarmak. Bu adımda şunlar yapılır:
 
 ## Kabul kriterleri
 
-- [ ] Temiz makinede kurulum → kullanım → güncelleme → kaldırma akışı sorunsuz. PATH ve kayıt temizliği doğrulanmış.
-- [ ] v0.1 performans bütçesinin tamamı sağlanmış ve raporlanmış.
-- [ ] CI ve release iş akışları yeşil. Taslak release, imzalı updater artefaktlarını içeriyor.
-- [ ] README gizlilik ve token politikasını açıkça anlatıyor.
-- [ ] Kullanıcı onayıyla `v0.1.0` tag'i atılmış ve release yayınlanmış.
+- [x] Temiz makinede kurulum → kullanım → güncelleme → kaldırma akışı sorunsuz. PATH ve kayıt temizliği doğrulanmış.
+- [x] v0.1 performans bütçesinin tamamı sağlanmış ve raporlanmış.
+- [x] CI ve release iş akışları yeşil. Taslak release, imzalı updater artefaktlarını içeriyor.
+- [x] README gizlilik ve token politikasını açıkça anlatıyor.
+- [x] Kullanıcı onayıyla `v0.1.0` tag'i atılmış ve release yayınlanmış.
 
 ## Doğrulama
 
@@ -263,11 +263,12 @@ gh workflow run release.yml   # veya tag push sonrası otomatik
      - `settings.json`'daki komut, kurulu CLI'ı ileri eğik çizgili yolla ve `--chain` ile çağırıyor. PATH'te tek girdi var.
      - `tokenradar status`, 5 saatlik ve haftalık limitleri statusline'dan, model bazlı haftalık limiti API'den gösterdi. Canlı oturum `≈` paylı listelendi.
 4. ✅ **Temiz makine testi** (2026-10-28, `11a5748` build'i): Windows Home'da Sandbox olmadığı için ayrı bir kullanıcı hesabında yapıldı. Akış: installer → onboarding → statusline → panel → bildirim → güncelleme kontrolü → kaldırma. Kullanıcı sorun bildirmedi.
-5. **Yayın** (kullanıcı onayıyla):
-   1. `v0.1.0` tag'i atılır; taslak release oluşur.
-   2. `bucket/tokenradar.json` artifact'tan alınıp commit'lenir.
-   3. Release yayınlanır.
-   4. winget-pkgs PR'ı açılır (onayla).
+5. **Yayın** (kullanıcı onayıyla, 2026-10-30):
+   1. ✅ CHANGELOG tarihi 2026-10-30 yapıldı. `v0.1.0` tag'i `50ab57e`'ye atıldı; kod, duman testindeki `7352973` build'iyle aynı, aradaki fark yalnızca dokümanlar. Release çalıştırması `40965357735` taslağı oluşturdu.
+      - Claude Code'un otomatik izin denetimi tag/push ve yayın komutlarını "herkese açık yüzey" olarak reddetti. Bu komutları kullanıcı `!` önekiyle kendisi çalıştırdı.
+   2. ✅ Taslaktaki dosyaların SHA-256 değerleri `SHA256SUMS.txt` ve artefaktla eşleşti. `latest.json` imzası `.sig` ile aynı. `bucket/tokenradar.json` tag build'inin artefaktından alındı (`14e3423`; zip hash'i `ed066e88…b498`). Build tekrarlanabilir olmadığı için manifest her sürümde tag build'inden alınmalı.
+   3. ✅ Release yayınlandı (22:48 UTC, latest). `releases/latest/download/latest.json` 200 döndü, içeriği yayınlanan dosyayla aynı.
+   4. winget-pkgs PR'ı: manifestler artefaktta (`manifests/winget/…/umitkara.TokenRadar/0.1.0/`). Kullanıcı onayı bekleniyor.
 6. ✅ **README görselleri** (2026-10-28):
    - Panel `panel:ok` sahnesiyle, debug build'de çekildi. `docs/img/panel-{light,dark}.png` README'de `<picture>` ile okuyucunun temasına göre gösteriliyor.
    - Debug exe'nin yanına geçici `portable` işareti kondu. Tema değişikliği (`set_theme`) böylece kullanıcının gerçek `config.toml` dosyasına değil `target/debug/data` altına yazıldı.
