@@ -26,7 +26,7 @@ pub const PANEL_URI: &str = "tokenradar://panel";
 /// registers the plugin's click handler; toasts shown before this report nothing.
 pub fn init(app: &AppHandle) {
     #[cfg(windows)]
-    if std::env::args().skip(1).any(|arg| arg == PANEL_URI) {
+    if std::env::args().skip(1).any(|arg| is_panel_uri(&arg)) {
         panel::report(panel::show(app));
     }
     #[cfg(not(windows))]
@@ -39,6 +39,15 @@ pub fn init(app: &AppHandle) {
             }
         });
     }
+}
+
+/// Whether a launch argument is the toast's URI. Windows normalizes the toast's `launch` value
+/// before starting the app, so an Action Center click passes `tokenradar://panel/`. Scheme and
+/// host are case-insensitive; anything else, such as another path or a query, is not accepted.
+#[cfg_attr(not(windows), allow(dead_code))]
+fn is_panel_uri(arg: &str) -> bool {
+    let arg = arg.strip_suffix('/').unwrap_or(arg);
+    arg.eq_ignore_ascii_case(PANEL_URI)
 }
 
 /// Shows `notice` as a toast.
@@ -164,6 +173,32 @@ mod toast {
             assert!(!is_cargo_target(Path::new(
                 r"C:\Users\u\AppData\Local\Programs\TokenRadar"
             )));
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn panel_uri_accepts_the_normalized_launch_only() {
+        for arg in [
+            "tokenradar://panel",
+            "tokenradar://panel/",
+            "TokenRadar://Panel/",
+        ] {
+            assert!(is_panel_uri(arg), "{arg}");
+        }
+        for arg in [
+            "tokenradar://panel//",
+            "tokenradar://panel/x",
+            "tokenradar://panel?x=1",
+            "tokenradar://settings",
+            "tokenradar:panel",
+            "",
+        ] {
+            assert!(!is_panel_uri(arg), "{arg}");
         }
     }
 }
