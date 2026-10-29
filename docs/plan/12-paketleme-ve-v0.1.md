@@ -2,7 +2,7 @@
 
 | Sürüm | Bağımlılık | Tahmini süre | Durum |
 |---|---|---|---|
-| v0.1 | 11 | 1-2 oturum | 🟨 kod tamam; sürüm kapıları açık (devir notu) |
+| v0.1 | 11 | 1-2 oturum | 🟨 sürüm kapıları geçildi; yayın açık (devir notu) |
 
 ## Amaç
 
@@ -255,7 +255,7 @@ gh workflow run release.yml   # veya tag push sonrası otomatik
      - **İlk koşu, 2026-10-28, kurulu `3138bf3` build'i:** Bellek 11,6 MB, bütçe içinde. CPU `TotalProcessorTime` ile %0,169 çıktı, bütçe < %0,1.
      - **Teşhis:** Yeni `scripts/measure-threads.ps1` ile `notify`'ın Windows thread'inin boşta saniyede 10 kez uyandığı bulundu. Thread 100 ms zaman aşımıyla bekliyordu. `vendor/notify` yamasıyla, boşta 30 s'deki uyanma sayısı 302'den 0'a indi (ADR-038).
      - ✅ **Yamalı build** (release çalıştırması `40710181973`, commit `11a5748`; SHA-256 `a148afb9…e871`): kullanıcı üzerine kurdu ve Claude Code kapalıyken 10 dakika ölçtü. Bellek 8,3 MB, CPU döngüyle ≈ %0,033, `notify` thread'i 0 uyanma (`docs/perf/2026-10-28-v0.1.0-idle.md`).
-     - Kod değiştiği için bir günlük bildirim değerlendirmesi de yeni build ile yapılır.
+     - Kod değiştiği için bir günlük bildirim değerlendirmesi de yeni build ile yapılacaktı. Kullanıcının kararıyla bunun yerine son build ile duman testi yapıldı (7. madde).
      - **Upstream PR:** [notify-rs/notify#1056](https://github.com/notify-rs/notify/pull/1056) (kullanıcı onayıyla açıldı). PR hazırlanırken `configure` kilitlenmesi ve `Drop` sırası bulundu; yama genişletildi (ADR-039). Kurulu `11a5748` build'i ilk yamayı içeriyor; temiz makine testi ve tag son build ile yapılır.
    - ✅ Onboarding'den gerçek statusline kurulumu ve panelde canlı veri (2026-10-28):
      - Kullanıcı, release çalıştırması `40653436476`'nın imzalı installer'ını kurdu (commit `3138bf3`; tag'lenecek koddan farkı yalnızca dokümanlar). SHA-256 değeri `SHA256SUMS.txt` ile eşleşti.
@@ -273,12 +273,22 @@ gh workflow run release.yml   # veya tag push sonrası otomatik
    - Debug exe'nin yanına geçici `portable` işareti kondu. Tema değişikliği (`set_theme`) böylece kullanıcının gerçek `config.toml` dosyasına değil `target/debug/data` altına yazıldı.
    - **Sapma:** Tray görseli eklenmedi. Elimizdeki tek kaynak `tray_contact_sheet` kontak sayfası; bu sayfa büyütülmüş 16–32 px simgelerden oluştuğu için README'de bulanık ve teknik görünüyor. Simge README'de metinle anlatılıyor.
 
-7. **Son build ile duman testi** (tag'den önce):
-   - `11a5748`'den sonra iki kod değişikliği var: genişletilmiş `notify` yaması (ADR-039) ve toast tıklaması (ADR-040). Kullanıcının kararıyla bunlar için tam tur değil, kısa bir duman testi yapılır.
-   - Son commit için elle tetiklenen `release.yml` build'i kurulur. Denenecekler: açılış, panel, canlı bir oturumun panele yansıması, "Test bildirimi gönder", toast'a hem ekrandayken hem Bildirim Merkezi'nden tıklama (uygulama açıkken ve kapalıyken), çıkış, kaldırma (`HKCU\Software\Classes\tokenradar` silinmeli).
+7. ✅ **Son build ile duman testi** (2026-10-30):
+   - `11a5748`'den sonra iki kod değişikliği vardı: genişletilmiş `notify` yaması (ADR-039) ve toast tıklaması (ADR-040). Kullanıcının kararıyla bunlar için tam tur değil, kısa bir duman testi yapıldı.
+   - **İlk build** (release çalıştırması `40767551520`, commit `d4ec36a`):
+     - Kurulum `tokenradar://` anahtarını kurulu exe'ye yönlendirdi.
+     - Panel limitleri kaynaklarıyla gösterdi; canlı oturum `≈` paylı listelendi.
+     - `measure-threads.ps1` ile 30 s örnek alındı (Claude Code açıkken, bu yüzden bütçe ölçümü değil). `notify` thread'i 1 kez uyandı.
+     - Uygulama açıkken toast'a ekranda ve Bildirim Merkezi'nde tıklamak paneli açtı.
+     - Çıkış süreci, WebView2 alt süreçlerini ve IPC pipe'ını kapattı.
+     - **Hata:** Uygulama kapalıyken Bildirim Merkezi'nden tıklayınca uygulama açıldı ama panel gelmedi. Windows toast'ın `launch` değerini normalize ediyor ve uygulamayı `tokenradar://panel/` ile başlatıyor. Soğuk başlatma ise argümanı tam eşitlikle karşılaştırıyordu. Sıcak yol single-instance geri çağrısında argümana bakmadığı için hata orada görünmüyordu. `7352973` ile düzeltildi: tek bir sondaki `/` kabul ediliyor; şema ve host büyük/küçük harfe duyarsız. Başka yollar ve sorgular hâlâ reddediliyor (birim testli).
+   - **Düzeltilmiş build** (release çalıştırması `40960014156`, commit `7352973`; SHA-256 `e3d13704…5c7a`):
+     - Sıcak tıklamanın iki yolu ve soğuk tıklama paneli açtı. Süreç `tokenradar://panel/` argümanıyla başlamıştı.
+     - Kaldırma süreci, kurulum dizinini, kısayolu, kaldırma kaydını, `Run` girdisini, PATH girdisini ve `HKCU\Software\Classes\tokenradar` anahtarını sildi. `settings.json > statusLine` önceki zincirli komuta döndü.
+   - **Gözlem:** Kullanıcı, scoped limit satırının ("Fable · haftalık") girintisini fark etti. Girinti tasarım gereği (`design-language.md`); v0.1 sonrasında görsel ağırlığı yeniden değerlendirilebilir.
 
 #### Sonraki adımlar için notlar
-- **Toast tıklaması:** ✅ ADR-040 ile çözüldü (protocol activation). Toast'a eylem düğmesi eklenirse her düğme ayrı bir `tokenradar://` yolu taşımalı ve soğuk başlatmada yalnızca bilinen yollar kabul edilmeli.
+- **Toast tıklaması:** ✅ ADR-040 ile çözüldü (protocol activation). Toast'a eylem düğmesi eklenirse her düğme ayrı bir `tokenradar://` yolu taşımalı ve soğuk başlatmada yalnızca bilinen yollar kabul edilmeli. Windows URI'yi normalize ettiği için (boş yola `/` eklenir) soğuk yol her zaman Bildirim Merkezi'nden gerçek bir tıklamayla denenmeli; elle verilen argüman bu normalizasyondan geçmez.
 - **Portable ve Scoop:**
   - AUMID'li kısayol olmadığı için toast görünmeyebilir.
   - Scoop'ta iki şey doğrulanmalı: `current_exe()` yolunun `current` junction'ını kullandığı ve statusline komutunun güncellemelerden sonra geçerli kaldığı. Bu makinede Scoop kurulu değil.
