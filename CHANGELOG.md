@@ -16,6 +16,7 @@ All notable changes to TokenRadar are recorded here. The format follows
 - `tokenradar status --json` includes `locale` (`en` or `tr`), the language the CLI resolved.
 - `tokenradar history --json`: each limit's stored readings in its current window, thinned to at most 168 points, read-only from the database.
 - The Claude Code mod goes visual: `/radar` opens a pane with limit cards and source badges, the weekly time strip, a usage chart against the time line (SVG on the desktop, VS Code and mobile; colored cells in the terminal), live sessions and the context window. The band is one bordered line with a mini bar and a Details button, and says once when a window resets. Without the statusline bridge, the mod shows a short status entry.
+- The installer ships the Claude Code mod. Install or remove it from onboarding, Settings → Data sources or `tokenradar mod install|uninstall`: TokenRadar adds its folder to `env.CLAUDE_CODE_PLUGIN_DIRS` in Claude Code's `settings.json`, with a diff, confirmation and backup. Uninstalling TokenRadar takes it out again. Left at its default, the mod uses the CLI installed with the app.
 
 ### Changed
 

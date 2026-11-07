@@ -83,13 +83,23 @@ pace = true        # the time mark
 
 The mod reads Claude Code's own limit figures and runs `tokenradar status --json` at most every 30 seconds for what only TokenRadar knows, and `tokenradar history --json` at most every 5 minutes while the pane is open. Without the CLI it still works with Claude Code's figures and says so. Of Claude Code's `settings.json` it reads only `statusLine.command`. It reads no conversation (live sessions are shown by name or folder, never by title), makes no network request and never touches credentials. The API is early access and may change between Claude Code releases.
 
-Try it from a clone of this repository:
+The installer ships the mod. To turn it on, use the card under the statusline bridge in onboarding, or Settings → Data sources → **Panel inside Claude Code**, or the command line:
+
+```sh
+tokenradar mod install
+```
+
+This adds the mod's folder to `CLAUDE_CODE_PLUGIN_DIRS` in the `env` block of `~/.claude/settings.json`, with the same diff, confirmation and backup as the statusline bridge. Other folders in that list stay. Restart Claude Code afterwards. `tokenradar mod uninstall` takes it out again, and uninstalling TokenRadar does so too.
+
+Do not also start Claude Code with `--plugin-dir` for this mod, or it loads twice. Left at its default, the mod's **TokenRadar CLI** option in `/config` uses the `tokenradar.exe` installed with the app; clear any path you set there earlier.
+
+To try the mod from a clone of this repository instead:
 
 ```sh
 claude --plugin-dir integrations/claude-code
 ```
 
-If `tokenradar` is not on your `PATH` (a portable install, for example), set the mod's **TokenRadar CLI** option in `/config` to the full path of `tokenradar.exe`. The mod speaks the language TokenRadar is set to; with a CLI older than 0.1.1 it speaks English.
+If `tokenradar` is not on your `PATH` there (a portable install, for example), set the **TokenRadar CLI** option to the full path of `tokenradar.exe`. The mod speaks the language TokenRadar is set to; with a CLI older than 0.1.1 it speaks English.
 
 ## Privacy
 

@@ -797,3 +797,28 @@
   - Geçmişi IPC'ye `history.get` olarak eklemek: uygulama kapalıyken çalışmaz ve protokol büyür. Veritabanından salt-okunur okumak her iki durumda da çalışır.
   - Terminalde grafiği yalnızca metinle çizmek: `Raster`, sekizlik bloklarla 6 satırda 48 düzey çözünürlük veriyor.
   - `$.ui.status`'ı her zaman ya da ayarla göstermek: kullanıcı, köprü varsa susan girdiyi seçti.
+
+### ADR-047 — Claude Code mod'u TokenRadar'dan kurulur: `env.CLAUDE_CODE_PLUGIN_DIRS`
+**Durum:** Kabul (2026-11-07, Adım 12g, kullanıcı kararlarıyla). ADR-043'ün "mod repodan `--plugin-dir` ile yüklenir" varsayımını değiştirir.
+- **Bağlam:**
+  - Mod yalnızca bir repo klonundan, `claude --plugin-dir integrations/claude-code` ile yükleniyordu. Kullanıcı, statusline köprüsü gibi modun da ilk kullanımda ve ayarlarda kurulup kaldırılabilmesini istedi.
+  - Claude Code, `settings.json` dosyasının `env` bloğundaki `CLAUDE_CODE_PLUGIN_DIRS` değişkenini okur ve listedeki her klasörü `--plugin-dir` gibi yükler (Windows'ta `;`, diğer sistemlerde `:` ile ayrılır). Seçenekleri `pluginConfigs."<ad>@inline"` altında durur.
+- **Karar:**
+  - **Mod kurulum paketine girer:** `<kurulum>\claude-code` altında `plugin.json`, `hooks/` ve `types/index.d.ts`. Testler girmez. Uygulama güncellenince mod da güncellenir.
+  - **Kurulum `settings.json`'a tek bir yol ekler:** Birincil hesabın `settings.json` dosyasında `env.CLAUDE_CODE_PLUGIN_DIRS` listesine mod klasörü eklenir. Listede başka yollar varsa korunur; `env` yoksa oluşturulur. Değer string değilse dosyaya dokunulmaz (`invalid_settings`).
+  - **Kurallar statusline'ınkiyle aynıdır (ADR-009, ADR-029):** diff → onay → yedek → atomik yazma. Yalnızca `env` üyesinin baytları değişir; `install → uninstall` dosyayı bayt düzeyinde geri getirir. Plan gösterildikten sonra dosya değişmişse yazılmaz.
+  - **Kaldırma durumsuzdur:** `config.toml`'da kayıt tutulmaz. Kaldırma listeden yalnızca bu kurulumun mod klasörünü siler. Liste boşalırsa anahtar, `env` boşalırsa `env` de silinir.
+  - **Yüzeyler:**
+    - CLI: `tokenradar mod install|uninstall [--yes] [--config-dir <DİZİN>]`; `uninstall --all` TokenRadar'ın bildiği her Claude Code dizinine bakar.
+    - Uygulama: İlk kullanımın limit adımında statusline kartının altında ayrı bir kart; varsayılan olarak hiçbir şey kurulmaz, kullanıcı düğmeye basar. Ayarlar → Veri kaynakları'nda `mod` bölümü. İkisi de statusline'ın diff diyaloğunu kullanır.
+    - Kaldırıcı: Kaldırırken (güncellemede değil) `mod uninstall --all --yes` çalışır ve `claude-code` klasörünü siler; Claude Code bu klasöre üretilmiş tipler yazdığı için dosya listesi onu tamamen silemezdi.
+  - **Mod CLI'ı kendisi bulur:** `TokenRadar CLI` seçeneği varsayılanda (`tokenradar`) kalırsa mod, kendi klasörünün yanındaki `..\bin\tokenradar.exe`'yi kullanır; yoksa PATH'teki `tokenradar`'ı. Kullanıcının elle girdiği yol her zaman önce gelir.
+- **Bedel:**
+  - Önceden yalnızca `env: {}` taşıyan bir dosyada, kaldırma sonrasında boş `env` de silinir; bayt düzeyinde geri dönüş yalnızca TokenRadar'ın kendi eklediği `env` için geçerlidir.
+  - Mod aynı anda hem listeden hem `--plugin-dir` ile yüklenirse iki kez yüklenebilir. TokenRadar bunu algılayamaz; diyalog ve CLI çıktısı uyarır.
+  - `pluginConfigs` içindeki eski bir CLI yolu otomatik bulmayı geçersiz kılar. TokenRadar kullanıcının `pluginConfigs` ayarlarına dokunmaz.
+  - Mod, kurulum klasörünün yolunu `settings.json`'a yazar. Kurulum klasörü taşınırsa mod yüklenmez; yeniden kurmak gerekir.
+- **Alternatifler:**
+  - Yerel bir marketplace ve `claude plugin install`: Claude Code'un kendi önbelleğine kopyalar, güncellemede eski sürüm kalır ve kaldırma için Claude Code'un komutu gerekir.
+  - Mod'u `~/.claude/plugins` altına kopyalamak: Claude Code'un iç düzenine bağlanır ve güncellemede kopyalar senkron tutulmalıdır.
+  - Kurulumda modu varsayılan olarak açmak: Kullanıcı, deneysel modun açıkça seçilmesini istedi.
