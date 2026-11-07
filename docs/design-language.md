@@ -66,6 +66,7 @@ OKLCH ile tanımlanır. Her token CSS `light-dark(açık, koyu)` çiftidir; etki
 - **Projeksiyon yayı:** Mevcut hızla reset anında ulaşılacak yüzdeyi, dolu yayın devamında **soluk bir "hayalet" yay** olarak gösterir. Hayalet yay 100'ü aşıyorsa uç noktada crit rengi ve ▲ glifi kullanılır.
 - **Merkez:** Büyük punto (`display`) ile 5 saatlik %, altında küçük punto ile yalnızca kalan süre (`1 sa 48 dk`); "… sonra yenilenir" cümlesi halka boşluğuna sığmaz, limit satırında tam cümle kullanılır.
 - **Geometri (bileşen, 168 px tasarım boyu):** dış halka yarıçapı 77, iç halka 65; tick'ler 60–80 arası, yayların altında çizilir (yalnızca track üzerinde görünür). Tahmini yay `--signal-est` rengindedir ve maske ile kesikli çizilir. Kritik çentik: yayın sonundan önce %1,5'lik boşluk ve %1,5'lik uç. Hayalet yay %30 opaklıktadır; 100'ü aşarsa crit rengine döner ve 12 yönünde ▲ çizilir. Bayat veride yaylar %50 opaklık, merkez rakam `--text-3`.
+- **Tek halka (5 saatlik pencere yok, ADR-041):** Hesapta 5 saatlik pencere yoksa haftalık limit iki halkanın bandını tek başına doldurur: yarıçap 70, kalınlık 20 (dış halkanın dış kenarından iç halkanın iç kenarına). Merkezde haftalık % ve kalan süre gösterilir. Boş bir iç halka çizilmez; boş iç halka "henüz okuma yok" demektir, "pencere yok" değil. Halkanın altında bilgi notu yer alır: "Bu hesapta 5 saatlik pencere yok. Yalnızca haftalık limitler geçerli."
 - **Animasyon:** Değer değiştiğinde 400 ms ease-out ile geçiş yapılır ve bir kez radar taraması (conic gradient, 600 ms) oynar. **Sürekli animasyon yoktur.** Bu kural boşta CPU bütçesi gereği zorunludur.
 
 ### Limit satırı
@@ -108,6 +109,7 @@ Küçük bir rozet: `canlı` (S1), `API` (S2) veya `tahmini`. Rozetin tooltip'i 
   - Bildirimler susturulmuş: sağ altta iki dikey çubuk (duraklat işareti).
   - Hata noktası ve duraklat işareti saydam bir halo ile halkalardan ayrılır.
   - Veri yok: yalnızca track'ler ve ortada küçük bir nokta.
+  - 5 saatlik pencere yok (ADR-041): tek halka; kalınlık dış halka + boşluk + iç halka (16 px'te 6 px), aynı merkez deliği. Tooltip'te 5 saatlik satır yer almaz.
 - **Tooltip:** Çok satırlı, en fazla 127 UTF-16 birimi. Sığmazsa önce başlık düşer, sonra kısa biçim kullanılır.
   ```
   TokenRadar

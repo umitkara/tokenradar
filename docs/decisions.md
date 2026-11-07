@@ -655,3 +655,10 @@
   - Plan türünden (`subscriptionType`, `rateLimitTier`) çıkarım: doğrulama durumu bu alanlarda görünmüyor, ayrıca aynı plan içinde iki durum var.
   - 5 saatlik pencereyi `0 %` göstermek: yanlış. Limit dolmamış değil, limit yok.
   - Kullanıcı ayarı ("bu hesapta 5 saat yok"): elle bakım gerektirir ve hesap durumu değiştiğinde bayatlar. Gözlem kuralı yetmezse ek olarak düşünülebilir.
+- **Uygulama notu (2026-11-07, Adım 12b, kullanıcı kararlarıyla):**
+  - **N = 3, ama yalnızca taze payload'lar sayılır.** Claude Code `resets_at` geçince pencereyi payload'dan düşürüyor ve statusline'ı yeni API yanıtı olmadan da çağırıyor (cache süresi, izin modu, `refreshInterval`). "Art arda 3 payload" kuralı, boşta duran bir Pro/Max hesabını reset'ten sonra yanlışlıkla "yok" yapardı. Bu yüzden bir payload, ancak başka bir limitin okuması (yüzde veya `resets_at`) bir öncekinden farklıysa sayılır; bu, taze bir API yanıtını kanıtlar. Uygulama başladıktan sonraki ilk payload'ın karşılaştıracağı bir şey olmadığı için o sayılmaz.
+  - **S2 tam listedir.** `limits[]` şemasında beklenen (`session`, `weekly_all`) ve izlenen limitlerden yanıtta olmayanlar hemen yok sayılır. Düz alan şemasında yalnızca beklenen limitler değerlendirilir. Boş yanıt hiçbir şey kanıtlamaz.
+  - **Kalıcılık:** Karar `kv.limits.absent.<account_id>` anahtarında saklanır; yeniden başlatma ve uygulama kapalıyken CLI aynı kararı görür. Kaçırma sayaçları saklanmaz.
+  - **Yok olan limitin track'i silinir.** Böylece tahmin, reset, projeksiyon ve bildirim tek noktadan kapanır; geçmiş `limit_snapshots` tablosunda kalır.
+  - **IPC:** `StatusReply`/`LimitsReply`'a `#[serde(default)]` ile `absent` eklendi. `PROTOCOL_VERSION` ve `--json` şeması 1'de kaldı (geriye ve ileriye uyumlu ekleme).
+  - **Görünüm:** Tray ve panelde haftalık limit iki halkanın bandını dolduran tek, kalın bir halka olur. Boş iç halka "bilinmiyor" demektir, "yok" değil.

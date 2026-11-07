@@ -259,6 +259,13 @@ struct LimitObservation {
 - **Füzyon kuralı:** Her `(account, kind, scope)` için güncel değer, en yeni gözlemdir. 30 saniye içindeki çakışmalarda öncelik `Statusline > Api > Estimate` sırasıyla belirlenir. Tüm gözlemler (tahminler hariç) `limit_snapshots` tablosuna yazılır. Tahminler yalnızca bellekte tutulur.
 - **Bayatlık:** Gözlem yaşı > 10 dk ise UI "son güncelleme X dk önce" gösterir. Yaş > 30 dk ise ve tahmin mümkünse tahmin katmanı devreye girer (kesikli çizgi ve "tahmini" etiketi ile).
 - **Reset algılama:** `resets_at` değeri geçtiyse ve yeni gözlem yoksa, limit yerel olarak %0'a çekilir (kaynak: `Estimate`, neden: `reset`) ve reset bildirimi tetiklenir.
+- **Opsiyonel pencereler (ADR-041):** Her `(account, kind, scope)` için pencere durumu `WindowPresence` ile üç değerlidir: `Present`, `Unknown`, `Absent` (`limits/presence.rs`).
+  - **S2:** Boş olmayan bir yanıt tam listedir. `limits[]` şemasında beklenen limitlerden (`session`, `weekly_all`) ve izlenen limitlerden yanıtta olmayan her biri hemen **yok** sayılır. Düz alan şemasında yalnızca beklenen limitler değerlendirilir.
+  - **S1:** Claude Code, reset geçince pencereyi payload'dan düşürür ve statusline'ı yeni API yanıtı olmadan da çağırır. Bu yüzden eksik pencere, yalnızca başka bir limitin okuması **değişmiş** olan payload'da sayılır. Değişen okuma taze bir API yanıtını kanıtlar. Art arda 3 böyle payload pencereyi yok yapar.
+  - Herhangi bir kaynaktan gelen ilk gerçek gözlem kararı geri alır.
+  - Yok sayılan limitin track'i silinir: tahmin, reset, projeksiyon ve bildirim üretilmez. Geçmiş `limit_snapshots` tablosunda kalır.
+  - Karar `kv` tablosunda `limits.absent.<account_id>` anahtarıyla JSON dizisi olarak saklanır. Yeniden başlatma ve uygulama kapalıyken CLI aynı kararı görür. Kaçırma sayaçları saklanmaz.
+  - `PanelSnapshot.absent` ve IPC yanıtlarındaki `absent` alanı yok sayılan limitleri taşır.
 - **Burn rate:** Son 15-30 dakikanın gözlemlerinden robust bir eğim hesaplanır (Theil–Sen). Gözlem azsa `k × (son 15 dk maliyet hızı)` kullanılır. **Projeksiyon:** `eta_100 = (100 − p) / rate`. `eta_100 < resets_at − now` ise "reset'ten önce dolacak" uyarısı verilir.
 
 ## 8. Pencere modeli
@@ -338,6 +345,7 @@ S2 yalnızca **açık onay** varsa kullanılır.
   - `PIPE_REJECT_REMOTE_CLIENTS` bayrağı set edilir.
 - **Çerçeveleme:** Satır sonuyla ayrılmış JSON. İstek `{"v":1,"id":7,"op":"…","data":{…}}`, yanıt `{"v":1,"id":7,"ok":true,"data":{…}}` biçimindedir.
 - **İşlemler (v1):** `hello` (sürüm müzakeresi), `statusline.push` (yanıt beklenmez), `status.get`, `limits.get`, `sessions.live`.
+- **Alan eklemeleri:** Yeni alanlar `#[serde(default)]` ile eklenir; `PROTOCOL_VERSION` ve `--json` şema numarası değişmez. Eski CLI bilinmeyen alanı yok sayar, yeni CLI eski uygulamadan boş değer okur. Örnek: 0.1.1'de `StatusReply` ve `LimitsReply`'a eklenen `absent` (ADR-041).
 - **`tokenradar statusline` akışı (p95 < 30 ms):**
   1. stdin okunur (en fazla 1 MB) ve minimal alanlar parse edilir.
   2. Daemon'a 50 ms zaman aşımıyla bağlanılır ve `statusline.push` gönderilir.
