@@ -59,25 +59,26 @@ The bridge is the most accurate source: the numbers come straight from Anthropic
 The line itself looks like this on an account without a 5-hour window:
 
 ```
-7d ████░░░░ 41% · 3d4h │ Fable 22% │ ctx 38% │ ≈2.1% this session │ API $4.12
+7d ███│█░░░░ 41% ⏱43% · 3d4h │ Fable 22% │ ctx 38% │ ≈2.1% this session │ API $4.12
 ```
 
-`API $4.12` is what the session would cost at API prices, not your bill. Pick the segments, their order, one or two lines and the bar in Settings → Data sources → Statusline bridge, or in `config.toml`:
+`│` on the bar and `⏱43%` mark how much of the window's time has passed, so you can see whether your use runs ahead of the clock. `API $4.12` is what the session would cost at API prices, not your bill. Pick the segments, their order, one or two lines, the bar and the time mark in Settings → Data sources → Statusline bridge, or in `config.toml`:
 
 ```toml
 [statusline]
 segments = ["five_hour", "seven_day", "scoped", "context", "session_share", "cost", "model"]
 layout = "double"   # single | double
 bar = true
+pace = true        # the time mark
 ```
 
 ## Claude Code mod (experimental)
 
 `integrations/claude-code/` holds an optional mod for Claude Code's plugin hooks. It works alongside the statusline bridge and does not replace it: the bridge keeps feeding TokenRadar, and the mod shows and warns inside Claude Code.
 
-- **Band above the prompt.** It appears only when a limit reaches 75 % (90 % in red), or when TokenRadar projects that a window fills before it resets. **Hide** keeps it away until the level rises.
+- **Band above the prompt.** It appears only when a limit reaches 75 % (90 % in red), or when TokenRadar projects that a window fills before it resets. When your use runs 10 points or more ahead of the window's elapsed time, it says so too, without a toast. **Hide** keeps it away until the level rises.
 - **Toast.** One per threshold crossing, and only while the desktop app is not running. When the app runs, it sends the notification itself.
-- **`/radar`.** Every limit with its source, reset time and projection, plus windows your account does not have, this session's share, the context window and the API-equivalent cost.
+- **`/radar`.** Every limit with its source, reset time and projection, plus windows your account does not have, this session's share, the context window and the API-equivalent cost. A pace line compares your use with the time gone, and a time line shows where the weekly window's clock stands at the end of each coming day.
 
 The mod reads Claude Code's own limit figures and runs `tokenradar status --json` at most every 30 seconds for what only TokenRadar knows. Without the CLI it still works with Claude Code's figures and says so. It reads no conversation, makes no network request and never touches credentials. The API is early access and may change between Claude Code releases.
 

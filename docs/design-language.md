@@ -175,6 +175,8 @@ Küçük bir rozet: `canlı` (S1), `API` (S2) veya `tahmini`. Rozetin tooltip'i 
 | Live / API / Estimated | Canlı / API / Tahmini | Kaynak rozetleri |
 | API-equivalent cost | API karşılığı maliyet | İkincil metrik |
 | Context window | Bağlam penceresi | Statusline'da kısa form her dilde "ctx" |
+| Time mark (statusline) | Zaman işareti | Bar üstünde `│`, metinde `⏱43%` / `⏱%43`; geçen zaman bir ölçümdür, `≈` almaz |
+| Time line (mod `/radar`) | Zaman çizgisi | |
 | (statusline cost) | `API $4,12` | `API` işareti, değerin fatura olmadığını söyler; çıkarılmaz |
 
 **Türkçe yazım kuralları:**

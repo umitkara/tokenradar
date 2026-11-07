@@ -720,3 +720,22 @@
   - Mod'a Fluent çalıştırıcısı gömmek: mod büyür ve `locales/` dosyaları modla birlikte dağıtılmak zorunda kalır.
   - CLI'a `--session <uuid>` eklemek: gereksiz, çünkü oturum zaten `live_sessions` içinde.
   - Statusline köprüsünü modla değiştirmek: kullanıcı tamamlayıcı rolü seçti. Ayrıca mod yalnızca Claude Code açıkken çalışır ve spool'a yazamaz.
+
+### ADR-044 — Zaman temposu: statusline'da zaman işareti, mod'da tempo uyarısı ve zaman çizgisi
+**Durum:** Kabul (2026-11-07, Adım 12e, kullanıcı kararlarıyla)
+- **Bağlam:**
+  - Kullanıcı kendi "Kota Zaman Çizelgesi" sayfasını örnek gösterdi. Sayfa, haftalık pencerenin ne kadarının geçtiğini yüzde olarak gösteriyor ve kullanımı bununla karşılaştırıyor.
+  - "Kullanım zamanın önünde mi?" sorusunun cevabı, projeksiyondan (ADR-042, bu hızla dolar ya da dolmaz) farklı bir bilgi. Projeksiyon bir tahmin. Geçen zaman ise saatten okunan bir ölçüm.
+- **Karar:**
+  - **Geçen zaman bir ölçümdür:** Değer `(1 − kalan / pencere uzunluğu) × 100` ile hesaplanır. Pencere uzunluğu 5 saat (`session`) ya da 7 gündür (`weekly_all`, `weekly_scoped`). Kalan süre pencere uzunluğunu aşıyorsa ya da reset geçmişse değer hesaplanmaz. `≈` işareti almaz.
+  - **Statusline:** Bar içine, geçen zamanın düştüğü hücre sınırına bir `│` işareti konur ve yüzdeden sonra `⏱43%` metni gelir. Örnek: `7d ███│█░░░░ 41% ⏱43% · 3d4h`. İşaret renksizdir (Plain). Pencere sönükse metin de sönük olur. Renk kapalıyken metin kalır. Dar terminalde, bar düşürüldükten sonra ilk düşen ayrıntı budur.
+  - **Ayar:** `[statusline] pace = true` (varsayılan açık). Ayarlar penceresinde "Zaman işareti" anahtarı vardır.
+  - **Mod, tempo uyarısı:** Kullanım zaman çizgisinin en az 10 puan önündeyse (`PACE_AHEAD`) ve hiçbir eşik aşılmamışsa, bant uyarı seviyesinde bir satır gösterir. Bu uyarı **toast üretmez**: bir eşik değil, bir eğilimdir. Tahmini (`≈`) değerler zamanla karşılaştırılmaz. "Gizle" bu uyarıyı da gizler. Tempo uyarısı sürdüğü sürece gizleme sıfırlanmaz. `stepAlerts` bant seviyesini ve toast seviyesini ayrı ayrı alır.
+  - **Mod, `/radar`:** Haftalık pencere için (yoksa 5 saatlik pencere için) bir tempo satırı eklenir: geçen zaman, kullanım ve farkın puan ve süre olarak karşılığı. Haftalık pencerede bunu "Zaman çizgisi" izler: pencerenin kalan her gününün sonunda zaman çizgisinin kaçta olduğu, yerel saatle (`Cmt 17:00 %71,4 · … · Pzt 17:00 sıfırlanma`). Yerel saat farkı mod'un çalıştığı makineden alınır.
+- **Bedel:**
+  - `⏱` bazı terminallerde iki hücre genişliğinde çizilebilir. `fit()` bunu bir hücre sayar. Bu durumda satır birkaç sütun taşabilir.
+  - Statusline'ın varsayılan çıktısı değişti. Eski görünümü isteyen `pace = false` yazar.
+- **Alternatifler:**
+  - Tempo için ayrı bir statusline segmenti açmak: satır uzar. Bar üstündeki işaret, aynı bilgiyi yer harcamadan verir.
+  - Tempo uyarısında toast göstermek: hafta başında küçük sapmalar sık bildirim üretirdi. Bant yeterli.
+  - Zaman çizgisini grafik olarak çizmek: mod'un görsel yüzeyleri Adım 12f'de ele alınır.
