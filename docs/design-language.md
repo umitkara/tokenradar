@@ -100,6 +100,16 @@ Başlığın altında iki eşit düğmeli bir segment kontrolü: `Özet | Ayrın
 - **Grafik:** Şeritle aynı genişlikte, 96 px yüksekliğinde satır içi SVG. Kullanım eğrisi 2 px, altı %18 dolgulu; zaman çizgisi `--text-3` kesikli; 75/90 eşikleri sinyal renklerinde, soluk ve noktalı; gün çizgileri `--stroke`; "şimdi" çizgisi `--text-2`. Kenar çizgileri ölçekten bağımsızdır (`vector-effect: non-scaling-stroke`).
 - **Açıklama:** Grafiğin altında: reset zamanı (limit satırlarındaki `Sal 21:52'de yenilenir` kalıbıyla), noktalı/düz çizgilerin anlamı, zaman çizgisi ve kullanım için küçük örnek işaretler.
 
+### Segment kontrolü (ayarlar)
+
+`Segmented` bileşeni iki ila dört kısa seçenek içindir; açılır liste bunlar için kullanılmaz. `radiogroup` olarak çalışır: oklar seçimi değiştirir, `Tab` gruptan çıkar. Seçili düğme `--surface-2` zeminli ve kalındır, altında 2 px `--accent` çizgi vardır. Kullanıldığı yerler: statusline teması, renk modu, örnek durum, terminal genişliği ve öğe biçimi.
+
+### Statusline düzenleyicisi (ayarlar, Adım 12j)
+
+- **Terminal önizlemesi:** Uygulama temasından bağımsız olarak koyudur. `--term-*` paleti Windows Terminal'in varsayılan 16 ANSI rengini kullanır, font `--font-term`'dir (Cascadia, varsa Nerd Font ya da PL yapısı). Satır sarmaz; seçilen genişlik kesikli bir sağ kenarla gösterilir ve taşan satır yatay kayar. Seçili öğenin span'lerinin altı çizilir; üzerine gelinen öğe 1 px çerçeveyle vurgulanır. Powerline bloklarında da görünsün diye arka plan değil çerçeve kullanılır.
+- **Liste:** Seçili satır `--surface-2` zeminli ve kenarlıklıdır. Üzerine gelinen satır, metin renginin %7'siyle tonlanır, çünkü açık temada yüzeyler beyaz üstüne beyazdır. Sürüklemede bırakılacak yer 2 px `--accent` çizgiyle gösterilir; hareket yoktur (ADR-019). Gizli ve hesapta olmayan öğeler `--text-3` ile yazılır.
+- **Renk örnekleri:** Terminal zemininde 22 px kareler. Seçili örneğin çevresinde `--term-fg` halka vardır.
+
 ### Tray ikonu
 
 - **Boyutlar:** İkon, görev çubuğunun DPI'ına göre `SM_CXSMICON` boyutunda çizilir (16 @%100, 20 @%125, 24 @%150, 32 @%200). Golden testler bu dört boyutu kapsar.

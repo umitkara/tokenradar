@@ -882,3 +882,21 @@
   - Topluluk galerisi: ağ allowlist'ini (ADR-013) genişletirdi.
   - `git status` ile kirli/temiz bilgisi: her çağrıda süreç başlatmak p95 bütçesini zorlardı.
   - 256 renk veya hex: terminal temasından bağımsız renkler, açık ve koyu temada okunabilirliği garanti etmez.
+
+### ADR-050 — Statusline düzenleyicisi: ayrı sayfa, taslak ve otomatik kayıt, terminal paleti
+**Durum:** Kabul (2026-11-08, Adım 12j, kullanıcı kararlarıyla)
+- **Bağlam:**
+  - 12c'nin gömülü görünüm alanı, 12i'nin öğe modelini (biçim, etiket, renk, düzen öğeleri, tema) taşıyamıyordu.
+  - Kullanıcı ayrı bir sayfa, otomatik kayıt, geri alma ve varsayılana dönme istedi (2026-11-07).
+- **Karar:**
+  - **Ayrı "Statusline" sekmesi.** Kurulum durumu ve diff akışı Veri kaynakları'nda kalır. Orada yalnızca "Görünümü düzenle →" düğmesi bulunur.
+  - **Taslak düzenleyicinin doğruluk kaynağıdır.** Her değişiklik önce taslağa girer ve çekirdek onu hemen çizer (`preview_statusline`). Kayıt 400 ms debounce ile yapılır ve aynı anda tek bir kayıt çalışır (`createSaver`). Başka yerden gelen değişiklik (`prefs-changed`) yalnızca bekleyen kayıt yokken taslağın yerine geçer; böylece kaydın yankısı yazılan etiketi ezmez.
+  - **Geri alma yığını pencere ömrü boyunca tutulur**, diske yazılmaz ve en fazla 100 adımdır. Aynı alanın 1 sn içindeki düzenlemeleri tek adımda birleşir.
+  - **Şablon, varsayılana dönme ve içe aktarma** uygulanmadan önce çekirdeğin çizdiği önizlemeyle onay ister.
+  - **Terminal paleti uygulama temasından bağımsızdır.** Windows Terminal'in varsayılan 16 ANSI rengi kullanılır. Böylece önizleme, kullanıcının çoğunun gördüğü renklere yakın olur; koyu zeminde okunmayan mavi de burada okunmaz.
+  - **Ayarlar penceresinin varsayılan boyutu 800×600'den 960×680'e çıktı** (en küçük boyut 640×480 kaldı). Kullanıcı ilk düzenin ekran görüntüsünde onayladı. 800 px'te araç çubuğu dağılıyor, satırlarda etiketler simgelerin üstüne taşıyordu. Dar pencerede sütunlar alt alta geçer.
+  - **↑/↓ düğmeleri seçili öğenin başlığındadır**, satırlarda değil. Satırlarda tutamaç, gizle ve kaldır bulunur. Klavyede satır üzerinde Alt+↑/↓ taşır, ↑/↓ satırlar arasında gezer, `Delete` kaldırır.
+- **Bedel:** Çekirdeğin `normalized` kuralları (son görünür değer öğesi, tekil değer öğeleri, 48 öğe sınırı) UI'da da tekrarlanıyor. Bu tekrar yalnızca çekirdeğin atacağı seçenekleri sunmamak içindir; kaydedilen değeri yine çekirdek normalize eder.
+- **Alternatifler:**
+  - Açık "Kaydet" düğmesi: kullanıcı otomatik kaydı seçti.
+  - HTML5 sürükle-bırak: WebView2'de sürükleme görüntüsü hareketli ve kontrol dışı. Pointer olayları ve statik bir çizgi kullanıldı.

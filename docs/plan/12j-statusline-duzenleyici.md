@@ -2,7 +2,7 @@
 
 | Sürüm | Bağımlılık | Tahmini süre | Durum |
 |---|---|---|---|
-| v0.1.x | 12i | 1-2 oturum | ⬜ |
+| v0.1.x | 12i | 1-2 oturum | ✅ |
 
 ## Amaç
 
@@ -67,15 +67,15 @@ Adım 12i'nin çekirdeği için bir düzenleyici yapılacak. Bu düzenleyici, `c
 
 ## Görevler
 
-- [ ] Ayarlar kenar çubuğunda "Statusline" bölümü, Veri kaynakları'ndan bağlantı.
-- [ ] Önizleme şeridi: terminal paleti, durum ve genişlik seçicileri, parça–öğe bağı.
-- [ ] Öğe listesi: sıralama (sürükleme ve klavye), gizle, sil, öğe ekleme paleti.
-- [ ] Seçili öğe editörü.
-- [ ] Araç çubuğu: tema, renk modu, şablon, dışa/içe aktarma, geri al, varsayılan.
-- [ ] Segmented control bileşeni (yoksa).
-- [ ] `view.ts` mantığı ve testleri.
-- [ ] Fluent (EN/TR).
-- [ ] İlk çalışan düzenin ekran görüntüsü kullanıcıya gösterilir ve onaylanır, ardından cila.
+- [x] Ayarlar kenar çubuğunda "Statusline" bölümü, Veri kaynakları'ndan bağlantı.
+- [x] Önizleme şeridi: terminal paleti, durum ve genişlik seçicileri, parça–öğe bağı.
+- [x] Öğe listesi: sıralama (sürükleme ve klavye), gizle, sil, öğe ekleme paleti.
+- [x] Seçili öğe editörü.
+- [x] Araç çubuğu: tema, renk modu, şablon, dışa/içe aktarma, geri al, varsayılan.
+- [x] Segmented control bileşeni (yoksa).
+- [x] `view.ts` mantığı ve testleri.
+- [x] Fluent (EN/TR).
+- [x] İlk çalışan düzenin ekran görüntüsü kullanıcıya gösterilir ve onaylanır, ardından cila.
 
 ## Teknik notlar ve tuzaklar
 
@@ -101,4 +101,52 @@ Adım 12i'nin çekirdeği için bir düzenleyici yapılacak. Bu düzenleyici, `c
 
 ## Devir notu
 
-_(Oturum sonunda doldurulur: yapılanlar · sapmalar · açık konular · sonraki adıma notlar)_
+**Tarih:** 2026-11-08 · **Karar:** ADR-050 · **Ekran görüntüleri:** `img/12j-statusline-en.png` (açık), `img/12j-statusline-tr-dark.png` (koyu)
+
+### Yapılanlar
+- **Ayrı "Statusline" sekmesi** (`StatuslineTab.svelte`). Veri kaynakları'ndaki gömülü `StatuslineLook` kaldırıldı; yerine "Görünümü düzenle →" düğmesi geldi. Köprü kurulu değilse düzenleyici bunu söylüyor ve Veri kaynakları'na bağlantı veriyor.
+- **Önizleme şeridi** (`statusline/TermPreview.svelte`):
+  - `--term-*` paleti (Windows Terminal'in varsayılan 16 rengi) ve `--font-term` kullanıyor.
+  - Satır sarmıyor, seçilen genişlik kesikli kenarla gösteriliyor ve taşan satır yatay kayıyor.
+  - Durum ve genişlik seçicileri backend çıktısını değiştiriyor.
+  - Span tıklanınca öğe seçiliyor; hover önizleme ile liste arasında iki yönde vurguluyor.
+  - Powerline'da font notu gösteriliyor.
+- **Öğe listesi** (`ItemList.svelte`):
+  - Pointer ile sürükleme; bırakılacak yer statik bir çizgiyle gösteriliyor.
+  - Klavye: Alt+↑/↓ taşıyor, ↑/↓ satırlar arasında geziyor, `Delete` kaldırıyor. Tutamaç odaktayken ↑/↓ taşıyor. Her taşıma `aria-live` ile duyuruluyor.
+  - Gizle/göster ve kaldır düğmeleri var; son görünür değer öğesi korunuyor. Satır sonu bir ayırıcı olarak çiziliyor; hesapta olmayan öğe soluk ve etiketli.
+- **Ekleme paleti** (`AddPalette.svelte`): Limitler, Oturum, Proje ve Düzen grupları. Her öğenin açıklaması ve katalogdan gelen örneği var. Kullanılan değer öğesi, hesapta olmayan pencere ve dolu liste pasif.
+- **Öğe editörü** (`ItemEditor.svelte`): biçim (segment kontrolü), etiket (placeholder'da varsayılan), ayraç glifi ya da özel metin, renk örnekleri ve eşik notu, Reset ve Zaman işareti anahtarları, ↑/↓.
+- **Araç çubuğu:** tema, renk modu, ayraç (yalnızca Düz temada), Şablonlar… (önizlemeli onay), Dışa aktar (panoya TOML), İçe aktar… (oku → önizleme ve atlanan anahtarlar → uygula), Geri al (Ctrl+Z), Varsayılana dön… (önizlemeli onay).
+- **Durum** (`statusline/editor.svelte.ts`): taslak, geri alma yığını, seçim, önizleme isteği (eski yanıtlar sıra numarasıyla düşürülüyor), debounce'lu kayıt. Pencere gizlenince ya da sayfadan çıkılınca bekleyen kayıt hemen yapılıyor.
+- **Saf mantık `view.ts` içinde:** `moveItem`, `dropIndex`, `addItem`, `removeItem`, `toggleHidden`, `canDrop`, `palette`, `itemText`, `spanClasses`, `record`/`undo`, `createSaver`. 12c köprü yardımcıları kaldırıldı.
+- **`Segmented.svelte`** bileşeni eklendi.
+- **Fluent:** `settings.ftl` içinde EN ve TR statusline düzenleyicisi bölümü. 12c'nin `statusline-segment-*`, `-layout*`, `-bar*` ve `-look*` anahtarları kaldırıldı.
+- **Testler:** frontend 112 (`view.test.ts`: öğe kuralları, palet, önizleme sınıfları, geri alma, kayıt; editörün ürettiği her anahtarın EN dosyasında olduğunu denetleyen test). Rust testleri değişmedi ve geçiyor.
+
+### Sapmalar (kullanıcı ilk düzenin ekran görüntüsünde onayladı)
+- **Ayarlar penceresi 960×680 oldu** (önceden 800×600; en küçük boyut 640×480). 800 px'te araç çubuğu dağılıyor ve etiketler simgelerin üstüne taşıyordu. Dar pencerede sütunlar alt alta geçiyor.
+- **↑/↓ düğmeleri seçili öğenin başlığında**, satırlarda değil. Satırda dört simge sığmıyordu.
+- **Çekirdek ve render değişmedi.** Binding'ler yeniden üretilmedi.
+
+### Doğrulama
+- `pnpm -C app check`, `lint` ve `test` temiz. `cargo fmt --check`, `cargo clippy --workspace --all-targets -- -D warnings` ve `cargo test --workspace` temiz.
+- Debug build, portable mod ve `TOKENRADAR_FAKE_LIMITS=panel:no-five-hour` ile CDP üzerinden şunlar denendi:
+  - Renk değişikliği yaklaşık 0,4 sn sonra `config.toml`'a yazıldı ve Geri al etkinleşti.
+  - Uyarı durumunda sarı, kullanıcı rengini geçti.
+  - Alt+↓ taşıdı, odak taşınan satırı izledi ve duyuru okundu. Ctrl+Z geri aldı ve kayıt da geri döndü.
+  - Gerçek fare olaylarıyla sürükle-bırak çalıştı.
+  - Powerline/Kritik görünümü, ekleme paleti ve şablon diyaloğu görsel olarak kontrol edildi.
+- Ekran görüntüleri DWM sınırları ve `CopyFromScreen` ile alındı (Mica görünsün diye). Alttaki 8 px kırpıldı.
+
+### Açık konular
+- **Gerçek satır, yeni sürüm çıkana kadar değişmez.** Claude Code'daki satırı kurulu v0.1.0 CLI çiziyor; v0.1.0 yalnızca `segments`, `layout`, `bar` ve `pace` alanlarını okuyor. Renk, biçim ve tema değişiklikleri şimdilik yalnızca önizlemede görünür.
+- **TR'de araç çubuğu 960 px'te iki satıra iniyor** ("İçe aktar…" alta kayıyor). Kırılma düzgün ve kullanılabilir. Gerekirse düğmeler başlık satırına taşınabilir.
+- **Bu makinede Nerd Font yok.** Powerline glifleri önizlemede de kutu görünüyor; not bunu söylüyor. Gerçek bir Nerd Font ile görsel kontrol yapılmadı.
+- **12i'nin açık konuları sürüyor:** Powerline'da `▲` projeksiyonunun rengi kayboluyor, stdin'de UTF-8 BOM'a dayanıklılık gerekiyor. Bu adımın kapsamı çekirdek değişikliği içermiyordu.
+- **Ekran okuyucuyla gerçek deneme yapılmadı** (Narrator). Klavye yolları ve `aria-live` duyurusu CDP ile doğrulandı.
+- Ayraç alanında varsayılan değer `│`, girdi kutusunda imlece benziyor. Küçük bir görsel cila konusu.
+
+### Sonraki adıma notlar
+- Yeni bir v0.1.x sürümü, 12b–12j'yi kurulu satıra getirir. Sürüm notunda düzenleyici ve eski CLI uyumu (ADR-049 geriye uyum) anlatılmalı.
+- Sahte modda pipe sunucusu açılmıyor; kurulu CLI okumaları gerçek spool'a yazıyor ve kurulu uygulama başlarken onları alıyor. Debug ekran görüntüleri bu yüzden veri kaybettirmiyor (2026-11-08'de kodla doğrulandı).
