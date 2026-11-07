@@ -131,11 +131,12 @@ export function paneTree(els: Els, p: PaneInput) {
         <Text>{Runs(els, s.cells, surface)}</Text>
         <Text>{s.pointer}</Text>
         <Text dimColor>{s.periods}</Text>
-        <Text dimColor wrap="truncate-end">{d.stripLegend(s.reset)}</Text>
       </Box>,
     )
   }
   if (p.chart !== null) sections.push(p.chart)
+  // The strip's legend under the chart, so it reads as the key to both.
+  if (s !== null) sections.push(<Text key="legend" dimColor>{d.stripLegend(s.reset)}</Text>)
 
   const live = sessionsSection(els, lang, r, width, surface)
   if (live !== null) sections.push(live)
