@@ -1,6 +1,6 @@
 <!--
-  What `tokenradar statusline` shows: segments and their order, the layout and the bar, with a
-  preview the core draws on sample values (the same code the CLI runs). Every change sends the
+  What `tokenradar statusline` shows: the 12c segments and their order, the layout and the
+  bar, mapped onto the item list (the Step 12j editor replaces this), with a preview the core draws on sample values (the same code the CLI runs). Every change sends the
   whole `StatuslinePrefs`; the core normalizes it and answers with what it kept.
 -->
 <script lang="ts">
@@ -10,7 +10,7 @@ import Toggle from "../../lib/components/Toggle.svelte";
 import { t } from "../../lib/i18n/i18n.svelte";
 import {
   commands,
-  type Layout,
+  type Item,
   type SegmentKind,
   type StatuslinePrefs,
   type StatuslinePreview,
@@ -18,14 +18,27 @@ import {
 import { inTauri } from "../../lib/ipc/runtime";
 import Field from "./Field.svelte";
 import { savePrefs, store } from "./state.svelte";
-import { moveSegment, segmentLabelKey, segmentRows, toggleSegment } from "./view";
+import {
+  barOn,
+  isDouble,
+  moveSegment,
+  paceOn,
+  segmentLabelKey,
+  segmentRows,
+  setBar,
+  setDouble,
+  setPace,
+  shownCount,
+  toggleSegment,
+} from "./view";
 
 let { onerror }: { onerror: (key: string | null) => void } = $props();
 
 const prefs = $derived(store.prefs?.statusline ?? null);
-const rows = $derived(prefs ? segmentRows(prefs.segments) : []);
-const enabledCount = $derived(prefs?.segments.length ?? 0);
-const layouts = $derived<{ value: Layout; label: string }[]>([
+const rows = $derived(prefs ? segmentRows(prefs.items) : []);
+const enabledCount = $derived(rows.filter((r) => r.enabled).length);
+const lastShown = $derived(prefs ? shownCount(prefs.items) <= 1 : true);
+const layouts = $derived<{ value: "single" | "double"; label: string }[]>([
   { value: "single", label: t("statusline-layout-single") },
   { value: "double", label: t("statusline-layout-double") },
 ]);
@@ -38,7 +51,7 @@ $effect(() => {
   void t("statusline-preview");
   if (!p || !inTauri()) return;
   let current = true;
-  void commands.previewStatusline(p).then((lines) => {
+  void commands.previewStatusline(p, "normal", null).then((lines) => {
     if (current) preview = lines;
   });
   return () => {
@@ -46,20 +59,20 @@ $effect(() => {
   };
 });
 
-async function save(patch: Partial<StatuslinePrefs>) {
+async function save(items: Item[]) {
   if (!prefs) return;
-  const next = { ...prefs, ...patch };
+  const next: StatuslinePrefs = { ...prefs, items };
   onerror(
     (await savePrefs(() => commands.setStatuslinePrefs(next))) ? null : "settings-save-failed",
   );
 }
 
 function toggle(kind: SegmentKind, on: boolean) {
-  if (prefs) void save({ segments: toggleSegment(prefs.segments, kind, on) });
+  if (prefs) void save(toggleSegment(prefs.items, kind, on));
 }
 
 function move(index: number, by: -1 | 1) {
-  if (prefs) void save({ segments: moveSegment(prefs.segments, index, by) });
+  if (prefs) void save(moveSegment(prefs.items, index, by));
 }
 </script>
 
@@ -85,7 +98,7 @@ function move(index: number, by: -1 | 1) {
             <Toggle
               checked={row.enabled}
               label={t(segmentLabelKey(row.kind))}
-              disabled={row.enabled && enabledCount === 1}
+              disabled={row.enabled && lastShown}
               onchange={(on) => toggle(row.kind, on)}
             />
             {#if preview.absent.includes(row.kind)}
@@ -122,25 +135,25 @@ function move(index: number, by: -1 | 1) {
     <Field label={t("statusline-layout")} id="statusline-layout">
       <Select
         id="statusline-layout"
-        value={prefs.layout}
+        value={isDouble(prefs.items) ? "double" : "single"}
         options={layouts}
-        onchange={(layout) => save({ layout })}
+        onchange={(layout) => save(setDouble(prefs.items, layout === "double"))}
       />
     </Field>
     <Field label={t("statusline-bar")} hint={t("statusline-bar-hint")}>
       <Toggle
-        checked={prefs.bar}
+        checked={barOn(prefs.items)}
         label={t("statusline-bar")}
         labelHidden
-        onchange={(bar) => save({ bar })}
+        onchange={(bar) => save(setBar(prefs.items, bar))}
       />
     </Field>
     <Field label={t("statusline-pace")} hint={t("statusline-pace-hint")}>
       <Toggle
-        checked={prefs.pace}
+        checked={paceOn(prefs.items)}
         label={t("statusline-pace")}
         labelHidden
-        onchange={(pace) => save({ pace })}
+        onchange={(pace) => save(setPace(prefs.items, pace))}
       />
     </Field>
   </div>

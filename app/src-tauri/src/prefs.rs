@@ -17,7 +17,9 @@ use tokenradar_core::config::{
 use tokenradar_core::domain::{LimitKind, Timestamp, WindowPresence};
 use tokenradar_core::notifier::NotifyPrefs;
 use tokenradar_core::paths::Paths;
-use tokenradar_core::statusline::line::{self, Line, SegmentKind, Span, StatuslinePrefs, Style};
+use tokenradar_core::statusline::line::{
+    self, Format, Group, Item, Line, Preset, SampleState, SegmentKind, Span, StatuslinePrefs, Style,
+};
 use tokenradar_i18n::{HourCycle, Locale};
 
 use crate::tray::system::{self, LocalClock, SystemClock};
@@ -347,28 +349,112 @@ pub struct StatuslinePreview {
     pub absent: Vec<SegmentKind>,
 }
 
-/// The statusline as `prefs` would draw it, on sample values, in the UI language. The 5-hour
-/// window is left out when the account is known not to have it (ADR-041).
-pub fn statusline_preview(app: &AppHandle, prefs: &StatuslinePrefs) -> StatuslinePreview {
-    let five_hour = crate::core_bridge::panel_snapshot(app)
-        .is_none_or(|s| s.presence(&LimitKind::Session, None) != WindowPresence::Absent);
-    let l10n = tokenradar_i18n::Localizer::new(
+/// Whether the account has the 5-hour window, as far as the app knows (ADR-041).
+fn has_five_hour(app: &AppHandle) -> bool {
+    crate::core_bridge::panel_snapshot(app)
+        .is_none_or(|s| s.presence(&LimitKind::Session, None) != WindowPresence::Absent)
+}
+
+fn cli_l10n(app: &AppHandle) -> tokenradar_i18n::Localizer {
+    tokenradar_i18n::Localizer::new(
         app.state::<Prefs>().locale(),
         &[tokenradar_i18n::Domain::Cli],
-    );
-    let sample = Line::sample(Timestamp::now(), five_hour);
+    )
+}
+
+/// The statusline as `prefs` would draw it, on sample values in `state`, in the UI language,
+/// `width` columns wide (`None`: unlimited). The 5-hour window is left out when the account
+/// is known not to have it (ADR-041). Colors follow `prefs.color`, assuming a terminal
+/// without `NO_COLOR` (what Claude Code gives the command, Step 12i).
+pub fn statusline_preview(
+    app: &AppHandle,
+    prefs: &StatuslinePrefs,
+    state: SampleState,
+    width: Option<u16>,
+) -> StatuslinePreview {
+    let five_hour = has_five_hour(app);
+    let prefs = prefs.clone().normalized();
+    let sample = Line::sample_in(Timestamp::now(), five_hour, state);
     let style = Style {
-        color: true,
-        width: None,
+        color: prefs.color.resolve(false),
+        width: width.filter(|w| *w > 0).map(usize::from),
     };
     StatuslinePreview {
-        lines: line::spans(&l10n, &sample, &prefs.clone().normalized(), style),
+        lines: line::spans(&cli_l10n(app), &sample, &prefs, style),
         absent: if five_hour {
             Vec::new()
         } else {
             vec![SegmentKind::FiveHour]
         },
     }
+}
+
+/// One kind of item, for the add-item palette and the item editor.
+#[derive(Debug, Clone, Serialize, Type)]
+pub struct StatuslineKind {
+    pub kind: SegmentKind,
+    pub group: Group,
+    /// The formats it accepts; empty when it has one look.
+    pub formats: Vec<Format>,
+    pub default_format: Option<Format>,
+    /// Whether a label can be set, and the one shown when it is empty.
+    pub labeled: bool,
+    pub default_label: String,
+    pub colored: bool,
+    /// The item alone on the sample, without color; empty for layout items.
+    pub sample: String,
+    /// The account is known not to have it (ADR-041).
+    pub absent: bool,
+}
+
+/// Every kind of item, in palette order.
+pub fn statusline_catalog(app: &AppHandle) -> Vec<StatuslineKind> {
+    let five_hour = has_five_hour(app);
+    let l10n = cli_l10n(app);
+    let sample = Line::sample(Timestamp::now(), true);
+    let plain = Style {
+        color: false,
+        width: None,
+    };
+    SegmentKind::ALL
+        .iter()
+        .map(|&kind| StatuslineKind {
+            kind,
+            group: kind.group(),
+            formats: kind.formats().to_vec(),
+            default_format: kind.default_format(),
+            labeled: kind.labeled(),
+            default_label: line::default_label(&l10n, kind),
+            colored: kind.colored(),
+            sample: if kind.is_layout() {
+                String::new()
+            } else {
+                let alone = StatuslinePrefs {
+                    items: vec![Item::new(kind)],
+                    ..StatuslinePrefs::default()
+                };
+                line::render(&l10n, &sample, &alone, plain)
+            },
+            absent: kind == SegmentKind::FiveHour && !five_hour,
+        })
+        .collect()
+}
+
+/// A built-in starting point.
+#[derive(Debug, Clone, Serialize, Type)]
+pub struct StatuslinePreset {
+    pub preset: Preset,
+    pub prefs: StatuslinePrefs,
+}
+
+pub fn statusline_presets() -> Vec<StatuslinePreset> {
+    Preset::ALL
+        .iter()
+        .map(|&preset| StatuslinePreset {
+            preset,
+            prefs: preset.prefs(),
+        })
+        .collect()
 }
 
 /// Applies `f`, then tells every open window.

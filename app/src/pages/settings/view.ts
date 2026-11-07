@@ -4,6 +4,7 @@
 import type { Args } from "../../lib/i18n/fluent";
 import type {
   ApiConsentView,
+  Item,
   PickError,
   SegmentKind,
   SettingsSection,
@@ -218,7 +219,10 @@ export function updateUi(u: UpdateView, now: number): UpdateUi {
   };
 }
 
-/** Every statusline segment, in the default order (the core's `SegmentKind::ALL`). */
+/**
+ * The segments the 12c picker offers, in the default order. The core knows more kinds
+ * (`statusline_catalog`); the Step 12j editor offers them all.
+ */
 export const SEGMENTS = [
   "five_hour",
   "seven_day",
@@ -229,26 +233,43 @@ export const SEGMENTS = [
   "model",
 ] as const satisfies readonly SegmentKind[];
 
-// Fails to compile when the core adds a segment this list lacks.
-type MissingSegment = Exclude<SegmentKind, (typeof SEGMENTS)[number]>;
-export const SEGMENTS_COMPLETE: [MissingSegment] extends [never] ? true : never = true;
+/** The windows the bar and time-mark switches act on. */
+const WINDOWS: readonly SegmentKind[] = ["five_hour", "seven_day"];
 
 /** The Fluent key naming a segment in the picker. */
 export function segmentLabelKey(kind: SegmentKind): string {
   return `statusline-segment-${kind.replaceAll("_", "-")}`;
 }
 
+/** A new item of `kind` with its defaults; the core fills in the format. */
+export function newItem(kind: SegmentKind): Item {
+  return {
+    kind,
+    enabled: true,
+    format: null,
+    label: "",
+    color: null,
+    reset: true,
+    pace: true,
+    text: "",
+  };
+}
+
 export interface SegmentRow {
   kind: SegmentKind;
   enabled: boolean;
-  /** Position among the enabled segments; `null` when off. */
+  /** Position among the enabled rows; `null` when off. */
   index: number | null;
 }
 
+function picked(items: readonly Item[]): Item[] {
+  return items.filter((i) => i.enabled && (SEGMENTS as readonly SegmentKind[]).includes(i.kind));
+}
+
 /** The rows of the segment picker: the enabled ones in their order, then the rest. */
-export function segmentRows(enabled: readonly SegmentKind[]): SegmentRow[] {
-  const on = enabled.map((kind, index) => ({ kind, enabled: true, index }));
-  const off = SEGMENTS.filter((k) => !enabled.includes(k)).map((kind) => ({
+export function segmentRows(items: readonly Item[]): SegmentRow[] {
+  const on = picked(items).map((i, index) => ({ kind: i.kind, enabled: true, index }));
+  const off = SEGMENTS.filter((k) => !on.some((r) => r.kind === k)).map((kind) => ({
     kind,
     enabled: false,
     index: null,
@@ -256,26 +277,70 @@ export function segmentRows(enabled: readonly SegmentKind[]): SegmentRow[] {
   return [...on, ...off];
 }
 
-/** `enabled` with `kind` switched on (appended) or off. The last one cannot be switched off. */
-export function toggleSegment(
-  enabled: readonly SegmentKind[],
-  kind: SegmentKind,
-  on: boolean,
-): SegmentKind[] {
-  if (on) return enabled.includes(kind) ? [...enabled] : [...enabled, kind];
-  const next = enabled.filter((k) => k !== kind);
-  return next.length === 0 ? [...enabled] : next;
+/** How many items draw a value (not layout items). */
+export function shownCount(items: readonly Item[]): number {
+  return items.filter((i) => i.enabled && !LAYOUT.includes(i.kind)).length;
 }
 
-/** `enabled` with the segment at `index` moved one place up (`-1`) or down (`1`). */
-export function moveSegment(
-  enabled: readonly SegmentKind[],
-  index: number,
-  by: -1 | 1,
-): SegmentKind[] {
-  const to = index + by;
-  const next = [...enabled];
-  if (index < 0 || index >= next.length || to < 0 || to >= next.length) return next;
-  [next[index], next[to]] = [next[to] as SegmentKind, next[index] as SegmentKind];
-  return next;
+const LAYOUT: readonly SegmentKind[] = ["separator", "line_break", "custom_text"];
+
+/**
+ * `items` with `kind` switched on (appended when missing) or off (kept, with its settings).
+ * The last item that draws a value cannot be switched off.
+ */
+export function toggleSegment(items: readonly Item[], kind: SegmentKind, on: boolean): Item[] {
+  if (on) {
+    return items.some((i) => i.kind === kind)
+      ? items.map((i) => (i.kind === kind ? { ...i, enabled: true } : i))
+      : [...items, newItem(kind)];
+  }
+  const target = items.find((i) => i.kind === kind && i.enabled);
+  if (!target || shownCount(items) <= 1) return [...items];
+  return items.map((i) => (i === target ? { ...i, enabled: false } : i));
+}
+
+/** `items` with the picker row at `index` swapped with the one above (`-1`) or below (`1`). */
+export function moveSegment(items: readonly Item[], index: number, by: -1 | 1): Item[] {
+  const rows = picked(items);
+  const a = rows[index];
+  const b = rows[index + by];
+  if (!a || !b) return [...items];
+  return items.map((i) => (i === a ? b : i === b ? a : i));
+}
+
+/** Whether the line has a second line (the 12c double layout). */
+export function isDouble(items: readonly Item[]): boolean {
+  return items.some((i) => i.kind === "line_break" && i.enabled);
+}
+
+/** `items` on one line, or with a line break after the last limit window (12c `double`). */
+export function setDouble(items: readonly Item[], double: boolean): Item[] {
+  const flat = items.filter((i) => i.kind !== "line_break");
+  if (!double) return flat;
+  let at = -1;
+  flat.forEach((i, n) => {
+    if (i.enabled && (WINDOWS.includes(i.kind) || i.kind === "scoped")) at = n;
+  });
+  if (at < 0 || at === flat.length - 1) return [...items];
+  return [...flat.slice(0, at + 1), newItem("line_break"), ...flat.slice(at + 1)];
+}
+
+/** Whether the limit windows draw a bar. */
+export function barOn(items: readonly Item[]): boolean {
+  return items.filter((i) => WINDOWS.includes(i.kind)).every((i) => i.format !== "percent");
+}
+
+export function setBar(items: readonly Item[], on: boolean): Item[] {
+  return items.map((i) =>
+    WINDOWS.includes(i.kind) ? { ...i, format: on ? "bar" : "percent" } : i,
+  );
+}
+
+/** Whether the limit windows show the time mark. */
+export function paceOn(items: readonly Item[]): boolean {
+  return items.filter((i) => WINDOWS.includes(i.kind)).every((i) => i.pace);
+}
+
+export function setPace(items: readonly Item[], on: boolean): Item[] {
+  return items.map((i) => (WINDOWS.includes(i.kind) ? { ...i, pace: on } : i));
 }

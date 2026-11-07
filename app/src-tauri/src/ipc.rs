@@ -13,10 +13,11 @@ use tokenradar_core::config::{DataConfig, LocalePref, LogLevel, PanelView, Theme
 use tokenradar_core::events::CoreEvent;
 use tokenradar_core::limits::{PanelDetail, PanelSnapshot};
 use tokenradar_core::notifier::{self, NotifyPrefs};
-use tokenradar_core::statusline::line::StatuslinePrefs;
+use tokenradar_core::statusline::line::{Imported, SampleState, StatuslinePrefs};
 
 use crate::prefs::{
-    self, Prefs, PrefsChanged, PrefsView, SettingsChanged, SettingsView, StatuslinePreview,
+    self, Prefs, PrefsChanged, PrefsView, SettingsChanged, SettingsView, StatuslineKind,
+    StatuslinePreset, StatuslinePreview,
 };
 use crate::privacy::{self, AboutView, Link, StorageView};
 use crate::settings::{self, SettingsSection, SettingsSectionRequested};
@@ -60,6 +61,10 @@ pub fn builder() -> Builder<tauri::Wry> {
             set_panel_warm_ttl,
             set_statusline_prefs,
             preview_statusline,
+            statusline_catalog,
+            list_statusline_presets,
+            export_statusline,
+            import_statusline,
             get_autostart,
             set_autostart,
             send_test_notification,
@@ -229,11 +234,45 @@ async fn set_statusline_prefs(app: AppHandle, prefs: StatuslinePrefs) -> Result<
     prefs::set_statusline(&app, prefs)
 }
 
-/// The statusline drawn with `prefs` on sample values, as painted spans per line.
+/// The statusline drawn with `prefs` on sample values in `state`, `width` columns wide, as
+/// painted spans per line.
 #[tauri::command]
 #[specta::specta]
-async fn preview_statusline(app: AppHandle, prefs: StatuslinePrefs) -> StatuslinePreview {
-    prefs::statusline_preview(&app, &prefs)
+async fn preview_statusline(
+    app: AppHandle,
+    prefs: StatuslinePrefs,
+    state: SampleState,
+    width: Option<u16>,
+) -> StatuslinePreview {
+    prefs::statusline_preview(&app, &prefs, state, width)
+}
+
+/// Every kind of statusline item, for the add-item palette and the item editor.
+#[tauri::command]
+#[specta::specta]
+async fn statusline_catalog(app: AppHandle) -> Vec<StatuslineKind> {
+    prefs::statusline_catalog(&app)
+}
+
+/// The built-in statusline presets.
+#[tauri::command]
+#[specta::specta]
+async fn list_statusline_presets() -> Vec<StatuslinePreset> {
+    prefs::statusline_presets()
+}
+
+/// `prefs` as a `[statusline]` TOML table to share.
+#[tauri::command]
+#[specta::specta]
+async fn export_statusline(prefs: StatuslinePrefs) -> String {
+    prefs.normalized().export_toml()
+}
+
+/// Reads a shared `[statusline]` table without saving it; the error is the TOML parser's.
+#[tauri::command]
+#[specta::specta]
+async fn import_statusline(text: String) -> Result<Imported, String> {
+    StatuslinePrefs::import_toml(&text).map_err(|e| e.message().to_owned())
 }
 
 /// Whether the app starts with Windows. The OS entry is the truth, not `config.toml`: the

@@ -24,8 +24,19 @@ export const commands = {
 	setLogLevel: (level: LogLevel) => typedError<PrefsView, string>(__TAURI_INVOKE("set_log_level", { level })),
 	setPanelWarmTtl: (seconds: number) => typedError<PrefsView, string>(__TAURI_INVOKE("set_panel_warm_ttl", { seconds })),
 	setStatuslinePrefs: (prefs: StatuslinePrefs) => typedError<PrefsView, string>(__TAURI_INVOKE("set_statusline_prefs", { prefs })),
-	/**  The statusline drawn with `prefs` on sample values, as painted spans per line. */
-	previewStatusline: (prefs: StatuslinePrefs) => __TAURI_INVOKE<StatuslinePreview>("preview_statusline", { prefs }),
+	/**
+	 *  The statusline drawn with `prefs` on sample values in `state`, `width` columns wide, as
+	 *  painted spans per line.
+	 */
+	previewStatusline: (prefs: StatuslinePrefs, state: SampleState, width: number | null) => __TAURI_INVOKE<StatuslinePreview>("preview_statusline", { prefs, state, width }),
+	/**  Every kind of statusline item, for the add-item palette and the item editor. */
+	statuslineCatalog: () => __TAURI_INVOKE<StatuslineKind[]>("statusline_catalog"),
+	/**  The built-in statusline presets. */
+	listStatuslinePresets: () => __TAURI_INVOKE<StatuslinePreset[]>("list_statusline_presets"),
+	/**  `prefs` as a `[statusline]` TOML table to share. */
+	exportStatusline: (prefs: StatuslinePrefs) => __TAURI_INVOKE<string>("export_statusline", { prefs }),
+	/**  Reads a shared `[statusline]` table without saving it; the error is the TOML parser's. */
+	importStatusline: (text: string) => typedError<Imported, string>(__TAURI_INVOKE("import_statusline", { text })),
 	/**
 	 *  Whether the app starts with Windows. The OS entry is the truth, not `config.toml`: the
 	 *  user can also turn it off in Task Manager.
@@ -141,6 +152,9 @@ export type AccountView = {
 	extra_usage_enabled: boolean | null,
 };
 
+/**  The 16 terminal colors. The terminal's own palette decides what they look like. */
+export type AnsiColor = "black" | "red" | "green" | "yellow" | "blue" | "magenta" | "cyan" | "white" | "gray" | "bright_red" | "bright_green" | "bright_yellow" | "bright_blue" | "bright_magenta" | "bright_cyan" | "bright_white";
+
 export type ApiConsentView = {
 	granted: boolean,
 	/**  RFC 3339, when the consent was given. */
@@ -207,6 +221,14 @@ export type ClaudeModView =
 { state: "missing" } | { state: "not_installed" } | { state: "installed"; 
 /**  The mod's folder, as listed in `CLAUDE_CODE_PLUGIN_DIRS`. */
 path: string };
+
+/**
+ *  Whether the line is colored. Claude Code does not set `NO_COLOR` for the statusline
+ *  command (observed 2026-11-07), so `auto` keeps the colors there.
+ */
+export type ColorMode = 
+/**  Colors unless `NO_COLOR` is set. */
+"auto" | "always" | "never";
 
 export type Confidence = "low" | "medium" | "high";
 
@@ -306,6 +328,29 @@ export type FocusView = {
 	points: ChartPoint[],
 };
 
+/**  How an item shows its value. Each kind accepts some of these; see [`SegmentKind::formats`]. */
+export type Format = 
+/**  The 8-cell bar and the percentage. */
+"bar" | "percent" | 
+/**  `15k/200k`. */
+"fraction" | "two_decimals" | "four_decimals" | 
+/**  Model: the display name. Duration: `1h48m`. Session id: 8 characters. */
+"short" | 
+/**  Model: the id. Paths: the whole path. Session id: all of it. Tokens: every digit. */
+"full" | 
+/**  `15.5k`. */
+"compact" | 
+/**  `1:48:03`. */
+"hms" | 
+/**  `+156 -23`. */
+"both" | 
+/**  `+133`. */
+"net" | 
+/**  The last folder. */
+"basename" | 
+/**  The path with the home folder as `~`. */
+"home";
+
 export type Freshness = 
 /**  Under 10 minutes old. */
 "fresh" | 
@@ -313,6 +358,19 @@ export type Freshness =
 "aging" | 
 /**  Over 30 minutes. */
 "stale";
+
+/**
+ *  Where an item belongs: the add-item palette groups by it, and a narrow terminal drops
+ *  session and project items before limits.
+ */
+export type Group = "limit" | "session" | "project" | "layout";
+
+/**  The result of [`StatuslinePrefs::import_toml`]. */
+export type Imported = {
+	prefs: StatuslinePrefs,
+	/**  Keys and item kinds that were skipped. */
+	ignored: string[],
+};
 
 export type IndexMilestone = 
 /**
@@ -344,8 +402,27 @@ export type IndexState = {
 	drift: SchemaDriftView | null,
 };
 
-/**  One line, or limits on the first and the session on the second. */
-export type Layout = "single" | "double";
+/**  One item of the line. */
+export type Item = {
+	kind: SegmentKind,
+	/**  Off: kept in the list but not drawn. */
+	enabled: boolean,
+	/**  `None` only for kinds with one way to show them. */
+	format: Format | null,
+	/**  Shown instead of the default label; empty: the default. */
+	label: string,
+	/**
+	 *  `None`: the automatic color. On limits and the context window this is the color below
+	 *  the warning threshold; the warning and critical colors always win (ADR-049).
+	 */
+	color: AnsiColor | null,
+	/**  Limit windows: the reset countdown. */
+	reset: boolean,
+	/**  Limit windows: the time mark and the elapsed time (ADR-044). */
+	pace: boolean,
+	/**  `custom_text`: the text. `separator`: the glyph. */
+	text: string,
+};
 
 /**  Signals for the notifier (Step 11), which applies its own rules, hysteresis and quiet hours. */
 export type LimitEvent = 
@@ -473,7 +550,7 @@ export type PaceView = {
 	warn: boolean,
 };
 
-/**  How a span is drawn. The CLI maps it to ANSI codes; the settings preview to theme colors. */
+/**  How a span is drawn. The CLI maps it to ANSI codes; the settings preview to colors. */
 export type Paint = "plain" | 
 /**  Separators, estimates and stale values. */
 "dim" | "ok" | "warn" | "crit";
@@ -555,6 +632,16 @@ export type PrefsView = {
 	statusline: StatuslinePrefs,
 };
 
+export type Preset = 
+/**  The 12c line. */
+"default" | 
+/**  The limits and nothing else. */
+"minimal" | 
+/**  Limits and the session on the first line, the project on the second. */
+"detailed" | 
+/**  The 12c double layout: limits first, the session second. */
+"two_line" | "powerline";
+
 export type Projection = {
 	/**  Percentage points per minute, never negative. */
 	rate_per_min: number | null,
@@ -591,6 +678,11 @@ export type Rule = "threshold" | "projection" |
 /**  "Send test notification" in the settings. Never recorded. */
 "test";
 
+/**  The state the settings preview draws its sample in. */
+export type SampleState = "normal" | "warn" | "crit" | 
+/**  The app's values are older than [`FRESH_MS`]. */
+"stale";
+
 /**  Unusable records seen since start, summed over indexing passes. */
 export type SchemaDriftView = {
 	unknown_count: number,
@@ -601,10 +693,16 @@ export type SchemaDriftView = {
 /**  What a scoped limit applies to. Stored as `model:<name>` or `surface:<name>`. */
 export type Scope = ({ model: string }) & { surface?: never } | ({ surface: string }) & { model?: never };
 
-/**  One part of the line. The names are the `segments` values in `config.toml`. */
+/**  One kind of item. The names are the `kind` values in `config.toml`. */
 export type SegmentKind = "five_hour" | "seven_day" | 
 /**  Weekly limits of one model or surface, e.g. Fable's. */
-"scoped" | "context" | "session_share" | "cost" | "model";
+"scoped" | "context" | "session_share" | "cost" | "model" | "tokens_in" | "tokens_out" | "duration" | "api_duration" | "lines_changed" | "vim_mode" | "version" | "agent_name" | "session_id" | "cwd" | "project_dir" | "git_branch" | 
+/**  A separator glyph of the user's choice. */
+"separator" | 
+/**  Starts a new output line. */
+"line_break" | 
+/**  A fixed text of the user's choice. */
+"custom_text";
 
 /**  Row id in `sessions`. */
 export type SessionId = number;
@@ -669,6 +767,15 @@ export type Source = "statusline" | "api" |
 export type Span = {
 	text: string,
 	paint: Paint,
+	/**  A color of the user's (or a Powerline block's text); replaces the paint's color. */
+	fg: AnsiColor | null,
+	/**  A Powerline block. */
+	bg: AnsiColor | null,
+	/**
+	 *  The index of the item in `StatuslinePrefs::items` the span belongs to; `None` for
+	 *  separators and joints between items.
+	 */
+	item: number | null,
 };
 
 export type StatuslineAction = "install" | 
@@ -686,6 +793,23 @@ export type StatuslineError = { error: "no_directory" } | { error: "cli_missing"
 /**  The plan was already applied or replaced by a newer one. */
 { error: "stale_plan" } | { error: "io"; message: string };
 
+/**  One kind of item, for the add-item palette and the item editor. */
+export type StatuslineKind = {
+	kind: SegmentKind,
+	group: Group,
+	/**  The formats it accepts; empty when it has one look. */
+	formats: Format[],
+	default_format: Format | null,
+	/**  Whether a label can be set, and the one shown when it is empty. */
+	labeled: boolean,
+	default_label: string,
+	colored: boolean,
+	/**  The item alone on the sample, without color; empty for layout items. */
+	sample: string,
+	/**  The account is known not to have it (ADR-041). */
+	absent: boolean,
+};
+
 /**  A planned `settings.json` change, shown before anything is written. */
 export type StatuslinePlanView = { outcome: "ready"; 
 /**  Pass back to `apply_statusline`; only this plan can be applied. */
@@ -697,30 +821,19 @@ chained_mangled: boolean;
 /**  Uninstall: the previous value comes back. */
 restores_previous: boolean } | { outcome: "already_installed" } | { outcome: "not_installed" };
 
-/**
- *  `[statusline]` in `config.toml`: what the line shows.
- * 
- *  ```toml
- *  [statusline]
- *  segments = ["five_hour", "seven_day", "scoped", "context", "session_share", "cost"]
- *  layout = "single"   # single | double
- *  bar = true
- *  pace = true
- *  ```
- * 
- *  Reading never fails: unknown segment names are skipped, an unknown layout is `single`, and
- *  a list left empty (or holding only unknown names) is the default.
- */
+/**  What the line shows. */
 export type StatuslinePrefs = {
-	segments: SegmentKind[],
-	layout: Layout,
-	/**  The 8-cell bar on the 5-hour and weekly windows. Dropped without color and when narrow. */
-	bar: boolean,
-	/**
-	 *  How much of the window's time has passed: a `│` mark on the bar and `⏱43%` after the
-	 *  value (ADR-044). Added in 0.1.1; absent from older files, so it defaults to on.
-	 */
-	pace: boolean,
+	items: Item[],
+	theme: Theme,
+	/**  Between two values in the plain theme; empty: a space. */
+	separator: string,
+	color: ColorMode,
+};
+
+/**  A built-in starting point. */
+export type StatuslinePreset = {
+	preset: Preset,
+	prefs: StatuslinePrefs,
 };
 
 /**  The statusline preview in the settings window. */
@@ -753,6 +866,12 @@ export type StorageView = {
 	logs_bytes: number,
 	portable: boolean,
 };
+
+export type Theme = "plain" | 
+/**  Colored blocks joined by U+E0B0; needs a Nerd Font. */
+"powerline" | 
+/**  The same with round joints (U+E0B4). */
+"powerline_round";
 
 /**  The user's theme choice; `System` follows the operating system's app theme. */
 export type ThemePref = "system" | "light" | "dark";

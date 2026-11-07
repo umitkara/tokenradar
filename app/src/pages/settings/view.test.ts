@@ -1,17 +1,24 @@
 import { describe, expect, it } from "vitest";
-import type { ApiConsentView, UpdateView } from "../../lib/ipc/bindings";
+import type { ApiConsentView, Item, SegmentKind, UpdateView } from "../../lib/ipc/bindings";
 import {
   addThreshold,
   apiStatus,
+  barOn,
   consentAge,
+  isDouble,
   MAX_THRESHOLDS,
   moveSegment,
+  newItem,
   optionsWith,
+  paceOn,
   parseThreshold,
   removeThreshold,
   SEGMENTS,
   segmentLabelKey,
   segmentRows,
+  setBar,
+  setDouble,
+  setPace,
   sizeMessage,
   targetFor,
   toggleSegment,
@@ -178,8 +185,11 @@ describe("updateUi", () => {
 });
 
 describe("statusline segments", () => {
+  const kinds = (items: Item[]) => items.filter((i) => i.enabled).map((i) => i.kind);
+  const items = (...k: SegmentKind[]) => k.map(newItem);
+
   it("lists the enabled segments in order, then the rest", () => {
-    const rows = segmentRows(["cost", "seven_day"]);
+    const rows = segmentRows([...items("cost", "seven_day"), newItem("git_branch")]);
     expect(rows.slice(0, 3)).toEqual([
       { kind: "cost", enabled: true, index: 0 },
       { kind: "seven_day", enabled: true, index: 1 },
@@ -190,14 +200,34 @@ describe("statusline segments", () => {
   });
 
   it("appends a switched-on segment and keeps the last one on", () => {
-    expect(toggleSegment(["cost"], "model", true)).toEqual(["cost", "model"]);
-    expect(toggleSegment(["cost", "model"], "cost", false)).toEqual(["model"]);
-    expect(toggleSegment(["cost"], "cost", false)).toEqual(["cost"]);
+    expect(kinds(toggleSegment(items("cost"), "model", true))).toEqual(["cost", "model"]);
+    const off = toggleSegment(items("cost", "model"), "cost", false);
+    expect(kinds(off)).toEqual(["model"]);
+    expect(kinds(toggleSegment(off, "cost", true))).toEqual(["cost", "model"]);
+    const last = [...items("cost"), newItem("line_break")];
+    expect(kinds(toggleSegment(last, "cost", false))).toEqual(["cost", "line_break"]);
   });
 
-  it("moves a segment within bounds", () => {
-    expect(moveSegment(["a", "b", "c"] as never, 1, -1)).toEqual(["b", "a", "c"]);
-    expect(moveSegment(["a", "b"] as never, 1, 1)).toEqual(["a", "b"]);
-    expect(moveSegment(["a", "b"] as never, 0, -1)).toEqual(["a", "b"]);
+  it("moves a segment within bounds, past items the picker does not show", () => {
+    const list = items("seven_day", "git_branch", "cost");
+    expect(moveSegment(list, 1, -1).map((i) => i.kind)).toEqual([
+      "cost",
+      "git_branch",
+      "seven_day",
+    ]);
+    expect(moveSegment(list, 1, 1)).toEqual(list);
+    expect(moveSegment(list, 0, -1)).toEqual(list);
+  });
+
+  it("maps the 12c layout, bar and time mark onto the items", () => {
+    const list = items("five_hour", "seven_day", "cost");
+    const double = setDouble(list, true);
+    expect(double.map((i) => i.kind)).toEqual(["five_hour", "seven_day", "line_break", "cost"]);
+    expect(isDouble(double)).toBe(true);
+    expect(setDouble(double, false)).toEqual(list);
+    expect(barOn(list)).toBe(true);
+    expect(barOn(setBar(list, false))).toBe(false);
+    expect(setBar(list, false)[2]?.format).toBeNull();
+    expect(paceOn(setPace(list, false))).toBe(false);
   });
 });
