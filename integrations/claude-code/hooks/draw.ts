@@ -259,18 +259,17 @@ const RASTER_TONE: Record<'ok' | 'warn' | 'crit', number> = {
 }
 const RASTER_TRACK = 0x7c8186
 const DEFAULT_COLOR = 0x01000000
-/** Braille dot bits, left and right column, top to bottom. */
-const BRAILLE = [
-  [0x01, 0x02, 0x04, 0x40],
-  [0x08, 0x10, 0x20, 0x80],
-]
 const BLOCKS = [0x20, 0x2581, 0x2582, 0x2583, 0x2584, 0x2585, 0x2586, 0x2587, 0x2588]
 
+/** The time area's shade: dimmer than the track, readable on light and dark terminals. */
+const RASTER_TIME = 0x5a5f64
+
 /**
- * The chart as Raster cells (terminal): the used share as a column chart of
- * eighth blocks, the time line as a braille line (2 × 4 dots a cell, so it
- * rises smoothly instead of in cell-high steps), day boundaries as dotted columns, in
- * `columns` × `rows` cells, base64 as `RasterProps.cells` takes them.
+ * The chart as Raster cells (terminal), drawn like the bars: in each column the
+ * time gone (the time line, up to now) as a gray column of eighth blocks, the
+ * use in front of it in the level's color, day boundaries as dotted columns above both, in
+ * `columns` × `rows` cells, base64 as `RasterProps.cells` takes them. A cell
+ * where the use ends below the time keeps the time's gray as its background.
  */
 export function chartCells(
   series: Series,
@@ -287,36 +286,37 @@ export function chartCells(
   const span = length / columns
   const cuts = grid(series, tzOffsetMin).map(at => Math.floor((at - series.start) / span))
   const words = new Uint32Array(columns * rows * 3)
+  const eighths = (p: number) => Math.round((Math.min(Math.max(p, 0), 100) / 100) * rows * 8)
   let p = 0
   let used = 0
   for (let c = 0; c < columns; c++) {
     const end = series.start + (c + 1) * span
     const past = series.start + c * span <= now
     while (p < pts.length && pts[p]![0] <= Math.min(end, now)) used = pts[p++]![1]
-    const eighths = past ? (Math.min(Math.max(used, 0), 100) / 100) * rows * 8 : 0
-    // The time line's braille dots in this column: one per half cell, by row.
-    const dots = new Array<number>(rows).fill(0)
-    for (let s = 0; s < 2; s++) {
-      const up = Math.min(rows * 4 - 1, Math.floor(((2 * c + s + 0.5) / (2 * columns)) * rows * 4))
-      const down = rows * 4 - 1 - up
-      dots[down >> 2]! |= BRAILLE[s]![down & 3]!
-    }
+    const u = past ? eighths(used) : 0
+    const time = past ? eighths(((c + 1) / columns) * 100) : 0
     for (let r = 0; r < rows; r++) {
-      const bottom = rows - 1 - r
-      const n = Math.min(8, Math.max(0, Math.round(eighths - bottom * 8)))
-      let glyph = BLOCKS[n]!
-      let color = n > 0 ? fg : DEFAULT_COLOR
-      if (n === 0 && dots[r]! > 0) {
-        glyph = 0x2800 + dots[r]!
-        color = RASTER_TRACK
-      } else if (n === 0 && cuts.includes(c)) {
+      const bottom = (rows - 1 - r) * 8
+      const nu = Math.min(8, Math.max(0, u - bottom))
+      const nt = Math.min(8, Math.max(0, time - bottom))
+      let glyph = 0x20
+      let color = DEFAULT_COLOR
+      let back = DEFAULT_COLOR
+      if (nu > 0) {
+        glyph = BLOCKS[nu]!
+        color = fg
+        if (nu < 8 && nt === 8) back = RASTER_TIME
+      } else if (nt > 0) {
+        glyph = BLOCKS[nt]!
+        color = RASTER_TIME
+      } else if (cuts.includes(c)) {
         glyph = 0x250a
         color = RASTER_TRACK
       }
       const i = (r * columns + c) * 3
       words[i] = glyph
       words[i + 1] = color
-      words[i + 2] = DEFAULT_COLOR
+      words[i + 2] = back
     }
   }
   return base64(new Uint8Array(words.buffer))

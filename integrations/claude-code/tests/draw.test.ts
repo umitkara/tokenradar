@@ -173,3 +173,31 @@ test('live sessions are named by name or folder, never by title', () => {
   ])
   expect(r?.share).toBe(4)
 })
+
+test('the Raster chart draws the time gone as gray blocks behind the use', () => {
+  // Decode the cells back to words: [glyph, fg, bg] per cell, row-major.
+  const raw = chartCells(series, weekly(), 0, NOW, 14, 6, 180)
+  const B = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+  const bytes: number[] = []
+  for (let i = 0; i < raw.length; i += 4) {
+    const n = [0, 1, 2, 3].map(k => (raw[i + k] === '=' ? 0 : B.indexOf(raw[i + k]!)))
+    const v = (n[0]! << 18) | (n[1]! << 12) | (n[2]! << 6) | n[3]!
+    bytes.push((v >> 16) & 255, (v >> 8) & 255, v & 255)
+  }
+  const word = (cell: number, k: number) => {
+    const o = (cell * 3 + k) * 4
+    return (bytes[o]! | (bytes[o + 1]! << 8) | (bytes[o + 2]! << 16) | (bytes[o + 3]! << 24)) >>> 0
+  }
+  const cell = (r: number, c: number) => r * 14 + c
+  // Now is 70 % of the window, column 9: the time line is gray up to there
+  // (above the use, full blocks), and nothing is drawn of it after now.
+  expect(word(cell(3, 9), 1)).toBe(0x5a5f64)
+  expect(word(cell(3, 9), 0)).toBe(0x2588)
+  expect(word(cell(5, 12), 1)).not.toBe(0x5a5f64)
+  // No braille or dot glyphs are left anywhere.
+  for (let i = 0; i < 14 * 6; i++) {
+    const g = word(i, 0)
+    expect(g >= 0x2800 && g <= 0x28ff).toBe(false)
+    expect(g).not.toBe(0x00b7)
+  }
+})

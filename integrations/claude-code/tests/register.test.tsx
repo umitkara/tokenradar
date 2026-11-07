@@ -340,7 +340,7 @@ test('the pane draws cards, strip, chart, sessions and context on every surface'
     expect(texts).toContain('Zaman şeridi · Haftalık · geçen zaman %70,2')
     expect(all).toContain('▲ şimdi')
     expect(all).toContain('     %14     %29')
-    expect(all).toContain('sıfırlanma Pzt 17:00')
+    expect(all).toContain('Sıfırlanma Pzt 17:00 · ┊ gece yarısı')
     // Live sessions by name or folder, never by title; this one first.
     expect(all).toContain('● bu oturum')
     expect(all).toContain('beta')
