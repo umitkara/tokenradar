@@ -12,6 +12,7 @@
 //! locale = "tr"          # system | en | tr
 //! theme = "dark"         # system | light | dark
 //! panel_warm_ttl = 60    # seconds a hidden panel stays ready
+//! panel_view = "detail"  # summary | detail: the panel opens on the view last chosen
 //! claude_config_dir = 'D:\Claude'   # chosen in the settings; the primary account
 //!
 //! [notifications]        # see `notifier::NotifyPrefs`
@@ -124,6 +125,8 @@ pub struct GeneralConfig {
     pub theme: Option<String>,
     /// Seconds; see [`GeneralConfig::panel_warm_ttl_s`].
     pub panel_warm_ttl: Option<i64>,
+    /// `summary` or `detail`; anything else means `summary`.
+    pub panel_view: Option<String>,
     /// The Claude Code directory picked in the settings. It becomes the primary account (the
     /// one the panel shows); `~/.claude` and `CLAUDE_CONFIG_DIR` are still watched beside it.
     pub claude_config_dir: Option<PathBuf>,
@@ -152,6 +155,13 @@ impl GeneralConfig {
             Some("light") => ThemePref::Light,
             Some("dark") => ThemePref::Dark,
             _ => ThemePref::System,
+        }
+    }
+
+    pub fn panel_view(&self) -> PanelView {
+        match self.panel_view.as_deref() {
+            Some("detail") => PanelView::Detail,
+            _ => PanelView::Summary,
         }
     }
 
@@ -191,6 +201,25 @@ pub enum ThemePref {
     System,
     Light,
     Dark,
+}
+
+/// The tray panel's two views (ADR-048): the ring and rows, or the report with the time strip
+/// and the chart.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "snake_case")]
+pub enum PanelView {
+    #[default]
+    Summary,
+    Detail,
+}
+
+impl PanelView {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Summary => "summary",
+            Self::Detail => "detail",
+        }
+    }
 }
 
 impl ThemePref {

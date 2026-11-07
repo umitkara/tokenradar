@@ -197,6 +197,7 @@ pub(crate) mod tests {
             scope: None,
             percent,
             resets_at: None,
+            window_start: None,
             severity: Severity::of(percent),
             provider_severity: None,
             source: Source::Api,

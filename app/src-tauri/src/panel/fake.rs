@@ -9,14 +9,14 @@ use std::sync::Mutex;
 
 use tauri::{AppHandle, Manager};
 use tokenradar_core::domain::{
-    AccountId, LimitKind, LimitRef, MicroUsd, Scope, SessionId, Source, Timestamp,
+    AccountId, LimitKind, LimitObservation, LimitRef, MicroUsd, Scope, SessionId, Source, Timestamp,
 };
 use tokenradar_core::events::CoreEvent;
 use tokenradar_core::indexer::{IndexPhase, IndexProgress};
 use tokenradar_core::limits::{
     AccountView, ApiStatusView, Confidence, EstimateReason, Freshness, IndexState, LimitView,
     PanelSnapshot, Projection, RateMethod, SchemaDriftView, SessionShareView, Severity,
-    StatuslineState,
+    StatuslineState, window_length_ms,
 };
 use tokenradar_core::live_sessions::LiveStatus;
 use tokenradar_core::providers::claude::usage_api::{ApiState, PollDiagnostics};
@@ -119,11 +119,14 @@ impl L {
             10..30 => Freshness::Aging,
             _ => Freshness::Stale,
         };
+        let window_start = window_length_ms(&self.kind)
+            .map(|length| at(self.resets_in_min).saturating_sub_millis(length));
         LimitView {
             kind: self.kind,
             scope: self.scope.map(|s| Scope::Model(s.to_owned())),
             percent: self.percent,
             resets_at: Some(at(self.resets_in_min)),
+            window_start,
             severity: Severity::of(self.percent),
             provider_severity: None,
             source: self.source,
@@ -168,7 +171,9 @@ fn session(
         project: Some(project.to_owned()),
         status,
         share_percent: Some(share),
-        cost: MicroUsd(0),
+        // A made-up price per point of share, so the detail view has costs to show.
+        #[allow(clippy::cast_possible_truncation)]
+        cost: MicroUsd((share * 140_000.0) as i64),
         tokens_per_min: rate,
     }
 }
@@ -473,4 +478,50 @@ fn build(scene: &str) -> Option<PanelSnapshot> {
         _ => base(normal_limits(), live()),
     };
     Some(snapshot)
+}
+
+/// Made-up stored readings for the scene's limits, so the detail view's chart has a curve:
+/// use grows during the day (09–23 UTC) and rests at night, ending at the panel's value.
+pub fn history(snapshot: &PanelSnapshot) -> Vec<LimitObservation> {
+    const HOUR: i64 = 60 * MIN;
+    let now = Timestamp::now().as_millis();
+    let account = snapshot.account.as_ref().map_or(AccountId(1), |a| a.id);
+    let mut out = Vec::new();
+    for l in &snapshot.limits {
+        let (Some(resets_at), Some(length)) = (l.resets_at, window_length_ms(&l.kind)) else {
+            continue;
+        };
+        if l.source == Source::Estimate {
+            continue;
+        }
+        let start = resets_at.as_millis() - length;
+        let step = if length > 24 * HOUR { HOUR } else { 2 * MIN };
+        let busy = |at: i64| (9..23).contains(&(at.rem_euclid(24 * HOUR) / HOUR));
+        let last = l.observed_at.as_millis().min(now);
+        let steps: Vec<i64> = (start..=last)
+            .step_by(usize::try_from(step).unwrap_or(1))
+            .collect();
+        let total = steps.iter().filter(|at| busy(**at)).count().max(1);
+        let mut done = 0_u32;
+        for at in steps {
+            if busy(at) {
+                done += 1;
+            }
+            #[allow(clippy::cast_precision_loss)]
+            let percent = l.percent * f64::from(done) / total as f64;
+            out.push(LimitObservation {
+                account,
+                kind: l.kind.clone(),
+                scope: l.scope.clone(),
+                percent: (percent * 10.0).round() / 10.0,
+                resets_at: Some(resets_at),
+                severity: None,
+                source: l.source,
+                session_uuid: None,
+                observed_at: Timestamp::from_millis(at),
+            });
+        }
+    }
+    out.sort_by_key(|o| o.observed_at);
+    out
 }

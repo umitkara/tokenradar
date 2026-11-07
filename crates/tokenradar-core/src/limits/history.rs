@@ -66,36 +66,13 @@ pub fn window_series(
             continue;
         }
         let start = resets_at.saturating_sub_millis(length);
-        let bucket = (length / HISTORY_BUCKETS).max(1);
-        let mut points: Vec<HistoryPoint> = Vec::new();
-        let mut last_bucket = None;
-        for o in snapshots {
-            let same_window = o.resets_at.is_some_and(|r| {
-                (r.as_millis() - resets_at.as_millis()).abs() <= WINDOW_MATCH_TOLERANCE_MS
-            });
-            if LimitRef::of(o) != limit
-                || !same_window
-                || o.observed_at < start
-                || o.observed_at > now
-            {
-                continue;
-            }
-            let point = HistoryPoint {
+        let points = window_readings(&limit, resets_at, length, snapshots, now)
+            .map(|o| HistoryPoint {
                 at: o.observed_at,
                 percent: o.percent,
                 source: o.source.as_str().to_owned(),
-            };
-            let b = (o.observed_at.as_millis() - start.as_millis()) / bucket;
-            if last_bucket == Some(b) {
-                // Snapshots come oldest first: the later reading of a bucket wins.
-                if let Some(slot) = points.last_mut() {
-                    *slot = point;
-                }
-            } else {
-                points.push(point);
-                last_bucket = Some(b);
-            }
-        }
+            })
+            .collect();
         out.push(HistorySeries {
             kind: newest.kind.as_str().to_owned(),
             scope: newest.scope.as_ref().map(ToString::to_string),
@@ -105,6 +82,42 @@ pub fn window_series(
         });
     }
     out
+}
+
+/// `limit`'s readings in the window ending at `resets_at`, oldest first: those of the same
+/// window only (a `resets_at` within the match tolerance), from its start up to `now`, the
+/// last of each of [`HISTORY_BUCKETS`] buckets. `snapshots` must come oldest first.
+pub fn window_readings<'a>(
+    limit: &LimitRef,
+    resets_at: Timestamp,
+    length: i64,
+    snapshots: &'a [LimitObservation],
+    now: Timestamp,
+) -> impl Iterator<Item = &'a LimitObservation> {
+    let start = resets_at.saturating_sub_millis(length);
+    let bucket = (length / HISTORY_BUCKETS).max(1);
+    let mut kept: Vec<&LimitObservation> = Vec::new();
+    let mut last_bucket = None;
+    for o in snapshots {
+        let same_window = o.resets_at.is_some_and(|r| {
+            (r.as_millis() - resets_at.as_millis()).abs() <= WINDOW_MATCH_TOLERANCE_MS
+        });
+        if LimitRef::of(o) != *limit || !same_window || o.observed_at < start || o.observed_at > now
+        {
+            continue;
+        }
+        let b = (o.observed_at.as_millis() - start.as_millis()) / bucket;
+        if last_bucket == Some(b) {
+            // The later reading of a bucket wins.
+            if let Some(slot) = kept.last_mut() {
+                *slot = o;
+            }
+        } else {
+            kept.push(o);
+            last_bucket = Some(b);
+        }
+    }
+    kept.into_iter()
 }
 
 #[cfg(test)]

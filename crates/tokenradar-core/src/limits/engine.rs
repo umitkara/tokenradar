@@ -747,6 +747,7 @@ fn limit_views(
             scope: obs.scope.clone(),
             percent: obs.percent,
             resets_at: obs.resets_at,
+            window_start: track.window_start(),
             severity: Severity::of(obs.percent),
             provider_severity: obs.severity.clone(),
             source: obs.source,

@@ -27,6 +27,7 @@ fn limit(kind: LimitKind, percent: f64, resets_in: i64) -> LimitView {
         kind,
         percent,
         resets_at: Some(at(resets_in)),
+        window_start: None,
         severity: Severity::of(percent),
         provider_severity: None,
         source: Source::Statusline,

@@ -80,6 +80,9 @@ pub struct LimitView {
     pub scope: Option<Scope>,
     pub percent: f64,
     pub resets_at: Option<Timestamp>,
+    /// Start of the window `resets_at` ends, for the time mark on the bar (ADR-044, ADR-048);
+    /// the reset itself for an estimate after one. `None` for windowless limits.
+    pub window_start: Option<Timestamp>,
     /// From our thresholds; the provider's own label is `provider_severity`.
     pub severity: Severity,
     pub provider_severity: Option<String>,

@@ -9,6 +9,11 @@ import * as __TAURI_EVENT from "@tauri-apps/api/event";
 export const commands = {
 	/**  The current limits, sessions and data-source state; `None` until the core is running. */
 	getPanelSnapshot: () => __TAURI_INVOKE<PanelSnapshot | null>("get_panel_snapshot"),
+	/**  The detail view's pace, time strip and chart (ADR-048); `None` until the core is running. */
+	getPanelDetail: () => __TAURI_INVOKE<PanelDetail | null>("get_panel_detail"),
+	/**  The panel view to open on: the one last chosen. */
+	getPanelView: () => __TAURI_INVOKE<PanelView>("get_panel_view"),
+	setPanelView: (view: PanelView) => typedError<null, string>(__TAURI_INVOKE("set_panel_view", { view })),
 	getSettings: () => __TAURI_INVOKE<SettingsView>("get_settings"),
 	setLocale: (locale: LocalePref) => typedError<SettingsView, string>(__TAURI_INVOKE("set_locale", { locale })),
 	setTheme: (theme: ThemePref) => typedError<SettingsView, string>(__TAURI_INVOKE("set_theme", { theme })),
@@ -168,6 +173,12 @@ export type AvailableUpdate = {
 	date: string | null,
 };
 
+export type ChartPoint = {
+	at: Timestamp,
+	percent: number | null,
+	source: Source,
+};
+
 /**  One Claude Code directory the app watches. */
 export type ClaudeDirView = {
 	path: string,
@@ -281,6 +292,20 @@ export type EstimateReason =
 
 export type FailedStage = "check" | "install";
 
+export type FocusView = {
+	kind: LimitKind,
+	scope: Scope | null,
+	window_start: Timestamp,
+	resets_at: Timestamp,
+	/**  Every 24 hours from the window's start with the time line's value there; weekly only. */
+	periods: PeriodMark[],
+	/**
+	 *  Measured readings of this window, oldest first, thinned for a chart; the last one is
+	 *  the panel's current value. Empty without stored readings. Never an estimate.
+	 */
+	points: ChartPoint[],
+};
+
 export type Freshness = 
 /**  Under 10 minutes old. */
 "fresh" | 
@@ -349,6 +374,11 @@ export type LimitView = {
 	scope: Scope | null,
 	percent: number | null,
 	resets_at: Timestamp | null,
+	/**
+	 *  Start of the window `resets_at` ends, for the time mark on the bar (ADR-044, ADR-048);
+	 *  the reset itself for an estimate after one. `None` for windowless limits.
+	 */
+	window_start: Timestamp | null,
 	/**  From our thresholds; the provider's own label is `provider_severity`. */
 	severity: Severity,
 	provider_severity: string | null,
@@ -430,10 +460,35 @@ export type OsFlavor =
 /**  No usable backdrop: opaque surfaces (design-language.md §4). */
 "win10";
 
+/**  One limit's use against the time gone (ADR-044). */
+export type PaceView = {
+	kind: LimitKind,
+	scope: Scope | null,
+	percent: number | null,
+	/**  Share of the window that has passed, 0–100. */
+	elapsed_percent: number | null,
+	/**  `percent − elapsed_percent`: positive when use runs ahead of the time line. */
+	ahead: number | null,
+	/**  At least [`pace::PACE_AHEAD`] points ahead, past the window's first seventh (ADR-045). */
+	warn: boolean,
+};
+
 /**  How a span is drawn. The CLI maps it to ANSI codes; the settings preview to theme colors. */
 export type Paint = "plain" | 
 /**  Separators, estimates and stale values. */
 "dim" | "ok" | "warn" | "crit";
+
+/**  Everything the detail view adds to [`PanelSnapshot`]. */
+export type PanelDetail = {
+	/**  Measured limits with a window still running, in the snapshot's order. */
+	pace: PaceView[],
+	/**
+	 *  The limit the time strip and the chart are about: the weekly limit, otherwise the
+	 *  5-hour window; `None` when neither has a measured reading with a reset ahead.
+	 */
+	focus: FocusView | null,
+	generated_at: Timestamp,
+};
 
 /**  Sent to the panel each time it appears: it moves the focus inside and replays its entrance. */
 export type PanelShown = null;
@@ -453,6 +508,18 @@ export type PanelSnapshot = {
 	api: ApiStatusView,
 	statusline: StatuslineState,
 	generated_at: Timestamp,
+};
+
+/**
+ *  The tray panel's two views (ADR-048): the ring and rows, or the report with the time strip
+ *  and the chart.
+ */
+export type PanelView = "summary" | "detail";
+
+export type PeriodMark = {
+	at: Timestamp,
+	/**  Where the time line stands at `at`: k/7 of the week. */
+	time_percent: number | null,
 };
 
 export type PickError = { error: "not_a_directory" } | 

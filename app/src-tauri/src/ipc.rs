@@ -9,9 +9,9 @@ use specta::Type;
 use tauri::{AppHandle, EventTarget, Manager};
 use tauri_plugin_autostart::ManagerExt as _;
 use tauri_specta::{Builder, Event, collect_commands, collect_events};
-use tokenradar_core::config::{DataConfig, LocalePref, LogLevel, ThemePref};
+use tokenradar_core::config::{DataConfig, LocalePref, LogLevel, PanelView, ThemePref};
 use tokenradar_core::events::CoreEvent;
-use tokenradar_core::limits::PanelSnapshot;
+use tokenradar_core::limits::{PanelDetail, PanelSnapshot};
 use tokenradar_core::notifier::{self, NotifyPrefs};
 use tokenradar_core::statusline::line::StatuslinePrefs;
 
@@ -47,6 +47,9 @@ pub fn builder() -> Builder<tauri::Wry> {
     Builder::<tauri::Wry>::new()
         .commands(collect_commands![
             get_panel_snapshot,
+            get_panel_detail,
+            get_panel_view,
+            set_panel_view,
             get_settings,
             set_locale,
             set_theme,
@@ -149,6 +152,26 @@ pub fn emit_to_visible<E: Event + Serialize + Clone>(app: &AppHandle, event: &E)
 #[specta::specta]
 async fn get_panel_snapshot(app: AppHandle) -> Option<PanelSnapshot> {
     core_bridge::panel_snapshot(&app)
+}
+
+/// The detail view's pace, time strip and chart (ADR-048); `None` until the core is running.
+#[tauri::command]
+#[specta::specta]
+async fn get_panel_detail(app: AppHandle) -> Option<PanelDetail> {
+    core_bridge::panel_detail(&app)
+}
+
+/// The panel view to open on: the one last chosen.
+#[tauri::command]
+#[specta::specta]
+async fn get_panel_view(app: AppHandle) -> PanelView {
+    app.state::<Prefs>().panel_view()
+}
+
+#[tauri::command]
+#[specta::specta]
+async fn set_panel_view(app: AppHandle, view: PanelView) -> Result<(), String> {
+    prefs::set_panel_view(&app, view)
 }
 
 #[tauri::command]

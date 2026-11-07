@@ -80,6 +80,7 @@ fn limit(kind: LimitKind, percent: f64, freshness: Freshness, resets_in_min: i64
         scope: None,
         percent,
         resets_at: Some(Timestamp::from_millis(now + resets_in_min * 60_000)),
+        window_start: None,
         severity: Severity::of(percent),
         provider_severity: None,
         source: Source::Statusline,

@@ -8,15 +8,18 @@ use std::sync::{Arc, Mutex, PoisonError};
 
 use tauri::{AppHandle, Manager};
 use tokenradar_core::config::{self, AppConfig};
-use tokenradar_core::domain::Timestamp;
+use tokenradar_core::domain::{AccountId, LimitObservation, Timestamp};
 use tokenradar_core::events::{CoreEvent, Delivery, Subscription};
-use tokenradar_core::limits::{LimitEvent, PanelSnapshot};
+use tokenradar_core::limits::{
+    LimitEvent, PanelDetail, PanelSnapshot, WEEK_MS, panel_detail as panel_detail_of,
+};
 use tokenradar_core::live_sessions::LiveStatus;
 use tokenradar_core::paths::Paths;
 use tokenradar_core::providers::claude;
 use tokenradar_core::runtime::{
     CoreConfig, CoreHandle, CoreRuntime, CoreStatus, IpcConfig, NotifySetup, SHUTDOWN_TIMEOUT,
 };
+use tokenradar_core::store::ReadOnlyStore;
 
 use crate::tray::system::SystemClock;
 use crate::tray::{self, TrayMsg};
@@ -151,6 +154,40 @@ pub fn panel_snapshot(app: &AppHandle) -> Option<PanelSnapshot> {
     }
     let state = app.try_state::<CoreState>()?;
     status(&state.0).and_then(|s| s.panel_snapshot())
+}
+
+/// The panel's detail view (ADR-048), built now from the snapshot and the stored readings of
+/// the last week. The readings come read-only from the database, like `tokenradar history`
+/// (ADR-046); without a database the chart is empty and the rest stays.
+pub fn panel_detail(app: &AppHandle) -> Option<PanelDetail> {
+    let snapshot = panel_snapshot(app)?;
+    let now = Timestamp::now();
+    #[cfg(any(debug_assertions, feature = "spike"))]
+    if crate::panel::fake::panel_snapshot(app).is_some() {
+        let readings = crate::panel::fake::history(&snapshot);
+        return Some(panel_detail_of(&snapshot, &readings, now));
+    }
+    let readings = snapshot
+        .account
+        .as_ref()
+        .and_then(|account| week_readings(account.id, now))
+        .unwrap_or_default();
+    Some(panel_detail_of(&snapshot, &readings, now))
+}
+
+fn week_readings(account: AccountId, now: Timestamp) -> Option<Vec<LimitObservation>> {
+    let paths = Paths::resolve().ok()?;
+    let store = ReadOnlyStore::open(paths.db_path())
+        .map_err(|error| tracing::warn!(%error, "detail: database not readable"))
+        .ok()??;
+    store
+        .snapshots_between(
+            account,
+            now.saturating_sub_millis(WEEK_MS),
+            now.saturating_add_millis(1),
+        )
+        .map_err(|error| tracing::warn!(%error, "detail: readings not readable"))
+        .ok()
 }
 
 /// The panel opened or "Refresh" was clicked: with API consent, data older than 60 s is

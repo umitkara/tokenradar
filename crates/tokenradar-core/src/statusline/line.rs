@@ -362,13 +362,7 @@ fn until(at: Option<Timestamp>, now: Timestamp) -> Option<i64> {
     at.map(|t| t.as_millis() - now.as_millis())
 }
 
-/// The share of a window of `length` ms that has passed, from the time left until its reset.
-/// `None` when the reset is unknown, passed or further away than the window is long.
-#[allow(clippy::cast_precision_loss)] // window lengths are far below 2^52 ms
-pub fn elapsed(resets_in: Option<i64>, length: i64) -> Option<f64> {
-    let left = resets_in?;
-    (left > 0 && left <= length).then(|| (1.0 - left as f64 / length as f64) * 100.0)
-}
+pub use crate::limits::pace::elapsed;
 
 fn eta(app: Option<&LimitInfo>, now: Timestamp) -> Option<i64> {
     app.filter(|a| a.will_hit_before_reset)

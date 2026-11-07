@@ -12,7 +12,7 @@ use specta::Type;
 use tauri::{AppHandle, Manager};
 use tauri_specta::Event;
 use tokenradar_core::config::{
-    self, AdvancedConfig, AppConfig, DataConfig, LocalePref, LogLevel, ThemePref,
+    self, AdvancedConfig, AppConfig, DataConfig, LocalePref, LogLevel, PanelView, ThemePref,
 };
 use tokenradar_core::domain::{LimitKind, Timestamp, WindowPresence};
 use tokenradar_core::notifier::NotifyPrefs;
@@ -128,6 +128,7 @@ pub struct PrefsChanged(pub PrefsView);
 struct Stored {
     locale: LocalePref,
     theme: ThemePref,
+    panel_view: PanelView,
     prefs: PrefsView,
 }
 
@@ -142,6 +143,7 @@ impl Stored {
         Self {
             locale: c.general.locale_pref(),
             theme: c.general.theme_pref(),
+            panel_view: c.general.panel_view(),
             prefs: PrefsView {
                 notifications: c.notifications.clone().normalized(),
                 data: c.data.clone().normalized(),
@@ -191,6 +193,14 @@ impl Prefs {
                 .unwrap_or_else(PoisonError::into_inner)
                 .locale,
         )
+    }
+
+    /// The panel view last chosen.
+    pub fn panel_view(&self) -> PanelView {
+        self.stored
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .panel_view
     }
 
     /// How long a hidden panel stays ready.
@@ -276,6 +286,17 @@ pub fn set_theme(app: &AppHandle, pref: ThemePref) -> Result<SettingsView, Strin
     let view = prefs.view();
     let _ = SettingsChanged(view.clone()).emit(app);
     Ok(view)
+}
+
+/// Stores the panel view; the panel opens on it next time.
+pub fn set_panel_view(app: &AppHandle, view: PanelView) -> Result<(), String> {
+    let prefs = app.state::<Prefs>();
+    if prefs.panel_view() == view {
+        return Ok(());
+    }
+    save("panel_view", view.as_str())?;
+    prefs.update(|s| s.panel_view = view);
+    Ok(())
 }
 
 /// Stores the notification rules and hands them to the notifier.
