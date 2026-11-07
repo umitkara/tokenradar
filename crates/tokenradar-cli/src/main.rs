@@ -101,6 +101,11 @@ fn run(ctx: &Context, command: Command) -> ExitCode {
                 ExitCode::FAILURE
             }
         },
+        Command::ModInstall { yes, config_dir } => exit(setup::mod_install(ctx, yes, config_dir)),
+        Command::ModUninstall { yes, all: true, .. } => exit(setup::mod_uninstall_all(ctx, yes)),
+        Command::ModUninstall {
+            yes, config_dir, ..
+        } => exit(setup::mod_uninstall(ctx, yes, config_dir)),
         Command::Doctor { out } => exit(doctor::run(ctx, out)),
         Command::Path { add } => path(ctx, add),
     }

@@ -71,6 +71,15 @@ uninstall-not-installed = The statusline bridge is not installed in { $path }.
 uninstall-done = Removed. Backup: { $backup }
 uninstall-restored = Your previous statusline setting was restored.
 uninstall-none = TokenRadar's statusline bridge is not installed anywhere.
+
+## mod install / uninstall
+
+mod-missing = The Claude Code mod is not next to this tokenradar; it comes with the installed app.
+mod-already = The Claude Code mod is already listed in { $path }.
+mod-done = Installed. Claude Code now loads the mod in every session. Backup: { $backup }
+mod-restart = Restart Claude Code to load it. Do not also start it with --plugin-dir for this mod, or it loads twice.
+mod-not-installed = The Claude Code mod is not listed in { $path }.
+mod-none = TokenRadar's Claude Code mod is not installed anywhere.
 settings-changed-meanwhile = { $path } changed while waiting; nothing was written. Run the command again.
 settings-invalid = { $path } is not a valid JSON object; nothing was changed.
 
@@ -99,6 +108,9 @@ cli-help =
       statusline [--chain]                Claude Code statusline (reads JSON from stdin)
       statusline install [--chain|--no-chain] [--yes] [--config-dir <DIR>]
       statusline uninstall [--yes] [--config-dir <DIR> | --all]
+      mod install [--yes] [--config-dir <DIR>]
+                                          Load TokenRadar's Claude Code mod in every session
+      mod uninstall [--yes] [--config-dir <DIR> | --all]
       doctor [--out <ZIP>]                Diagnostics bundle to share when reporting a problem
       path add|remove                     Put this tokenradar on your user PATH, or take it off
     Options:

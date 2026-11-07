@@ -253,7 +253,7 @@ pub fn is_tokenradar_command(command: &str) -> bool {
     stem.eq_ignore_ascii_case("tokenradar") && command.split_whitespace().any(|w| w == "statusline")
 }
 
-fn read_settings(config_dir: &Path) -> Result<(PathBuf, Option<String>), InstallError> {
+pub(super) fn read_settings(config_dir: &Path) -> Result<(PathBuf, Option<String>), InstallError> {
     if !config_dir.is_dir() {
         return Err(InstallError::NoConfigDir(config_dir.to_path_buf()));
     }
@@ -262,7 +262,7 @@ fn read_settings(config_dir: &Path) -> Result<(PathBuf, Option<String>), Install
     Ok((path, text))
 }
 
-fn read_optional(path: &Path) -> Result<Option<String>, InstallError> {
+pub(super) fn read_optional(path: &Path) -> Result<Option<String>, InstallError> {
     match std::fs::read_to_string(path) {
         Ok(t) => Ok(Some(t)),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
@@ -274,7 +274,7 @@ fn read_optional(path: &Path) -> Result<Option<String>, InstallError> {
 }
 
 /// `settings.json.tokenradar-20261027T101500Z.bak`, next to the file.
-fn backup_path(settings: &Path, now: Timestamp) -> PathBuf {
+pub(super) fn backup_path(settings: &Path, now: Timestamp) -> PathBuf {
     let stamp = jiff::Timestamp::from_millisecond(now.as_millis()).map_or_else(
         |_| now.as_millis().to_string(),
         |t| t.strftime("%Y%m%dT%H%M%SZ").to_string(),

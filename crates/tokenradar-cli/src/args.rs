@@ -33,6 +33,17 @@ pub enum Command {
     },
     /// The current window's stored readings per limit, as JSON (ADR-046).
     History,
+    /// Lists the Claude Code mod beside this CLI in `settings.json` (ADR-047).
+    ModInstall {
+        yes: bool,
+        config_dir: Option<PathBuf>,
+    },
+    ModUninstall {
+        yes: bool,
+        config_dir: Option<PathBuf>,
+        /// Every Claude Code directory TokenRadar knows (the uninstaller uses it).
+        all: bool,
+    },
     /// A diagnostics bundle; `out` defaults to a stamped name in the current directory.
     Doctor {
         out: Option<PathBuf>,
@@ -112,6 +123,20 @@ pub fn parse(mut parser: lexopt::Parser) -> Result<Command, lexopt::Error> {
         ["sessions"] => Command::Sessions { json: f.json },
         // JSON is its only form; `--json` is taken so it reads like the others.
         ["history"] => Command::History,
+        ["mod", "install"] => Command::ModInstall {
+            yes: f.yes,
+            config_dir: f.config_dir.take(),
+        },
+        ["mod", "uninstall"] => {
+            if f.all && f.config_dir.is_some() {
+                return Err("--all and --config-dir exclude each other".into());
+            }
+            Command::ModUninstall {
+                yes: f.yes,
+                config_dir: f.config_dir.take(),
+                all: f.all,
+            }
+        }
         ["doctor"] => Command::Doctor { out: f.out.take() },
         ["path", "add"] => Command::Path { add: true },
         ["path", "remove"] => Command::Path { add: false },
@@ -126,7 +151,10 @@ fn check_flags(command: &Command, f: &Flags) -> Result<(), lexopt::Error> {
     let (json, chain, no_chain, yes, dir, out, all) = match command {
         Command::Statusline { .. } => (false, true, false, false, false, false, false),
         Command::Install { .. } => (false, true, true, true, true, false, false),
-        Command::Uninstall { .. } => (false, false, false, true, true, false, true),
+        Command::Uninstall { .. } | Command::ModUninstall { .. } => {
+            (false, false, false, true, true, false, true)
+        }
+        Command::ModInstall { .. } => (false, false, false, true, true, false, false),
         Command::Status { .. }
         | Command::Limits { .. }
         | Command::Sessions { .. }
@@ -215,6 +243,23 @@ mod tests {
             Ok(Command::Limits { json: true })
         );
         assert_eq!(parse_args(&["history"]), Ok(Command::History));
+        assert_eq!(
+            parse_args(&["mod", "install", "--yes"]),
+            Ok(Command::ModInstall {
+                yes: true,
+                config_dir: None
+            })
+        );
+        assert_eq!(
+            parse_args(&["mod", "uninstall", "--all", "--yes"]),
+            Ok(Command::ModUninstall {
+                yes: true,
+                config_dir: None,
+                all: true
+            })
+        );
+        assert!(parse_args(&["mod", "install", "--all"]).is_err());
+        assert!(parse_args(&["mod", "install", "--chain"]).is_err());
         assert_eq!(parse_args(&["history", "--json"]), Ok(Command::History));
         assert_eq!(parse_args(&["doctor"]), Ok(Command::Doctor { out: None }));
         assert_eq!(

@@ -40,6 +40,13 @@ export const commands = {
 	/**  Applies the plan the user confirmed; returns the backup's path. */
 	applyStatusline: (token: number) => typedError<string | null, StatuslineError>(__TAURI_INVOKE("apply_statusline", { token })),
 	discardStatuslinePlan: () => __TAURI_INVOKE<void>("discard_statusline_plan"),
+	/**
+	 *  Plans installing or removing the Claude Code mod (ADR-047); nothing is written until
+	 *  `apply_claude_mod` gets the returned token. `discard_statusline_plan` forgets it too.
+	 */
+	planClaudeMod: (action: ClaudeModAction) => typedError<ClaudeModPlanView, StatuslineError>(__TAURI_INVOKE("plan_claude_mod", { action })),
+	/**  Applies the mod plan the user confirmed; returns the backup's path. */
+	applyClaudeMod: (token: number) => typedError<string | null, StatuslineError>(__TAURI_INVOKE("apply_claude_mod", { token })),
 	/**  The user's explicit yes (or withdrawal) for the usage API, stamped with the text version. */
 	setApiConsent: (granted: boolean) => typedError<DataSourcesView, string>(__TAURI_INVOKE("set_api_consent", { granted })),
 	/**  Folder picker for the Claude Code directory; `false` when cancelled. */
@@ -172,6 +179,24 @@ export type ClaudeDirView = {
 	stats: AccountStats | null,
 };
 
+export type ClaudeModAction = "install" | "uninstall";
+
+/**  A planned change for the mod, shown before anything is written. */
+export type ClaudeModPlanView = { outcome: "ready"; 
+/**  Pass back to `apply_claude_mod`; only this plan can be applied. */
+token: number; settings_path: string; diff: DiffLine[]; 
+/**  Other plugin directories in the list; they stay. */
+kept: string[] } | { outcome: "already_installed" } | { outcome: "not_installed" };
+
+/**  TokenRadar's Claude Code mod in the primary account's `settings.json`. */
+export type ClaudeModView = 
+/**  No Claude Code directory: nothing to install into. */
+{ state: "no_directory" } | 
+/**  The mod's files are not next to the app (a development build without them). */
+{ state: "missing" } | { state: "not_installed" } | { state: "installed"; 
+/**  The mod's folder, as listed in `CLAUDE_CODE_PLUGIN_DIRS`. */
+path: string };
+
 export type Confidence = "low" | "medium" | "high";
 
 /**  Something in the core changed. New variants may be added in any release. */
@@ -234,6 +259,7 @@ export type DataSourcesView = {
 	statusline_last_seen: Timestamp | null,
 	/**  The CLI could not be found, so the bridge cannot be installed from here. */
 	cli_missing: boolean,
+	claude_mod: ClaudeModView,
 	api: ApiConsentView,
 };
 
@@ -582,8 +608,10 @@ export type StatuslineAction = "install" |
 /**  Install without keeping the previous command. */
 "install_no_chain" | "uninstall";
 
-/**  Why a statusline change failed; the window words it. */
+/**  Why a `settings.json` change failed; the window words it. */
 export type StatuslineError = { error: "no_directory" } | { error: "cli_missing" } | 
+/**  The mod's files are not next to the app. */
+{ error: "mod_missing" } | 
 /**  `settings.json` is not a JSON object; nothing was written. */
 { error: "invalid_settings" } | 
 /**  The file changed after the diff was shown; nothing was written. */

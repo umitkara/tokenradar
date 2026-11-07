@@ -71,6 +71,15 @@ uninstall-not-installed = Statusline köprüsü { $path } içinde kurulu değil.
 uninstall-done = Kaldırıldı. Yedek: { $backup }
 uninstall-restored = Önceki statusline ayarınız geri yüklendi.
 uninstall-none = TokenRadar'ın statusline köprüsü hiçbir yerde kurulu değil.
+
+## mod install / uninstall
+
+mod-missing = Claude Code mod'u bu tokenradar'ın yanında değil; kurulu uygulamayla gelir.
+mod-already = Claude Code mod'u { $path } içinde zaten listeli.
+mod-done = Kuruldu. Claude Code mod'u artık her oturumda yükler. Yedek: { $backup }
+mod-restart = Yüklenmesi için Claude Code'u yeniden başlatın. Bu mod için ayrıca --plugin-dir kullanmayın, yoksa iki kez yüklenir.
+mod-not-installed = Claude Code mod'u { $path } içinde listeli değil.
+mod-none = TokenRadar'ın Claude Code mod'u hiçbir yerde kurulu değil.
 settings-changed-meanwhile = { $path } beklerken değişti; hiçbir şey yazılmadı. Komutu yeniden çalıştırın.
 settings-invalid = { $path } geçerli bir JSON nesnesi değil; hiçbir şey değiştirilmedi.
 
@@ -99,6 +108,9 @@ cli-help =
       statusline [--chain]                Claude Code statusline'ı (JSON'u stdin'den okur)
       statusline install [--chain|--no-chain] [--yes] [--config-dir <DİZİN>]
       statusline uninstall [--yes] [--config-dir <DİZİN> | --all]
+      mod install [--yes] [--config-dir <DİZİN>]
+                                          TokenRadar'ın Claude Code mod'unu her oturumda yükle
+      mod uninstall [--yes] [--config-dir <DİZİN> | --all]
       doctor [--out <ZIP>]                Sorun bildirirken paylaşılacak tanılama paketi
       path add|remove                     Bu tokenradar'ı kullanıcı PATH'inize ekler ya da kaldırır
     Seçenekler:

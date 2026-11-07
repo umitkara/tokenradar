@@ -21,7 +21,8 @@ use crate::prefs::{
 use crate::privacy::{self, AboutView, Link, StorageView};
 use crate::settings::{self, SettingsSection, SettingsSectionRequested};
 use crate::sources::{
-    self, DataSourcesView, PickError, StatuslineAction, StatuslineError, StatuslinePlanView,
+    self, ClaudeModAction, ClaudeModPlanView, DataSourcesView, PickError, StatuslineAction,
+    StatuslineError, StatuslinePlanView,
 };
 use crate::tray_pin::{self, TrayPinState};
 use crate::updater::{self, UpdateChanged, UpdateView};
@@ -63,6 +64,8 @@ pub fn builder() -> Builder<tauri::Wry> {
             plan_statusline,
             apply_statusline,
             discard_statusline_plan,
+            plan_claude_mod,
+            apply_claude_mod,
             set_api_consent,
             pick_claude_dir,
             reset_claude_dir,
@@ -279,6 +282,24 @@ async fn apply_statusline(app: AppHandle, token: u32) -> Result<Option<String>, 
 #[specta::specta]
 async fn discard_statusline_plan(app: AppHandle) {
     sources::discard(&app);
+}
+
+/// Plans installing or removing the Claude Code mod (ADR-047); nothing is written until
+/// `apply_claude_mod` gets the returned token. `discard_statusline_plan` forgets it too.
+#[tauri::command]
+#[specta::specta]
+async fn plan_claude_mod(
+    app: AppHandle,
+    action: ClaudeModAction,
+) -> Result<ClaudeModPlanView, StatuslineError> {
+    blocking(move || sources::plan_mod(&app, action)).await
+}
+
+/// Applies the mod plan the user confirmed; returns the backup's path.
+#[tauri::command]
+#[specta::specta]
+async fn apply_claude_mod(app: AppHandle, token: u32) -> Result<Option<String>, StatuslineError> {
+    blocking(move || sources::apply_mod(&app, token)).await
 }
 
 /// The user's explicit yes (or withdrawal) for the usage API, stamped with the text version.

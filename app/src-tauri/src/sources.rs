@@ -1,5 +1,5 @@
-//! "Data sources" in the settings: Claude Code directories, the statusline bridge and the
-//! usage API consent.
+//! "Data sources" in the settings: Claude Code directories, the statusline bridge, the Claude
+//! Code mod (ADR-047) and the usage API consent.
 //!
 //! `settings.json` changes follow ADR-009: the window asks for a plan, shows its diff, and
 //! only the plan the user saw can be applied (by its token). `Plan::apply` re-reads the file
@@ -19,6 +19,7 @@ use tokenradar_core::domain::Timestamp;
 use tokenradar_core::limits::ApiStatusView;
 use tokenradar_core::paths::Paths;
 use tokenradar_core::providers::claude::{self, AccountDescriptor};
+use tokenradar_core::statusline::claude_mod::{self, ModChange, ModPlan, ModPlanned, ModState};
 use tokenradar_core::statusline::install::{
     Change, InstallError, Plan, Planned, plan_install, plan_uninstall,
 };
@@ -61,6 +62,21 @@ pub enum StatuslineView {
     InstalledElsewhere,
 }
 
+/// TokenRadar's Claude Code mod in the primary account's `settings.json`.
+#[derive(Debug, Clone, Serialize, Type)]
+#[serde(tag = "state", rename_all = "snake_case")]
+pub enum ClaudeModView {
+    /// No Claude Code directory: nothing to install into.
+    NoDirectory,
+    /// The mod's files are not next to the app (a development build without them).
+    Missing,
+    NotInstalled,
+    Installed {
+        /// The mod's folder, as listed in `CLAUDE_CODE_PLUGIN_DIRS`.
+        path: String,
+    },
+}
+
 #[derive(Debug, Clone, Serialize, Type)]
 pub struct ApiConsentView {
     pub granted: bool,
@@ -84,6 +100,7 @@ pub struct DataSourcesView {
     pub statusline_last_seen: Option<Timestamp>,
     /// The CLI could not be found, so the bridge cannot be installed from here.
     pub cli_missing: bool,
+    pub claude_mod: ClaudeModView,
     pub api: ApiConsentView,
 }
 
@@ -133,12 +150,37 @@ pub enum StatuslinePlanView {
     NotInstalled,
 }
 
-/// Why a statusline change failed; the window words it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Type)]
+#[serde(rename_all = "snake_case")]
+pub enum ClaudeModAction {
+    Install,
+    Uninstall,
+}
+
+/// A planned change for the mod, shown before anything is written.
+#[derive(Debug, Clone, Serialize, Type)]
+#[serde(tag = "outcome", rename_all = "snake_case")]
+pub enum ClaudeModPlanView {
+    Ready {
+        /// Pass back to `apply_claude_mod`; only this plan can be applied.
+        token: u32,
+        settings_path: String,
+        diff: Vec<DiffLine>,
+        /// Other plugin directories in the list; they stay.
+        kept: Vec<String>,
+    },
+    AlreadyInstalled,
+    NotInstalled,
+}
+
+/// Why a `settings.json` change failed; the window words it.
 #[derive(Debug, Clone, Serialize, Type)]
 #[serde(tag = "error", rename_all = "snake_case")]
 pub enum StatuslineError {
     NoDirectory,
     CliMissing,
+    /// The mod's files are not next to the app.
+    ModMissing,
     /// `settings.json` is not a JSON object; nothing was written.
     InvalidSettings,
     /// The file changed after the diff was shown; nothing was written.
@@ -150,11 +192,38 @@ pub enum StatuslineError {
     },
 }
 
+/// A plan shown to the user: the statusline's or the mod's.
+enum Shown {
+    Statusline(Plan),
+    Mod(ModPlan),
+}
+
 /// The plan last shown to the user. Managed by Tauri.
 #[derive(Default)]
 pub struct Pending {
     next: AtomicU32,
-    plan: Mutex<Option<(u32, Plan)>>,
+    plan: Mutex<Option<(u32, Shown)>>,
+}
+
+impl Pending {
+    /// Keeps `plan` as the one shown; returns its token.
+    fn show(&self, plan: Shown) -> u32 {
+        let token = self.next.fetch_add(1, Ordering::Relaxed).wrapping_add(1);
+        *self.plan.lock().unwrap_or_else(PoisonError::into_inner) = Some((token, plan));
+        token
+    }
+
+    /// The plan with `token`, taken; a stale token leaves the shown plan in place.
+    fn take(&self, token: u32) -> Option<Shown> {
+        let mut slot = self.plan.lock().unwrap_or_else(PoisonError::into_inner);
+        match slot.take() {
+            Some((t, plan)) if t == token => Some(plan),
+            other => {
+                *slot = other;
+                None
+            }
+        }
+    }
 }
 
 pub fn init(app: &AppHandle) {
@@ -175,6 +244,30 @@ fn accounts(config: &AppConfig) -> Vec<AccountDescriptor> {
 
 fn display(path: &Path) -> String {
     path.display().to_string()
+}
+
+/// The mod's folder: `claude-code\` beside the installed app; in a development build, the
+/// repository's `integrations/claude-code`.
+fn mod_dir() -> Option<PathBuf> {
+    let exe = std::env::current_exe().ok()?;
+    if let Some(dir) = claude_mod::mod_dir_near(&exe) {
+        return Some(dir);
+    }
+    #[cfg(debug_assertions)]
+    {
+        let dev = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../integrations/claude-code");
+        if dev.join(".claude-plugin/plugin.json").is_file() {
+            return dev.canonicalize().ok().map(strip_verbatim);
+        }
+    }
+    None
+}
+
+/// `\\?\C:\…` from `canonicalize` is not a path Claude Code expects in its settings.
+#[cfg(debug_assertions)]
+fn strip_verbatim(p: PathBuf) -> PathBuf {
+    let s = p.display().to_string();
+    s.strip_prefix(r"\\?\").map_or(p, PathBuf::from)
 }
 
 fn cli_path() -> Option<PathBuf> {
@@ -228,6 +321,13 @@ pub fn view(app: &AppHandle) -> Result<DataSourcesView, String> {
         statusline: primary.map_or(StatuslineView::NoDirectory, |d| statusline(d, &config)),
         statusline_last_seen: snapshot.as_ref().and_then(|s| s.statusline.last_seen),
         cli_missing: cli_path().is_none(),
+        claude_mod: primary.map_or(ClaudeModView::NoDirectory, |d| match mod_dir() {
+            None => ClaudeModView::Missing,
+            Some(m) => match claude_mod::state(d, &m) {
+                ModState::Installed => ClaudeModView::Installed { path: display(&m) },
+                ModState::NotInstalled => ClaudeModView::NotInstalled,
+            },
+        }),
         api: ApiConsentView {
             granted: consent.is_valid(),
             granted_at: consent
@@ -303,32 +403,70 @@ pub fn plan(
         } => (previous_command.clone().filter(|_| *chain), false),
         Change::Uninstall { restores_previous } => (None, *restores_previous),
     };
-    let pending = app.state::<Pending>();
-    let token = pending.next.fetch_add(1, Ordering::Relaxed).wrapping_add(1);
-    let view = StatuslinePlanView::Ready {
+    let settings_path = display(&plan.settings_path);
+    let diff = diff_lines(&plan.diff());
+    let token = app.state::<Pending>().show(Shown::Statusline(plan));
+    Ok(StatuslinePlanView::Ready {
         token,
-        settings_path: display(&plan.settings_path),
-        diff: diff_lines(&plan.diff()),
+        settings_path,
+        diff,
         chained_mangled: chained_command.as_deref().is_some_and(|c| shell.mangles(c)),
         chained_command,
         restores_previous,
+    })
+}
+
+/// Plans installing or removing the Claude Code mod in the primary account; nothing is written.
+pub fn plan_mod(
+    app: &AppHandle,
+    action: ClaudeModAction,
+) -> Result<ClaudeModPlanView, StatuslineError> {
+    let paths = paths().map_err(|message| StatuslineError::Io { message })?;
+    let config = load_config(&paths);
+    let dir = accounts(&config)
+        .into_iter()
+        .next()
+        .ok_or(StatuslineError::NoDirectory)?
+        .config_dir;
+    let mod_dir = mod_dir().ok_or(StatuslineError::ModMissing)?;
+    let planned = match action {
+        ClaudeModAction::Install => claude_mod::plan_install(&dir, &mod_dir),
+        ClaudeModAction::Uninstall => claude_mod::plan_uninstall(&dir, &mod_dir),
+    }
+    .map_err(install_error)?;
+    let plan = match planned {
+        ModPlanned::Ready(plan) => plan,
+        ModPlanned::AlreadyInstalled => return Ok(ClaudeModPlanView::AlreadyInstalled),
+        ModPlanned::NotInstalled => return Ok(ClaudeModPlanView::NotInstalled),
     };
-    *pending.plan.lock().unwrap_or_else(PoisonError::into_inner) = Some((token, plan));
-    Ok(view)
+    let kept = match &plan.change {
+        ModChange::Install { kept } | ModChange::Uninstall { kept } => kept.clone(),
+    };
+    let settings_path = display(&plan.settings_path);
+    let diff = diff_lines(&plan.diff());
+    let token = app.state::<Pending>().show(Shown::Mod(plan));
+    Ok(ClaudeModPlanView::Ready {
+        token,
+        settings_path,
+        diff,
+        kept,
+    })
+}
+
+/// Applies the mod plan the user saw. Returns the backup's path.
+pub fn apply_mod(app: &AppHandle, token: u32) -> Result<Option<String>, StatuslineError> {
+    let Some(Shown::Mod(plan)) = app.state::<Pending>().take(token) else {
+        return Err(StatuslineError::StalePlan);
+    };
+    let backup = plan.apply().map_err(install_error)?;
+    tracing::info!(change = ?plan.change, "claude code mod settings changed");
+    Ok(backup.as_deref().map(display))
 }
 
 /// Applies the plan the user saw. Returns the backup's path, if there was a file to back up.
 pub fn apply(app: &AppHandle, token: u32) -> Result<Option<String>, StatuslineError> {
-    let plan = {
-        let pending = app.state::<Pending>();
-        let mut slot = pending.plan.lock().unwrap_or_else(PoisonError::into_inner);
-        match slot.take() {
-            Some((t, plan)) if t == token => plan,
-            other => {
-                *slot = other;
-                return Err(StatuslineError::StalePlan);
-            }
-        }
+    let Some(Shown::Statusline(plan)) = app.state::<Pending>().take(token) else {
+        return Err(StatuslineError::StalePlan);
     };
     let paths = paths().map_err(|message| StatuslineError::Io { message })?;
     let backup = plan.apply(paths.config_path()).map_err(install_error)?;
