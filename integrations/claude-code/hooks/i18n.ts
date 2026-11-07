@@ -60,7 +60,7 @@ type Dict = {
   ok: string
   resetDone: (name: string) => string
   resetsIn: (dur: string) => string
-  timeStrip: (name: string) => string
+  timeStrip: (name: string, elapsed: string) => string
   now: string
   chartAlt: (name: string, used: string, elapsed: string) => string
   liveSessions: string
@@ -78,7 +78,7 @@ const EN: Dict = {
   limitSpend: 'Spend limit',
   sourceClaudeCode: 'Claude Code',
   sourceStatusline: 'statusline',
-  sourceApi: 'API',
+  sourceApi: 'usage API',
   sourceEstimate: 'estimate',
   sourceCodexLog: 'Codex log',
   bandUsed: (name, pct, resets) =>
@@ -121,7 +121,7 @@ const EN: Dict = {
   ok: 'OK',
   resetDone: name => `${name} limit reset`,
   resetsIn: dur => `resets in ${dur}`,
-  timeStrip: name => `Time strip · ${name}`,
+  timeStrip: (name, elapsed) => `Time strip · ${name} · ${elapsed} of the time gone`,
   now: 'now',
   chartAlt: (name, used, elapsed) =>
     `${name} usage over the window against the time line: ${used} used, ${elapsed} of the time gone`,
@@ -140,7 +140,7 @@ const TR: Dict = {
   limitSpend: 'Harcama limiti',
   sourceClaudeCode: 'Claude Code',
   sourceStatusline: 'statusline',
-  sourceApi: 'API',
+  sourceApi: "kullanım API'si",
   sourceEstimate: 'tahmin',
   sourceCodexLog: 'Codex günlüğü',
   bandUsed: (name, pct, resets) =>
@@ -185,7 +185,7 @@ const TR: Dict = {
   ok: 'Tamam',
   resetDone: name => `${name} limit sıfırlandı`,
   resetsIn: dur => `${dur} içinde sıfırlanır`,
-  timeStrip: name => `Zaman şeridi · ${name}`,
+  timeStrip: (name, elapsed) => `Zaman şeridi · ${name} · geçen zaman ${elapsed}`,
   now: 'şimdi',
   chartAlt: (name, used, elapsed) =>
     `${name} kullanımın pencere boyunca zaman çizgisiyle karşılaştırması: kullanılan ${used}, geçen zaman ${elapsed}`,

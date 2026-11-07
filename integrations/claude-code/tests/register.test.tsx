@@ -331,12 +331,13 @@ test('the pane draws cards, strip, chart, sessions and context on every surface'
     // Cards with source badges, the time mark and the reset.
     expect(texts).toContain('Haftalık')
     expect(texts).toContain(' Claude Code ')
-    expect(texts).toContain(' API ')
-    expect(all).toContain('%30 ⏱%70,2')
+    expect(texts).toContain(" kullanım API'si ")
+    expect(all).toContain('%30')
+    expect(all).not.toContain('⏱')
     expect(all).toContain('2 g 2 sa içinde sıfırlanır')
     expect(all).toContain('5 saatlik: bu hesapta yok.')
     // The weekly strip: title, now pointer, end-of-day time line.
-    expect(texts).toContain('Zaman şeridi · Haftalık')
+    expect(texts).toContain('Zaman şeridi · Haftalık · geçen zaman %70,2')
     expect(all).toContain('▲ şimdi')
     expect(all).toContain('%100')
     // Live sessions by name or folder, never by title; this one first.
@@ -380,7 +381,7 @@ test('/radar opens the pane and answers in one line', async ($, on) => {
   const { text } = await $.command.run(RADAR)
   expect(w.opened).toEqual(['tokenradar'])
   expect(text).toBe(
-    'TokenRadar paneli açıldı. Haftalık %30 (Claude Code) · Haftalık (Fable) %5 (API)',
+    "TokenRadar paneli açıldı. Haftalık %30 (Claude Code) · Haftalık (Fable) %5 (kullanım API'si)",
   )
 })
 

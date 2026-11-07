@@ -42,11 +42,13 @@ import {
   topLevel,
   value,
 } from './model'
-import { bandTree, paneTree, resetTree } from './view'
+import { MAX_STRIP, bandTree, paneTree, resetTree } from './view'
 
 const CLI_TIMEOUT_MS = 5_000
 const PANE = 'tokenradar'
 const CHART_ROWS = 6
+/** The pane's wished-for height inline: its content, up to what the layout spares. */
+const PANE_ROWS = 48
 
 const measure = atom({ plugin: 'tokenradar', key: 'measure' } as const, null as Measure | null, {
   shape: 'measure-1',
@@ -130,7 +132,7 @@ let shownStatus: string | undefined
 
 async function openPane($: EngineInterface, cli: string, lang: 'en' | 'tr'): Promise<boolean> {
   await refreshHistory($, cli, 0)
-  const opened = await $.ui.open({ id: PANE, title: t(lang).title })
+  const opened = await $.ui.open({ id: PANE, title: t(lang).title, rows: PANE_ROWS })
   await update($, pane, () => true)
   return opened.isPlaced
 }
@@ -236,7 +238,8 @@ export const register: Register = (on, options) => {
       const level = rowLevel(row)
       if (e.surface === 'terminal') {
         const { Raster } = $.ui.resolve(e)
-        const columns = Math.max(14, Math.floor(width / 7) * 7)
+        // As wide as the strip above it, so days line up.
+        const columns = Math.max(14, Math.floor(Math.min(width, MAX_STRIP) / 7) * 7)
         chart = (
           <Raster
             key="chart"
