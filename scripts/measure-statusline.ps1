@@ -29,18 +29,26 @@ Cargo profile of the CLI: release-cli (default, the shipped size-optimized build
 .PARAMETER NoBuild
 Use the existing binaries.
 
+.PARAMETER Cli
+Measure this tokenradar.exe instead of the profile's build, e.g. an older build for an A/B run.
+
 .EXAMPLE
 .\scripts\measure-statusline.ps1
 
 .EXAMPLE
 .\scripts\measure-statusline.ps1 -Runs 500 -Mode on -NoBuild
+
+.EXAMPLE
+.\scripts\measure-statusline.ps1 -NoBuild -Cli D:\old\tokenradar.exe
 #>
+[CmdletBinding()]
 param(
     [int]$Runs = 200,
     [int]$Warmup = 10,
     [ValidateSet('both', 'on', 'off')][string]$Mode = 'both',
     [ValidateSet('release-cli', 'release')][string]$Profile = 'release-cli',
-    [switch]$NoBuild
+    [switch]$NoBuild,
+    [string]$Cli
 )
 
 $ErrorActionPreference = 'Stop'
@@ -53,7 +61,7 @@ if (-not $NoBuild) {
     cargo build --release -q -p tokenradar-core --example ipc_serve
     if ($LASTEXITCODE) { throw 'cargo build --example ipc_serve failed' }
 }
-$cli = Join-Path $root "target\$Profile\tokenradar.exe"
+$cli = if ($Cli) { $Cli } else { Join-Path $root "target\$Profile\tokenradar.exe" }
 $serveExe = Join-Path $root 'target\release\examples\ipc_serve.exe'
 
 $tmp = Join-Path ([IO.Path]::GetTempPath()) ('tokenradar-measure-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
@@ -72,6 +80,9 @@ function New-Payload([double]$percent) {
         session_id      = '00000000-0000-4000-8000-000000000001'
         transcript_path = (Join-Path $project '00000000-0000-4000-8000-000000000001.jsonl')
         cwd             = 'C:\Work\Alpha'
+        model           = @{ id = 'claude-opus-5-5'; display_name = 'Opus 5.5' }
+        cost            = @{ total_cost_usd = 4.12 }
+        context_window  = @{ used_percentage = 38 }
         rate_limits     = @{
             five_hour = @{ used_percentage = $percent; resets_at = $now + 7200 }
             seven_day = @{ used_percentage = 41.2; resets_at = $now + 3 * 86400 }
