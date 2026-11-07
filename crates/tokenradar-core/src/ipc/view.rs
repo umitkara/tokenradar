@@ -3,11 +3,12 @@
 //! These types are a stable, versioned contract: they are built from the internal view model
 //! (`PanelSnapshot`) or, with the app closed, from the database, and never change shape
 //! without a new schema number. Enumerations travel as `snake_case` strings so that a newer
-//! app does not break an older CLI.
+//! app does not break an older CLI. A field added later carries `#[serde(default)]`, so that
+//! both directions keep working: an older CLI ignores it, a newer one reads an older app.
 
 use serde::{Deserialize, Serialize};
 
-use crate::domain::{LimitObservation, Source, Timestamp};
+use crate::domain::{LimitObservation, LimitRef, Source, Timestamp};
 use crate::limits::{Freshness, LimitView, PanelSnapshot, SessionShareView};
 use crate::live_sessions::LiveStatus;
 
@@ -52,6 +53,24 @@ pub struct LimitInfo {
     pub projection_confidence: Option<String>,
 }
 
+/// A limit this account does not have (ADR-041), e.g. the 5-hour window of a verified Ultra
+/// account. It is never in `limits`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AbsentLimit {
+    /// Same names as [`LimitInfo::kind`].
+    pub kind: String,
+    pub scope: Option<String>,
+}
+
+impl AbsentLimit {
+    pub fn from_ref(r: &LimitRef) -> Self {
+        Self {
+            kind: r.kind.as_str().to_owned(),
+            scope: r.scope.as_ref().map(ToString::to_string),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SessionInfo {
     pub session_uuid: Option<String>,
@@ -73,6 +92,9 @@ pub struct StatusReply {
     pub origin: Origin,
     pub account: Option<AccountInfo>,
     pub limits: Vec<LimitInfo>,
+    /// Limits the account does not have. Added in 0.1.1; empty from older apps.
+    #[serde(default)]
+    pub absent: Vec<AbsentLimit>,
     /// The session asked about, when the app knows it.
     pub session: Option<SessionInfo>,
     pub live_sessions: Vec<SessionInfo>,
@@ -87,6 +109,9 @@ pub struct LimitsReply {
     pub schema: u8,
     pub origin: Origin,
     pub limits: Vec<LimitInfo>,
+    /// Limits the account does not have. Added in 0.1.1; empty from older apps.
+    #[serde(default)]
+    pub absent: Vec<AbsentLimit>,
     pub generated_at: Timestamp,
 }
 
@@ -116,6 +141,7 @@ impl StatusReply {
                 tier: a.tier.clone(),
             }),
             limits: s.limits.iter().map(LimitInfo::from_view).collect(),
+            absent: s.absent.iter().map(AbsentLimit::from_ref).collect(),
             session,
             live_sessions: s.live_sessions.iter().map(SessionInfo::from_view).collect(),
             statusline_last_seen: s.statusline.last_seen,
@@ -131,6 +157,7 @@ impl StatusReply {
             origin: Origin::App,
             account: None,
             limits: Vec::new(),
+            absent: Vec::new(),
             session: None,
             live_sessions: Vec::new(),
             statusline_last_seen: None,
@@ -144,8 +171,16 @@ impl StatusReply {
             schema: self.schema,
             origin: self.origin,
             limits: self.limits,
+            absent: self.absent,
             generated_at: self.generated_at,
         }
+    }
+
+    /// Whether the account lacks the limit of this kind, unscoped.
+    pub fn is_absent(&self, kind: &str) -> bool {
+        self.absent
+            .iter()
+            .any(|a| a.kind == kind && a.scope.is_none())
     }
 
     pub fn sessions_reply(self) -> SessionsReply {
@@ -266,6 +301,23 @@ mod tests {
             ),
             "backoff"
         );
+    }
+
+    #[test]
+    fn replies_without_the_absent_field_still_parse() {
+        let now = Timestamp::from_millis(1_000);
+        let mut reply = StatusReply::empty(now);
+        reply.absent = vec![AbsentLimit {
+            kind: "session".into(),
+            scope: None,
+        }];
+        let mut v = serde_json::to_value(&reply).expect("json");
+        assert_eq!(v["absent"][0]["kind"], "session");
+        assert!(reply.is_absent("session") && !reply.is_absent("weekly_all"));
+        // An app from before 0.1.1 does not send the field.
+        v.as_object_mut().expect("object").remove("absent");
+        let old: StatusReply = serde_json::from_value(v).expect("old reply");
+        assert_eq!(old.absent.len(), 0);
     }
 
     #[test]

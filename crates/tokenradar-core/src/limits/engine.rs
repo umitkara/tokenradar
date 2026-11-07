@@ -19,6 +19,7 @@ use std::cell::Cell;
 use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, HashMap};
 
+use super::presence::{self, Presence};
 use super::rate::{self, Projection};
 use super::share::{self, RootUsage};
 use super::view::{
@@ -26,11 +27,11 @@ use super::view::{
     LimitView, PanelSnapshot, STALE_MS, SessionShareView, Severity, StatuslineState, THRESHOLDS,
 };
 use crate::domain::{
-    AccountId, LimitKind, LimitObservation, MicroUsd, Scope, SessionId, Source, Timestamp,
+    AccountId, LimitKind, LimitObservation, LimitRef, MicroUsd, Scope, SessionId, Source, Timestamp,
 };
 use crate::live_sessions::{LiveSession, LiveStatus};
 use crate::providers::claude::usage_api::{
-    Activity, ApiState, PollDiagnostics, PollInputs, PollUpdate, UsageReport,
+    Activity, ApiState, PollDiagnostics, PollInputs, PollUpdate, UsageReport, UsageSchema,
 };
 use crate::store::{Store, StoreError, WINDOW_MATCH_TOLERANCE_MS};
 
@@ -42,7 +43,7 @@ pub const FUSION_WINDOW_MS: i64 = 30 * 1000;
 /// An unchanged reading is written again after this long.
 pub const HEARTBEAT_MS: i64 = 5 * MIN;
 /// Percentages closer than this are "unchanged".
-const PERCENT_EPSILON: f64 = 0.005;
+pub(super) const PERCENT_EPSILON: f64 = 0.005;
 /// Token rate window for the session list.
 const TOKEN_RATE_MS: i64 = 5 * MIN;
 const TOP_SESSIONS: usize = 3;
@@ -64,7 +65,7 @@ fn priority(source: Source) -> u8 {
     }
 }
 
-fn same_window(a: Option<Timestamp>, b: Option<Timestamp>) -> bool {
+pub(super) fn same_window(a: Option<Timestamp>, b: Option<Timestamp>) -> bool {
     match (a, b) {
         (Some(a), Some(b)) => (a.as_millis() - b.as_millis()).abs() <= WINDOW_MATCH_TOLERANCE_MS,
         (None, None) => true,
@@ -176,6 +177,8 @@ struct AccountState {
     api_diag: PollDiagnostics,
     extra_usage: Option<bool>,
     statusline_last: Option<Timestamp>,
+    /// Which limits the account has; absent ones have no track (ADR-041).
+    presence: Presence,
 }
 
 pub struct LimitEngine {
@@ -213,10 +216,19 @@ impl LimitEngine {
                 api_diag: PollDiagnostics::default(),
                 extra_usage: None,
                 statusline_last: None,
+                presence: Presence::with_absent(
+                    store
+                        .kv_get(&presence::kv_key(id))?
+                        .map(|v| presence::decode(&v))
+                        .unwrap_or_default(),
+                ),
             };
             for obs in store.latest_snapshots(id)? {
                 if obs.source == Source::Statusline {
                     state.statusline_last = state.statusline_last.max(Some(obs.observed_at));
+                }
+                if state.presence.is_absent(&LimitRef::of(&obs)) {
+                    continue;
                 }
                 let mut track = Track::new(obs.clone());
                 track.written.insert(
@@ -271,6 +283,15 @@ impl LimitEngine {
         };
         if obs.source == Source::Statusline {
             state.statusline_last = state.statusline_last.max(Some(obs.observed_at));
+        }
+        if obs.source != Source::Estimate && state.presence.observed(&LimitRef::of(obs)) {
+            tracing::info!(limit = %LimitRef::of(obs).encode(), "limit is present again");
+            store_absent(
+                &self.store,
+                obs.account,
+                &state.presence,
+                &mut self.store_errors,
+            );
         }
         let key = TrackKey::of(&obs.kind, obs.scope.as_ref());
 
@@ -363,9 +384,9 @@ impl LimitEngine {
         state.api_diag = update.diagnostics;
         let Some(UsageReport {
             observations,
+            schema,
             breakdown,
             extra,
-            ..
         }) = update.report
         else {
             return events;
@@ -384,10 +405,72 @@ impl LimitEngine {
             self.store_errors += 1;
             tracing::warn!(%error, "could not store the surface breakdown");
         }
-        for obs in observations {
-            events.extend(self.ingest(&obs, now));
+        for obs in &observations {
+            events.extend(self.ingest(obs, now));
+        }
+        // A response is a full listing: what it lacks, the account does not have. The flat
+        // fields only ever describe the expected limits; an empty response proves nothing.
+        let listed: Vec<LimitRef> = observations.iter().map(LimitRef::of).collect();
+        let expected = presence::EXPECTED.map(|k| LimitRef::new(k, None));
+        let candidates: Vec<LimitRef> = match schema {
+            UsageSchema::Empty => Vec::new(),
+            UsageSchema::FlatFields => expected.to_vec(),
+            UsageSchema::LimitsArray => {
+                self.accounts
+                    .get(&update.account)
+                    .map_or_else(Vec::new, |state| {
+                        let mut all = expected.to_vec();
+                        for t in state.tracks.values() {
+                            let r = LimitRef::of(&t.fused);
+                            if !all.contains(&r) {
+                                all.push(r);
+                            }
+                        }
+                        all
+                    })
+            }
+        };
+        if let Some(state) = self.accounts.get_mut(&update.account) {
+            let became = state.presence.listing(&listed, candidates);
+            self.mark_absent(update.account, &became);
         }
         events
+    }
+
+    /// One statusline payload's readings, before they are ingested one by one: a payload that
+    /// lacks a window counts toward that window's absence (see [`presence`]).
+    pub fn note_statusline(&mut self, readings: &[LimitObservation]) {
+        let Some(account) = readings.first().map(|o| o.account) else {
+            return;
+        };
+        let Some(state) = self.accounts.get_mut(&account) else {
+            return;
+        };
+        let covered = presence::EXPECTED.map(|k| LimitRef::new(k, None));
+        let became = state.presence.statusline(readings, &covered);
+        self.mark_absent(account, &became);
+    }
+
+    /// Drops the tracks of limits that became absent and stores the decision.
+    fn mark_absent(&mut self, account: AccountId, became: &[LimitRef]) {
+        if became.is_empty() {
+            return;
+        }
+        let Some(state) = self.accounts.get_mut(&account) else {
+            return;
+        };
+        for r in became {
+            tracing::info!(limit = %r.encode(), "limit is absent on this account");
+            state
+                .tracks
+                .remove(&TrackKey::of(&r.kind, r.scope.as_ref()));
+        }
+        store_absent(
+            &self.store,
+            account,
+            &state.presence,
+            &mut self.store_errors,
+        );
     }
 
     pub fn set_live_sessions(&mut self, live: Vec<LiveSession>) {
@@ -518,6 +601,7 @@ impl LimitEngine {
                 PanelSnapshot {
                     account: None,
                     limits: Vec::new(),
+                    absent: Vec::new(),
                     live_sessions: Vec::new(),
                     top_sessions: Vec::new(),
                     index_state: self.index,
@@ -553,6 +637,7 @@ impl LimitEngine {
                 extra_usage_enabled: state.extra_usage,
             }),
             limits,
+            absent: state.presence.absent(),
             live_sessions: live_rows,
             top_sessions: top_rows,
             index_state: self.index,
@@ -567,6 +652,21 @@ impl LimitEngine {
         };
         self.store_errors += queries.errors.get();
         (snapshot, events)
+    }
+}
+
+/// Keeps an account's absent limits in `kv` (see [`presence::kv_key`]).
+fn store_absent(store: &Store, account: AccountId, presence: &Presence, errors: &mut u64) {
+    let absent = presence.absent();
+    let key = presence::kv_key(account);
+    let result = if absent.is_empty() {
+        store.writer().kv_delete(key)
+    } else {
+        store.writer().kv_set(key, presence::encode(&absent))
+    };
+    if let Err(error) = result {
+        *errors += 1;
+        tracing::warn!(%error, "could not store the absent limits");
     }
 }
 

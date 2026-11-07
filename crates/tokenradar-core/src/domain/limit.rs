@@ -103,6 +103,53 @@ pub struct LimitObservation {
     pub observed_at: Timestamp,
 }
 
+/// Whether an account has a limit at all (ADR-041). Verified Ultra accounts, for example, have
+/// no 5-hour window: such a limit is `Absent`, which is not the same as `0 %`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "snake_case")]
+pub enum WindowPresence {
+    /// Readings of it arrive.
+    Present,
+    /// No reading yet, and no evidence that it does not exist.
+    Unknown,
+    /// The sources evidently report the account without it.
+    Absent,
+}
+
+/// A limit by name, without a value: its kind and scope.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Type)]
+pub struct LimitRef {
+    pub kind: LimitKind,
+    pub scope: Option<Scope>,
+}
+
+impl LimitRef {
+    pub fn new(kind: LimitKind, scope: Option<Scope>) -> Self {
+        Self { kind, scope }
+    }
+
+    pub fn of(obs: &LimitObservation) -> Self {
+        Self::new(obs.kind.clone(), obs.scope.clone())
+    }
+
+    /// Stored form: `kind`, or `kind|scope` (e.g. `weekly_scoped|model:Fable`).
+    pub fn encode(&self) -> String {
+        match &self.scope {
+            Some(scope) => format!("{}|{scope}", self.kind.as_str()),
+            None => self.kind.as_str().to_owned(),
+        }
+    }
+
+    /// The inverse of [`Self::encode`]; `None` for an unreadable scope.
+    pub fn decode(s: &str) -> Option<Self> {
+        match s.split_once('|') {
+            Some((kind, scope)) => Some(Self::new(kind.into(), Some(scope.parse().ok()?))),
+            None if !s.is_empty() => Some(Self::new(s.into(), None)),
+            None => None,
+        }
+    }
+}
+
 /// A 5-hour or weekly window, observed or estimated from logs.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 pub struct LimitWindow {
@@ -131,6 +178,19 @@ mod tests {
             assert_eq!(scope.to_string().parse::<Scope>(), Ok(scope));
         }
         assert!("Fable".parse::<Scope>().is_err());
+    }
+
+    #[test]
+    fn limit_refs_round_trip() {
+        for r in [
+            LimitRef::new(LimitKind::Session, None),
+            LimitRef::new(LimitKind::WeeklyScoped, Some(Scope::Model("Fable".into()))),
+            LimitRef::new(LimitKind::Other("spend_limit".into()), None),
+        ] {
+            assert_eq!(LimitRef::decode(&r.encode()), Some(r));
+        }
+        assert_eq!(LimitRef::decode(""), None);
+        assert_eq!(LimitRef::decode("weekly_scoped|Fable"), None);
     }
 
     #[test]

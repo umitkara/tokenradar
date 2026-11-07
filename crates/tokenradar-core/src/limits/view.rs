@@ -5,7 +5,9 @@ use serde::Serialize;
 use specta::Type;
 
 use super::rate::Projection;
-use crate::domain::{AccountId, LimitKind, MicroUsd, Scope, SessionId, Source, Timestamp};
+use crate::domain::{
+    AccountId, LimitKind, LimitRef, MicroUsd, Scope, SessionId, Source, Timestamp, WindowPresence,
+};
 use crate::indexer::IndexProgress;
 use crate::live_sessions::LiveStatus;
 use crate::providers::claude::usage_api::{ApiState, PollDiagnostics};
@@ -160,6 +162,8 @@ pub struct PanelSnapshot {
     /// The primary account; `None` when no Claude Code directory exists.
     pub account: Option<AccountView>,
     pub limits: Vec<LimitView>,
+    /// Limits this account does not have (ADR-041); none of them is in `limits`.
+    pub absent: Vec<LimitRef>,
     /// Running sessions, largest share first.
     pub live_sessions: Vec<SessionShareView>,
     /// The window's largest consumers, live or not (shown when nothing is live).
@@ -189,6 +193,7 @@ type VisibleSession = (Option<String>, Option<LiveStatus>, Option<i64>);
 pub struct VisibleKey {
     account: Option<AccountView>,
     limits: Vec<VisibleLimit>,
+    absent: Vec<LimitRef>,
     sessions: Vec<VisibleSession>,
     index: IndexState,
     api: std::mem::Discriminant<ApiState>,
@@ -196,6 +201,26 @@ pub struct VisibleKey {
 }
 
 impl PanelSnapshot {
+    /// Whether the account has the limit: a reading, a known absence, or neither yet.
+    pub fn presence(&self, kind: &LimitKind, scope: Option<&Scope>) -> WindowPresence {
+        let matches = |k: &LimitKind, s: Option<&Scope>| k == kind && s == scope;
+        if self
+            .limits
+            .iter()
+            .any(|l| matches(&l.kind, l.scope.as_ref()))
+        {
+            WindowPresence::Present
+        } else if self
+            .absent
+            .iter()
+            .any(|r| matches(&r.kind, r.scope.as_ref()))
+        {
+            WindowPresence::Absent
+        } else {
+            WindowPresence::Unknown
+        }
+    }
+
     pub fn visible_key(&self) -> VisibleKey {
         #[allow(clippy::cast_possible_truncation)]
         let round = |p: f64| p.round() as i64;
@@ -218,6 +243,7 @@ impl PanelSnapshot {
                     )
                 })
                 .collect(),
+            absent: self.absent.clone(),
             sessions: self
                 .live_sessions
                 .iter()

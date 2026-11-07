@@ -612,7 +612,7 @@ fn spooled_readings_are_imported_once_at_start() {
     }
     let accounts = vec![(account, env.config_dir.clone())];
     let mut again = 0;
-    let report = bridge::import_spool(&spool_dir, handle.store(), &accounts, |_| again += 1);
+    let report = bridge::import_spool(&spool_dir, handle.store(), &accounts, |_, _| again += 1);
     assert_eq!((report.ingested, report.duplicates, again), (0, 10, 0));
     handle.shutdown(SHUTDOWN_TIMEOUT);
 }

@@ -1053,6 +1053,8 @@ fn watch_loop(mut ctx: WatchCtx, rx: &mpsc::Receiver<WatchMsg>) {
 
 enum LimitsMsg {
     Observe(LimitObservation),
+    /// One statusline payload's readings (ADR-041: a missing window counts as evidence).
+    Statusline(Vec<LimitObservation>),
     Poll(Box<PollUpdate>),
     Live(Vec<LiveSession>),
     /// An indexing pass stored events, or the first scan finished.
@@ -1092,8 +1094,11 @@ impl LimitsCtx {
             return false;
         };
         let mut events = Vec::new();
-        let report = bridge::import_spool(dir, &self.store, &self.account_dirs, |obs| {
-            events.extend(self.engine.ingest(obs, now));
+        let report = bridge::import_spool(dir, &self.store, &self.account_dirs, |all, new| {
+            self.engine.note_statusline(all);
+            for obs in new {
+                events.extend(self.engine.ingest(obs, now));
+            }
         });
         self.publish_all(events);
         report.ingested > 0
@@ -1158,6 +1163,14 @@ impl LimitsCtx {
             }
             LimitsMsg::Observe(obs) => {
                 let events = self.engine.ingest(&obs, now);
+                self.publish_all(events);
+            }
+            LimitsMsg::Statusline(readings) => {
+                self.engine.note_statusline(&readings);
+                let mut events = Vec::new();
+                for obs in &readings {
+                    events.extend(self.engine.ingest(obs, now));
+                }
                 self.publish_all(events);
             }
             LimitsMsg::Poll(update) => {

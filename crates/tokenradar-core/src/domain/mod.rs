@@ -15,7 +15,9 @@ pub use entities::{
     SessionSpec, SessionTitle, TitleSource,
 };
 pub use ids::{AccountId, ModelId, ProjectId, SessionId};
-pub use limit::{LimitKind, LimitObservation, LimitWindow, Scope, Source};
+pub use limit::{
+    LimitKind, LimitObservation, LimitRef, LimitWindow, Scope, Source, WindowPresence,
+};
 pub use money::MicroUsd;
 pub use time::{BUCKET_MS, Timestamp};
 pub use usage::{MsgKey, Speed, TokenCounts, Usage, UsageEvent};

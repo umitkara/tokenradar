@@ -37,8 +37,9 @@ impl CoreIpc {
 
 impl Handler for CoreIpc {
     fn push(&self, push: StatuslinePush) {
-        for obs in observations(&push, &self.accounts) {
-            let _ = self.limits_tx.send(LimitsMsg::Observe(obs));
+        let readings = observations(&push, &self.accounts);
+        if !readings.is_empty() {
+            let _ = self.limits_tx.send(LimitsMsg::Statusline(readings));
         }
     }
 
@@ -81,24 +82,27 @@ pub(super) struct SpoolImport {
     pub files: usize,
 }
 
-/// Feeds every spooled reading not yet stored to `ingest`, oldest first, and deletes each file
-/// once it is done. A store error leaves the file for the next round.
+/// Feeds every spooled payload with a reading not yet stored to `ingest`, oldest first, as
+/// `(all readings, new readings)`, and deletes each file once it is done. A store error leaves
+/// the file for the next round.
 pub(super) fn import_spool(
     dir: &Path,
     store: &Store,
     accounts: &[(AccountId, PathBuf)],
-    mut ingest: impl FnMut(&LimitObservation),
+    mut ingest: impl FnMut(&[LimitObservation], &[LimitObservation]),
 ) -> SpoolImport {
     let mut report = SpoolImport::default();
     for claimed in spool::claim(dir) {
         report.malformed += claimed.malformed;
         let mut complete = true;
         for push in &claimed.pushes {
-            for obs in observations(push, accounts) {
-                match store.snapshot_exists(&obs) {
+            let readings = observations(push, accounts);
+            let mut new = Vec::new();
+            for obs in &readings {
+                match store.snapshot_exists(obs) {
                     Ok(true) => report.duplicates += 1,
                     Ok(false) => {
-                        ingest(&obs);
+                        new.push(obs.clone());
                         report.ingested += 1;
                     }
                     Err(error) => {
@@ -106,6 +110,10 @@ pub(super) fn import_spool(
                         complete = false;
                     }
                 }
+            }
+            // A payload seen before (every reading stored) must not count twice for presence.
+            if !new.is_empty() {
+                ingest(&readings, &new);
             }
         }
         if complete {

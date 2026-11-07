@@ -1,7 +1,7 @@
 use super::*;
 use crate::domain::{
     AccountSpec, ModelFamily, MsgKey, Provider, SessionKind, SessionSpec, TokenCounts, Usage,
-    UsageEvent,
+    UsageEvent, WindowPresence,
 };
 use crate::live_sessions::LiveSession;
 
@@ -524,4 +524,200 @@ fn visible_key_ignores_invisible_changes() {
     e.ingest(&fx.session(40.6, Source::Statusline, 2 * SEC), t(2 * SEC));
     let c = e.snapshot(t(3 * SEC)).0;
     assert_ne!(b.visible_key(), c.visible_key());
+}
+
+// --- Optional windows (ADR-041) -------------------------------------------------------------
+
+fn kinds(views: &[LimitView]) -> Vec<&str> {
+    views.iter().map(|l| l.kind.as_str()).collect()
+}
+
+fn session_ref() -> LimitRef {
+    LimitRef::new(LimitKind::Session, None)
+}
+
+impl Fx {
+    /// A statusline payload with only the weekly window, at `pct`.
+    fn weekly_only(&self, pct: f64, at: i64) -> Vec<LimitObservation> {
+        vec![self.obs(
+            LimitKind::WeeklyAll,
+            pct,
+            4 * 24 * 3600 * SEC,
+            Source::Statusline,
+            at,
+        )]
+    }
+
+    fn poll(&self, file: &str, at: i64) -> PollUpdate {
+        let body = std::fs::read(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../testdata/api")
+                .join(file),
+        )
+        .expect("fixture");
+        let report = crate::providers::claude::usage_api::parse_usage(&body, self.account, t(at))
+            .expect("parse");
+        PollUpdate {
+            account: self.account,
+            state: ApiState::Active,
+            diagnostics: PollDiagnostics::default(),
+            report: Some(report),
+        }
+    }
+}
+
+/// Feeds a statusline payload the way the runtime does.
+fn statusline(
+    e: &mut LimitEngine,
+    readings: &[LimitObservation],
+    now: Timestamp,
+) -> Vec<LimitEvent> {
+    e.note_statusline(readings);
+    readings.iter().flat_map(|o| e.ingest(o, now)).collect()
+}
+
+#[test]
+fn statusline_alone_decides_after_three_fresh_payloads() {
+    let fx = fixture();
+    let mut e = fx.engine(t(0));
+    // An old 5-hour reading whose window already passed: an estimated 0 % until decided.
+    e.ingest(&fx.session(30.0, Source::Statusline, 0), t(0));
+    let later = 4 * 3600 * SEC;
+    e.tick(t(later));
+    assert_eq!(kinds(&current(&mut e, t(later))), ["session"]);
+
+    // Repeated identical payloads (cache expiry, refreshInterval) prove nothing.
+    for i in 0..5 {
+        statusline(
+            &mut e,
+            &fx.weekly_only(20.0, later + i * SEC),
+            t(later + i * SEC),
+        );
+    }
+    let snap = e.snapshot(t(later + 5 * SEC)).0;
+    assert_eq!(
+        snap.presence(&LimitKind::Session, None),
+        WindowPresence::Present
+    );
+
+    for (i, pct) in (10..).zip([20.1, 20.2, 20.3]) {
+        let at = later + i * SEC;
+        statusline(&mut e, &fx.weekly_only(pct, at), t(at));
+    }
+    let snap = e.snapshot(t(later + 20 * SEC)).0;
+    assert_eq!(kinds(&snap.limits), ["weekly_all"]);
+    assert_eq!(snap.absent, vec![session_ref()]);
+    assert_eq!(
+        snap.presence(&LimitKind::Session, None),
+        WindowPresence::Absent
+    );
+    // No reset, projection or wake-up for a window that does not exist.
+    assert_eq!(e.tick(t(later + 6 * 3600 * SEC)).len(), 0);
+}
+
+#[test]
+fn the_usage_api_decides_at_once_and_lists_scoped_limits() {
+    let fx = fixture();
+    let mut e = fx.engine(t(0));
+    e.ingest(&fx.session(30.0, Source::Statusline, 0), t(0));
+    e.apply_poll(fx.poll("claude-usage-no-session.json", SEC), t(SEC));
+    let snap = e.snapshot(t(SEC)).0;
+    assert_eq!(kinds(&snap.limits), ["weekly_all", "weekly_scoped"]);
+    assert_eq!(snap.absent, vec![session_ref()]);
+    // The usual response lists the session again.
+    e.apply_poll(
+        fx.poll("claude-usage-2026-10-26-limits-array.json", 2 * SEC),
+        t(2 * SEC),
+    );
+    let snap = e.snapshot(t(2 * SEC)).0;
+    assert_eq!(snap.absent.len(), 0);
+    assert_eq!(
+        snap.presence(&LimitKind::Session, None),
+        WindowPresence::Present
+    );
+}
+
+#[test]
+fn an_empty_usage_response_proves_nothing() {
+    let fx = fixture();
+    let mut e = fx.engine(t(0));
+    e.ingest(&fx.session(30.0, Source::Statusline, 0), t(0));
+    let report =
+        crate::providers::claude::usage_api::parse_usage(b"{}", fx.account, t(SEC)).expect("parse");
+    e.apply_poll(
+        PollUpdate {
+            account: fx.account,
+            state: ApiState::Active,
+            diagnostics: PollDiagnostics::default(),
+            report: Some(report),
+        },
+        t(SEC),
+    );
+    assert_eq!(e.snapshot(t(SEC)).0.absent.len(), 0);
+}
+
+#[test]
+fn a_reading_brings_the_window_back_on_the_next_update() {
+    let fx = fixture();
+    let mut e = fx.engine(t(0));
+    e.apply_poll(fx.poll("claude-usage-no-session.json", 0), t(0));
+    assert_eq!(e.snapshot(t(0)).0.absent, vec![session_ref()]);
+    // The account is no longer verified: the statusline carries the window again.
+    let mut payload = fx.weekly_only(37.5, SEC);
+    payload.push(fx.session(3.0, Source::Statusline, SEC));
+    statusline(&mut e, &payload, t(SEC));
+    let snap = e.snapshot(t(SEC)).0;
+    assert_eq!(snap.absent.len(), 0);
+    assert_eq!(kinds(&snap.limits)[0], "session");
+    assert_eq!(
+        fx.store.kv_get(&presence::kv_key(fx.account)).expect("kv"),
+        None
+    );
+}
+
+#[test]
+fn the_decision_survives_a_restart_and_hides_the_stored_reading() {
+    let fx = fixture();
+    {
+        let mut e = fx.engine(t(0));
+        e.ingest(&fx.session(30.0, Source::Statusline, 0), t(0));
+        e.apply_poll(fx.poll("claude-usage-no-session.json", SEC), t(SEC));
+    }
+    assert_eq!(
+        fx.store
+            .kv_get(&presence::kv_key(fx.account))
+            .expect("kv")
+            .as_deref(),
+        Some(r#"["session"]"#)
+    );
+    // The 5-hour snapshot is still in the history, but the restarted engine does not show it.
+    let mut e = fx.engine(t(2 * SEC));
+    let snap = e.snapshot(t(2 * SEC)).0;
+    assert_eq!(kinds(&snap.limits), ["weekly_all", "weekly_scoped"]);
+    assert_eq!(snap.absent, vec![session_ref()]);
+    assert!(
+        e.poll_inputs(fx.account)
+            .resets
+            .iter()
+            .all(|r| *r != t(3 * 3600 * SEC))
+    );
+}
+
+#[test]
+fn an_absent_window_raises_no_threshold_events() {
+    let fx = fixture();
+    let mut e = fx.engine(t(0));
+    e.apply_poll(fx.poll("claude-usage-no-session.json", 0), t(0));
+    let (snap, events) = e.snapshot(t(SEC));
+    assert!(events.iter().all(|ev| !matches!(
+        ev,
+        LimitEvent::ThresholdCrossed {
+            kind: LimitKind::Session,
+            ..
+        } | LimitEvent::ProjectionChanged {
+            kind: LimitKind::Session,
+            ..
+        }
+    )));
+    assert!(snap.limits.iter().all(|l| l.kind != LimitKind::Session));
 }
