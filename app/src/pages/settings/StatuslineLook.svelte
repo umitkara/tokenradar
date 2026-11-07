@@ -135,6 +135,14 @@ function move(index: number, by: -1 | 1) {
         onchange={(bar) => save({ bar })}
       />
     </Field>
+    <Field label={t("statusline-pace")} hint={t("statusline-pace-hint")}>
+      <Toggle
+        checked={prefs.pace}
+        label={t("statusline-pace")}
+        labelHidden
+        onchange={(pace) => save({ pace })}
+      />
+    </Field>
   </div>
 {/if}
 

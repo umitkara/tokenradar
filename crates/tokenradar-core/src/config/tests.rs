@@ -374,6 +374,7 @@ fn statusline_prefs_are_their_own_table_and_never_break_the_file() {
         segments: vec![SegmentKind::Cost, SegmentKind::SevenDay, SegmentKind::Cost],
         layout: Layout::Double,
         bar: false,
+        pace: false,
     };
     save_statusline_prefs(&path, &prefs).expect("save");
     let text = std::fs::read_to_string(&path).expect("read");

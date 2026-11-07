@@ -20,7 +20,7 @@ use specta::Type;
 use super::payload::{RateWindow, StatuslinePayload};
 use crate::domain::{Scope, Source, Timestamp};
 use crate::ipc::{LimitInfo, StatusReply};
-use crate::limits::FRESH_MS;
+use crate::limits::{FRESH_MS, SESSION_WINDOW_MS, WEEK_MS};
 
 mod render;
 
@@ -109,6 +109,7 @@ pub const DEFAULT_SEGMENTS: [SegmentKind; 6] = [
 /// segments = ["five_hour", "seven_day", "scoped", "context", "session_share", "cost"]
 /// layout = "single"   # single | double
 /// bar = true
+/// pace = true
 /// ```
 ///
 /// Reading never fails: unknown segment names are skipped, an unknown layout is `single`, and
@@ -119,6 +120,9 @@ pub struct StatuslinePrefs {
     pub layout: Layout,
     /// The 8-cell bar on the 5-hour and weekly windows. Dropped without color and when narrow.
     pub bar: bool,
+    /// How much of the window's time has passed: a `│` mark on the bar and `⏱43%` after the
+    /// value (ADR-044). Added in 0.1.1; absent from older files, so it defaults to on.
+    pub pace: bool,
 }
 
 impl Default for StatuslinePrefs {
@@ -127,6 +131,7 @@ impl Default for StatuslinePrefs {
             segments: DEFAULT_SEGMENTS.to_vec(),
             layout: Layout::Single,
             bar: true,
+            pace: true,
         }
     }
 }
@@ -156,6 +161,7 @@ impl<'de> Deserialize<'de> for StatuslinePrefs {
             segments: Option<Vec<String>>,
             layout: Option<String>,
             bar: Option<bool>,
+            pace: Option<bool>,
         }
         let raw = Raw::deserialize(de)?;
         let default = Self::default();
@@ -168,6 +174,7 @@ impl<'de> Deserialize<'de> for StatuslinePrefs {
                 _ => Layout::Single,
             },
             bar: raw.bar.unwrap_or(default.bar),
+            pace: raw.pace.unwrap_or(default.pace),
         }
         .normalized())
     }
@@ -199,6 +206,9 @@ pub struct Window {
     pub resets_in: Option<i64>,
     /// Until 100 % at the current rate, ms; only when it comes before the reset.
     pub eta: Option<i64>,
+    /// How much of the window's time has passed, 0–100 %: a measurement of the clock, not
+    /// an estimate (ADR-044). `None` without a reset time.
+    pub elapsed: Option<f64>,
     /// `Estimate` after a passed reset; the app's own estimates never get here.
     pub source: Source,
     pub observed_at: Timestamp,
@@ -269,12 +279,14 @@ impl Line {
                 payload.and_then(StatuslinePayload::five_hour),
                 app("session"),
                 absent("session"),
+                SESSION_WINDOW_MS,
                 now,
             ),
             seven_day: window(
                 payload.and_then(StatuslinePayload::seven_day),
                 app("weekly_all"),
                 absent("weekly_all"),
+                WEEK_MS,
                 now,
             ),
             scoped: reply.map_or_else(Vec::new, |r| scoped(&r.limits, now)),
@@ -316,10 +328,11 @@ impl Line {
     /// 5-hour window is left out when `five_hour` is false (an account without it).
     pub fn sample(at: Timestamp, five_hour: bool) -> Self {
         const MIN: i64 = 60_000;
-        let w = |percent: f64, resets_in: i64| Window {
+        let w = |percent: f64, resets_in: i64, length: i64| Window {
             percent,
             resets_in: Some(resets_in),
             eta: None,
+            elapsed: elapsed(Some(resets_in), length),
             source: Source::Statusline,
             observed_at: at,
         };
@@ -327,14 +340,14 @@ impl Line {
             at,
             five_hour: five_hour.then(|| Window {
                 eta: Some(38 * MIN),
-                ..w(72.0, 108 * MIN)
+                ..w(72.0, 108 * MIN, SESSION_WINDOW_MS)
             }),
-            seven_day: Some(w(41.0, (3 * 24 + 4) * 60 * MIN)),
+            seven_day: Some(w(41.0, (3 * 24 + 4) * 60 * MIN, WEEK_MS)),
             scoped: vec![ScopedWindow {
                 label: "Fable".into(),
                 window: Window {
                     source: Source::Api,
-                    ..w(22.0, (3 * 24 + 4) * 60 * MIN)
+                    ..w(22.0, (3 * 24 + 4) * 60 * MIN, WEEK_MS)
                 },
             }],
             context: Some(Reading::now(38.0, Source::Statusline, at)),
@@ -349,6 +362,14 @@ fn until(at: Option<Timestamp>, now: Timestamp) -> Option<i64> {
     at.map(|t| t.as_millis() - now.as_millis())
 }
 
+/// The share of a window of `length` ms that has passed, from the time left until its reset.
+/// `None` when the reset is unknown, passed or further away than the window is long.
+#[allow(clippy::cast_precision_loss)] // window lengths are far below 2^52 ms
+pub fn elapsed(resets_in: Option<i64>, length: i64) -> Option<f64> {
+    let left = resets_in?;
+    (left > 0 && left <= length).then(|| (1.0 - left as f64 / length as f64) * 100.0)
+}
+
 fn eta(app: Option<&LimitInfo>, now: Timestamp) -> Option<i64> {
     app.filter(|a| a.will_hit_before_reset)
         .and_then(|a| until(a.eta_100_at, now))
@@ -356,14 +377,16 @@ fn eta(app: Option<&LimitInfo>, now: Timestamp) -> Option<i64> {
 }
 
 /// The app's measurement as a window; `None` for its estimates.
-fn from_app(a: &LimitInfo, now: Timestamp) -> Option<Window> {
+fn from_app(a: &LimitInfo, length: i64, now: Timestamp) -> Option<Window> {
     if a.estimated {
         return None;
     }
+    let resets_in = until(a.resets_at, now);
     Some(Window {
         percent: a.percent,
-        resets_in: until(a.resets_at, now),
+        resets_in,
         eta: eta(Some(a), now),
+        elapsed: elapsed(resets_in, length),
         source: a.source.parse().unwrap_or(Source::Api),
         observed_at: a.observed_at,
     })
@@ -373,6 +396,7 @@ fn window(
     measured: Option<&RateWindow>,
     app: Option<&LimitInfo>,
     absent: bool,
+    length: i64,
     now: Timestamp,
 ) -> Option<Window> {
     let measured = measured.and_then(|m| Some((m.percent()?, m.resets_at())));
@@ -382,11 +406,12 @@ fn window(
             percent,
             resets_in: until(resets_at, now),
             eta: eta(app, now),
+            elapsed: elapsed(until(resets_at, now), length),
             source: Source::Statusline,
             observed_at: now,
         },
         None if absent => return None,
-        None => from_app(app?, now)?,
+        None => from_app(app?, length, now)?,
     };
     Some(settle(w, now))
 }
@@ -398,6 +423,7 @@ fn settle(w: Window, now: Timestamp) -> Window {
             percent: 0.0,
             resets_in: None,
             eta: None,
+            elapsed: None,
             source: Source::Estimate,
             observed_at: now,
         }
@@ -413,7 +439,7 @@ fn scoped(limits: &[LimitInfo], now: Timestamp) -> Vec<ScopedWindow> {
         .filter(|l| l.kind == "weekly_scoped")
         .filter_map(|l| {
             let label = scope_label(l.scope.as_deref()?);
-            let window = settle(from_app(l, now)?, now);
+            let window = settle(from_app(l, WEEK_MS, now)?, now);
             Some(ScopedWindow { label, window })
         })
         .collect()

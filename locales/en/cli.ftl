@@ -7,6 +7,8 @@ sl-label-seven-day = 7d
 sl-percent = { PCT($pct) }
 sl-resets-in = { DUR($ms, "compact") }
 sl-eta = ▲{ DUR($ms, "compact") }
+# How much of the window's time has passed (clock time, not usage).
+sl-elapsed = ⏱{ PCT($pct) }
 sl-session-share = ≈{ PCT($pct) } this session
 # How full the context window is. `ctx` stays as the short form in every language.
 sl-context = ctx { PCT($pct) }

@@ -117,6 +117,8 @@ statusline-layout-single = Tek satır
 statusline-layout-double = İki satır: limitler, sonra oturum
 statusline-bar = İlerleme çubuğu
 statusline-bar-hint = Terminal renk desteklemiyorsa veya çok darsa gösterilmez.
+statusline-pace = Zaman işareti
+statusline-pace-hint = Pencerenin zaman olarak ne kadarının geçtiği: çubukta │, değerin yanında ⏱. Kullanımınızla karşılaştırın.
 
 ## Veri kaynakları: usage API
 

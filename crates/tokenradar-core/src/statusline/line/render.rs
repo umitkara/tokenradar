@@ -4,10 +4,11 @@
 //! this order, until it fits:
 //!
 //! 1. session segments (context, share, cost, model), from the end of the user's list;
-//! 2. the bar;
-//! 3. the projection (`▲38m`);
-//! 4. the reset countdowns;
-//! 5. limit segments from the end, keeping the first.
+//! 2. the bar (with its time mark);
+//! 3. the elapsed time (`⏱43%`);
+//! 4. the projection (`▲38m`);
+//! 5. the reset countdowns;
+//! 6. limit segments from the end, keeping the first.
 //!
 //! The double layout fits each of its two lines on its own.
 
@@ -22,6 +23,8 @@ use crate::limits::Severity;
 const BAR_CELLS: usize = 8;
 const BAR_FULL: char = '█';
 const BAR_EMPTY: char = '░';
+/// Where the window's time stands, between two cells (ADR-044).
+const BAR_MARK: char = '│';
 
 /// How a span is drawn. The CLI maps it to ANSI codes; the settings preview to theme colors.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Type)]
@@ -70,6 +73,7 @@ pub struct Style {
 #[allow(clippy::struct_excessive_bools)] // one switch per part of a segment
 struct Detail {
     bar: bool,
+    pace: bool,
     eta: bool,
     resets: bool,
 }
@@ -92,7 +96,7 @@ pub fn spans(l: &Localizer, line: &Line, prefs: &StatuslinePrefs, style: Style) 
     };
     let lines: Vec<Vec<Span>> = groups
         .iter()
-        .map(|kinds| fit(l, line, kinds, bar, style.width))
+        .map(|kinds| fit(l, line, kinds, bar, prefs.pace, style.width))
         .filter(|spans| !spans.is_empty())
         .collect();
     if lines.is_empty() {
@@ -108,10 +112,12 @@ fn fit(
     line: &Line,
     kinds: &[SegmentKind],
     bar: bool,
+    pace: bool,
     width: Option<usize>,
 ) -> Vec<Span> {
     let mut detail = Detail {
         bar,
+        pace,
         eta: true,
         resets: true,
     };
@@ -133,6 +139,8 @@ fn fit(
             kinds.remove(i);
         } else if detail.bar {
             detail.bar = false;
+        } else if detail.pace {
+            detail.pace = false;
         } else if detail.eta {
             detail.eta = false;
         } else if detail.resets {
@@ -179,6 +187,7 @@ fn segment(l: &Localizer, line: &Line, kind: SegmentKind, d: Detail) -> Option<V
                 // Compact: the label and the percentage, no bar, no countdown.
                 let compact = Detail {
                     bar: false,
+                    pace: false,
                     eta: false,
                     resets: false,
                 };
@@ -222,7 +231,7 @@ fn value_paint<T>(line: &Line, r: &Reading<T>, paint: Paint) -> Paint {
     }
 }
 
-/// `7d ████░░░░ 41% · 3d4h ▲38m`.
+/// `7d ███│░░░░░ 41% ⏱43% · 3d4h ▲38m`.
 fn window(l: &Localizer, line: &Line, label: &str, w: &Window, d: Detail) -> Vec<Span> {
     let dim = w.estimated() || line.is_stale(w.observed_at);
     let paint = if dim {
@@ -233,19 +242,22 @@ fn window(l: &Localizer, line: &Line, label: &str, w: &Window, d: Detail) -> Vec
     let mut out = Vec::new();
     let mark = if w.estimated() { "≈" } else { "" };
     out.push(span(format!("{mark}{label} "), paint));
+    let elapsed = w.elapsed.filter(|_| d.pace);
     if d.bar {
-        let full = bar_cells(w.percent);
-        out.push(span(BAR_FULL.to_string().repeat(full), paint));
-        out.push(span(
-            BAR_EMPTY.to_string().repeat(BAR_CELLS - full),
-            Paint::Dim,
-        ));
+        out.extend(bar(w.percent, elapsed, paint));
         out.push(span(" ", Paint::Plain));
     }
     out.push(span(
         l.fmt("sl-percent", &[("pct", Arg::Num(w.percent))]),
         paint,
     ));
+    if let Some(pct) = elapsed {
+        out.push(span(" ", Paint::Plain));
+        out.push(span(
+            l.fmt("sl-elapsed", &[("pct", Arg::Num(pct))]),
+            if dim { Paint::Dim } else { Paint::Plain },
+        ));
+    }
     if let Some(ms) = w.resets_in.filter(|_| d.resets) {
         out.push(span(" · ", Paint::Dim));
         out.push(span(
@@ -261,6 +273,43 @@ fn window(l: &Localizer, line: &Line, label: &str, w: &Window, d: Detail) -> Vec
         ));
     }
     out
+}
+
+/// The bar's cells, with the time mark between two of them when `elapsed` is known.
+fn bar(percent: f64, elapsed: Option<f64>, paint: Paint) -> Vec<Span> {
+    let full = bar_cells(percent);
+    let mut cells: Vec<(char, Paint)> = (0..BAR_CELLS)
+        .map(|i| {
+            if i < full {
+                (BAR_FULL, paint)
+            } else {
+                (BAR_EMPTY, Paint::Dim)
+            }
+        })
+        .collect();
+    if let Some(pct) = elapsed {
+        cells.insert(mark_at(pct), (BAR_MARK, Paint::Plain));
+    }
+    let mut out: Vec<Span> = Vec::new();
+    for (c, p) in cells {
+        match out.last_mut() {
+            // Runs of one glyph: the filled and the empty part stay separate spans.
+            Some(last) if last.paint == p && last.text.ends_with(c) => last.text.push(c),
+            _ => out.push(span(c.to_string(), p)),
+        }
+    }
+    out
+}
+
+/// The cell boundary nearest to `elapsed`: 0 before the first cell, 8 after the last.
+#[allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    clippy::cast_precision_loss
+)]
+pub(super) fn mark_at(elapsed: f64) -> usize {
+    let at = (elapsed.clamp(0.0, 100.0) / 100.0 * BAR_CELLS as f64).round();
+    (at as usize).min(BAR_CELLS)
 }
 
 /// Filled cells: any use shows at least one, only 100 % fills all.

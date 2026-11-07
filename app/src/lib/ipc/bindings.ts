@@ -610,6 +610,7 @@ restores_previous: boolean } | { outcome: "already_installed" } | { outcome: "no
  *  segments = ["five_hour", "seven_day", "scoped", "context", "session_share", "cost"]
  *  layout = "single"   # single | double
  *  bar = true
+ *  pace = true
  *  ```
  * 
  *  Reading never fails: unknown segment names are skipped, an unknown layout is `single`, and
@@ -620,6 +621,11 @@ export type StatuslinePrefs = {
 	layout: Layout,
 	/**  The 8-cell bar on the 5-hour and weekly windows. Dropped without color and when narrow. */
 	bar: boolean,
+	/**
+	 *  How much of the window's time has passed: a `│` mark on the bar and `⏱43%` after the
+	 *  value (ADR-044). Added in 0.1.1; absent from older files, so it defaults to on.
+	 */
+	pace: boolean,
 };
 
 /**  The statusline preview in the settings window. */

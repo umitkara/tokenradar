@@ -7,6 +7,8 @@ sl-label-seven-day = 7g
 sl-percent = { PCT($pct) }
 sl-resets-in = { DUR($ms, "compact") }
 sl-eta = ▲{ DUR($ms, "compact") }
+# Pencerenin zaman olarak ne kadarının geçtiği (kullanım değil, saat).
+sl-elapsed = ⏱{ PCT($pct) }
 sl-session-share = ≈{ PCT($pct) } bu oturum
 # Bağlam penceresinin doluluğu. `ctx` kısa formu her dilde aynı kalır.
 sl-context = ctx { PCT($pct) }

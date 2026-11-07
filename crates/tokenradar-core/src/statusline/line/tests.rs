@@ -18,6 +18,7 @@ fn win(percent: f64, resets_in: i64) -> Window {
         percent,
         resets_in: Some(resets_in),
         eta: None,
+        elapsed: None,
         source: Source::Statusline,
         observed_at: now(),
     }
@@ -39,6 +40,15 @@ fn prefs(segments: &[SegmentKind], layout: Layout, bar: bool) -> StatuslinePrefs
         segments: segments.to_vec(),
         layout,
         bar,
+        pace: false,
+    }
+}
+
+/// The default segments without the time mark: the 12c line, which most tests pin.
+fn classic() -> StatuslinePrefs {
+    StatuslinePrefs {
+        pace: false,
+        ..StatuslinePrefs::default()
     }
 }
 
@@ -67,7 +77,7 @@ fn strip(s: &str) -> String {
 
 #[test]
 fn the_default_line_without_a_five_hour_window() {
-    let p = StatuslinePrefs::default();
+    let p = classic();
     assert_eq!(
         draw(Locale::En, &weekly_only(), &p, None),
         "7d ████░░░░ 41% · 3d4h │ Fable 22% │ ctx 38% │ ≈2.1% this session │ API $4.12"
@@ -81,12 +91,7 @@ fn the_default_line_without_a_five_hour_window() {
 #[test]
 fn an_account_with_the_window_leads_with_it() {
     assert_eq!(
-        draw(
-            Locale::En,
-            &with_five_hour(),
-            &StatuslinePrefs::default(),
-            None
-        ),
+        draw(Locale::En, &with_five_hour(), &classic(), None),
         "5h ██████░░ 72% · 1h48m ▲38m │ 7d ████░░░░ 41% · 3d4h │ Fable 22% │ ctx 38% │ \
          ≈2.1% this session │ API $4.12"
     );
@@ -106,7 +111,7 @@ fn segments_and_order_follow_the_prefs() {
 fn the_double_layout_puts_limits_first_and_the_session_second() {
     let mut p = StatuslinePrefs {
         layout: Layout::Double,
-        ..StatuslinePrefs::default()
+        ..classic()
     };
     p.segments.push(SegmentKind::Model);
     assert_eq!(
@@ -127,7 +132,7 @@ fn the_double_layout_puts_limits_first_and_the_session_second() {
 
 #[test]
 fn a_narrow_terminal_drops_session_segments_then_detail_then_limits() {
-    let p = StatuslinePrefs::default();
+    let p = classic();
     let line = with_five_hour();
     let full = draw(Locale::En, &line, &p, None);
     let width = full.chars().count();
@@ -162,7 +167,7 @@ fn without_color_the_bar_goes_and_no_escape_is_written() {
     let out = render(
         &l,
         &weekly_only(),
-        &StatuslinePrefs::default(),
+        &classic(),
         Style {
             color: false,
             width: None,
@@ -181,7 +186,7 @@ fn colors_follow_the_thresholds() {
     let out = render(
         &l,
         &line,
-        &StatuslinePrefs::default(),
+        &classic(),
         Style {
             color: true,
             width: None,
@@ -217,6 +222,7 @@ fn estimates_carry_the_mark_and_stale_app_values_are_dim() {
         percent: 0.0,
         resets_in: None,
         eta: None,
+        elapsed: None,
         source: Source::Estimate,
         observed_at: now(),
     });
@@ -260,7 +266,7 @@ fn estimates_carry_the_mark_and_stale_app_values_are_dim() {
 
 #[test]
 fn nothing_to_show_says_so() {
-    let p = StatuslinePrefs::default();
+    let p = classic();
     assert_eq!(
         draw(Locale::En, &Line::empty(now()), &p, None),
         "no limit data yet"
@@ -360,7 +366,7 @@ fn without_the_app_only_payload_segments_show() {
     let line = Line::from_sources(Some(&payload), None, now());
     assert!(line.five_hour.is_none() && line.scoped.is_empty() && line.session_share.is_none());
     assert_eq!(
-        draw(Locale::En, &line, &StatuslinePrefs::default(), None),
+        draw(Locale::En, &line, &classic(), None),
         "7d ███░░░░░ 37.4% · 3d10h │ ctx 18% │ API $1.07"
     );
 
@@ -430,7 +436,14 @@ fn prefs_read_leniently() {
            layout = "double"
            bar = false"#,
     );
-    assert_eq!(p, prefs(&[Cost, SevenDay, Context], Layout::Double, false));
+    assert_eq!(
+        p,
+        StatuslinePrefs {
+            pace: true,
+            ..prefs(&[Cost, SevenDay, Context], Layout::Double, false)
+        }
+    );
+    assert!(!read("pace = false").pace);
     // Unknown layout, an empty list or only unknown names: the defaults.
     let p = read(
         r#"segments = ["rainbow"]
@@ -438,4 +451,94 @@ fn prefs_read_leniently() {
     );
     assert_eq!(p, StatuslinePrefs::default());
     assert_eq!(read("segments = []").segments, DEFAULT_SEGMENTS.to_vec());
+}
+
+#[test]
+fn elapsed_time_comes_from_the_reset_and_the_window_length() {
+    assert_eq!(elapsed(Some(WEEK_MS / 4), WEEK_MS), Some(75.0));
+    assert_eq!(elapsed(Some(WEEK_MS), WEEK_MS), Some(0.0));
+    // Unknown, passed or longer than the window: nothing to show.
+    assert_eq!(elapsed(None, WEEK_MS), None);
+    assert_eq!(elapsed(Some(0), WEEK_MS), None);
+    assert_eq!(elapsed(Some(WEEK_MS + 1), WEEK_MS), None);
+}
+
+#[test]
+fn the_time_mark_sits_between_cells_and_the_text_follows_the_value() {
+    assert_eq!(render::mark_at(0.0), 0);
+    assert_eq!(render::mark_at(43.0), 3);
+    assert_eq!(render::mark_at(44.0), 4);
+    assert_eq!(render::mark_at(100.0), 8);
+
+    let p = StatuslinePrefs {
+        segments: vec![SegmentKind::SevenDay],
+        ..StatuslinePrefs::default()
+    };
+    let mut line = weekly_only();
+    // 41 % used, 43 % of the week gone: the mark stands in the empty part.
+    line.seven_day = Some(Window {
+        elapsed: Some(43.0),
+        ..win(41.0, 3 * DAY + 4 * 60 * MIN)
+    });
+    assert_eq!(
+        draw(Locale::En, &line, &p, None),
+        "7d ███│█░░░░ 41% ⏱43% · 3d4h"
+    );
+    assert_eq!(
+        draw(Locale::Tr, &line, &p, None),
+        "7g ███│█░░░░ %41 ⏱%43 · 3g4sa"
+    );
+    // Ahead of time: the mark stands inside the filled part.
+    line.seven_day = Some(Window {
+        elapsed: Some(20.0),
+        ..win(72.0, 3 * DAY)
+    });
+    assert_eq!(
+        draw(Locale::En, &line, &p, None),
+        "7d ██│████░░ 72% ⏱20% · 3d"
+    );
+    // Off in the prefs: neither the mark nor the text.
+    let off = StatuslinePrefs {
+        pace: false,
+        ..p.clone()
+    };
+    assert_eq!(draw(Locale::En, &line, &off, None), "7d ██████░░ 72% · 3d");
+}
+
+#[test]
+fn without_color_the_elapsed_text_stays_and_narrow_drops_it_after_the_bar() {
+    let l = Localizer::new(Locale::En, &[Domain::Cli]);
+    let p = StatuslinePrefs {
+        segments: vec![SegmentKind::SevenDay],
+        ..StatuslinePrefs::default()
+    };
+    let mut line = weekly_only();
+    line.seven_day = Some(Window {
+        elapsed: Some(43.0),
+        ..win(41.0, 3 * DAY + 4 * 60 * MIN)
+    });
+    let plain = render(
+        &l,
+        &line,
+        &p,
+        Style {
+            color: false,
+            width: None,
+        },
+    );
+    assert_eq!(plain, "7d 41% ⏱43% · 3d4h");
+    // Narrow: the bar goes first, then the elapsed time, then the countdown.
+    assert_eq!(draw(Locale::En, &line, &p, Some(18)), "7d 41% ⏱43% · 3d4h");
+    assert_eq!(draw(Locale::En, &line, &p, Some(17)), "7d 41% · 3d4h");
+    assert_eq!(draw(Locale::En, &line, &p, Some(8)), "7d 41%");
+}
+
+#[test]
+fn the_payload_window_gets_its_elapsed_time() {
+    let payload: StatuslinePayload = serde_json::from_str(NO_FIVE_HOUR).expect("fixture");
+    let line = Line::from_sources(Some(&payload), None, now());
+    let w = line.seven_day.expect("7d");
+    let expected = elapsed(w.resets_in, WEEK_MS);
+    assert!(expected.is_some());
+    assert_eq!(w.elapsed, expected);
 }

@@ -55,7 +55,7 @@ fn without_the_app_the_reading_is_spooled_and_the_line_uses_stdin() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let l10n = Localizer::new(Locale::En, &[Domain::Cli]);
     let out = respond(Some(&input(42.0)), &deps(&l10n, &unique_pipe(), tmp.path()));
-    assert!(out.starts_with("5h 42% · 1h59m"), "{out}");
+    assert!(out.starts_with("5h 42% ⏱60% · 1h59m"), "{out}");
     assert_eq!(spooled_lines(tmp.path()), 1);
 }
 

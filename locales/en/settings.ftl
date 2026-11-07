@@ -126,6 +126,8 @@ statusline-layout-single = One line
 statusline-layout-double = Two lines: limits, then session
 statusline-bar = Progress bar
 statusline-bar-hint = Left out when the terminal has no color or is too narrow.
+statusline-pace = Time mark
+statusline-pace-hint = How much of the window's time has passed: a │ on the bar and ⏱ after the value. Compare it with what you used.
 
 ## Data sources: usage API
 
