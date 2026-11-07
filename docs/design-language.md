@@ -72,6 +72,7 @@ OKLCH ile tanımlanır. Her token CSS `light-dark(açık, koyu)` çiftidir; etki
 ### Limit satırı
 
 `[ikon] Etiket ........ %72  ·  1 sa 48 dk` ve altında ince bir çubuk. Scoped limitler (örneğin "Fable · haftalık") girintili bir alt satırda gösterilir.
+- **Zaman işareti (ADR-044, ADR-048):** Çubuğun üzerinde, pencerenin geçen zamanını gösteren 2 px'lik dikey çizgi (`--text-1`, kart renginde ince bir hâle ile). Saatle yer değiştirir, geçiş efekti yoktur. Penceresi bilinmeyen limitte çizilmez.
 - **Panelde (`stacked`):** Halkanın yanındaki dar sütunda geri sayım çubuğun altına iner: `Etiket ..... %72`, çubuk, `1 sa 48 dk sonra yenilenir`. Haftalık ve scoped limitler mutlak zamanı gösterir (`Cum 17:35'te yenilenir`). (ADR-032)
 
 ### Oturum satırı
@@ -82,11 +83,22 @@ OKLCH ile tanımlanır. Her token CSS `light-dark(açık, koyu)` çiftidir; etki
   Meşgul · 12,4k tok/dk
 ```
 - Ad sırası: oturum adı → başlık → proje → "Adsız oturum". Proje ad olarak kullanıldıysa tekrar yazılmaz.
+- **Ayrıntı görünümünde (ADR-048):** İkinci satıra API karşılığı maliyet eklenir (`API $2,57`, tooltip'te "fatura değil"). Karşılaştıracak bir şey varken altında 3 px'lik bir bar çizilir: ≈pay kesikli (`--signal-est`), maliyet payı düz.
 - Durum noktası: busy → nabız atan nokta (yalnızca 2 kez atar, sürekli değil); idle → içi boş daire. Canlı olmayan satırlar soluktur.
 
 ### Kaynak rozeti
 
-Küçük bir rozet: `canlı` (S1), `API` (S2) veya `tahmini`. Rozetin tooltip'i son güncelleme zamanını gösterir. Panelde tek rozet alt bilgidedir ve birincil limitin (5 saatlik, yoksa haftalık) kaynağını gösterir; tahmini değerler satırlarda ayrıca `≈` ile işaretlenir.
+Küçük bir rozet: `canlı` (S1), `API` (S2) veya `tahmini`. Rozetin tooltip'i son güncelleme zamanını gösterir. Özet görünümünde tek rozet alt bilgidedir ve birincil limitin (5 saatlik, yoksa haftalık) kaynağını gösterir; tahmini değerler satırlarda ayrıca `≈` ile işaretlenir. Ayrıntı görünümünde her limitin kendi rozeti vardır.
+
+### Görünüm geçişi (panel)
+
+Başlığın altında iki eşit düğmeli bir segment kontrolü: `Özet | Ayrıntı` (ADR-048). Seçili düğme `--track` zeminli ve kalındır. Klavye: ←/→, `Ctrl+Tab`. Limit verisi yokken gösterilmez. Pencereye sığmayan içerik (Ayrıntı, çok oturum) panelin içinde kayar; başlık ve geçiş de kayar. Kaydırma çubuğu ince ve oksuzdur (`scrollbar-width: thin`, `--text-3`).
+
+### Zaman şeridi ve kullanım grafiği (panel, Ayrıntı)
+
+- **Şerit:** 12 px yüksekliğinde, 3 px köşeli. Dolgu limitin sinyal rengindedir. Yerel gece yarıları noktalı (`--text-2`), reset'ten itibaren her 24 saat düz 1 px çizgi. Üstte gün adları (gün yeterince genişse), altta 24 saatlik işaretlerde zaman çizgisinin değeri (`--text-3`) ve kalın "▲ şimdi". Bir değer "şimdi" işaretine kelimenin uzandığı tarafta %20'den, öbür tarafta %10'dan fazla yaklaşmaz.
+- **Grafik:** Şeritle aynı genişlikte, 96 px yüksekliğinde satır içi SVG. Kullanım eğrisi 2 px, altı %18 dolgulu; zaman çizgisi `--text-3` kesikli; 75/90 eşikleri sinyal renklerinde, soluk ve noktalı; gün çizgileri `--stroke`; "şimdi" çizgisi `--text-2`. Kenar çizgileri ölçekten bağımsızdır (`vector-effect: non-scaling-stroke`).
+- **Açıklama:** Grafiğin altında: reset zamanı (limit satırlarındaki `Sal 21:52'de yenilenir` kalıbıyla), noktalı/düz çizgilerin anlamı, zaman çizgisi ve kullanım için küçük örnek işaretler.
 
 ### Tray ikonu
 
@@ -176,9 +188,11 @@ Küçük bir rozet: `canlı` (S1), `API` (S2) veya `tahmini`. Rozetin tooltip'i 
 | API-equivalent cost | API karşılığı maliyet | İkincil metrik |
 | Context window | Bağlam penceresi | Statusline'da kısa form her dilde "ctx" |
 | Time mark (statusline) | Zaman işareti | Bar üstünde `│`, metinde `⏱43%` / `⏱%43`; geçen zaman bir ölçümdür, `≈` almaz |
-| Time line (mod `/radar`) | Zaman çizgisi | |
-| Time strip (mod pane) | Zaman şeridi | Haftalık pencere: takvim günleri (`┊` gece yarısı) ve reset'ten itibaren her 24 saat (`│`), "▲ şimdi" işareti ve reset saatiyle |
+| Time line (mod `/radar`, panel) | Zaman çizgisi | |
+| Time strip (mod pane, panel) | Zaman şeridi | Haftalık pencere: takvim günleri (`┊` gece yarısı) ve reset'ten itibaren her 24 saat (`│`), "▲ şimdi" işareti ve reset saatiyle |
 | Details (mod band) | Ayrıntı | Paneli açan düğme |
+| Summary / Details (panel views) | Özet / Ayrıntı | Tray panelinin iki görünümü (ADR-048) |
+| Time gone | Geçen zaman | "Geçen zaman %54 · zaman çizgisinin 10 puan önünde"; tam sayı |
 | Limit reset (mod band) | Limit sıfırlandı | "✓ Haftalık limit sıfırlandı", bir kez |
 | (statusline cost) | `API $4,12` | `API` işareti, değerin fatura olmadığını söyler; çıkarılmaz |
 

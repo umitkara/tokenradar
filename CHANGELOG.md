@@ -17,10 +17,15 @@ All notable changes to TokenRadar are recorded here. The format follows
 - `tokenradar history --json`: each limit's stored readings in its current window, thinned to at most 168 points, read-only from the database.
 - The Claude Code mod goes visual: `/radar` opens a pane with limit cards and source badges, the weekly time strip, a usage chart against the time line (SVG on the desktop, VS Code and mobile; colored cells in the terminal), live sessions and the context window. The band is one bordered line with a mini bar and a Details button, and says once when a window resets. Without the statusline bridge, the mod shows a short status entry.
 - The installer ships the Claude Code mod. Install or remove it from onboarding, Settings → Data sources or `tokenradar mod install|uninstall`: TokenRadar adds its folder to `env.CLAUDE_CODE_PLUGIN_DIRS` in Claude Code's `settings.json`, with a diff, confirmation and backup. Uninstalling TokenRadar takes it out again. Left at its default, the mod uses the CLI installed with the app.
+- The tray panel has a second view, **Details**, next to the summary: each limit with its own source, projection and pace against the time gone, the weekly time strip, a usage chart against the time line, and the sessions with their API-equivalent cost and share bars. The panel opens on the view you chose last. The summary's bars gain the time mark.
 
 ### Changed
 
 - The statusline drops the pie glyph; the bar takes its place. Without color (`NO_COLOR`) or in a narrow terminal the bar is left out.
+
+### Fixed
+
+- The tray panel scrolls when its content is taller than the window; before, many sessions were cut off at the bottom.
 
 ## [0.1.0] - 2026-10-30
 

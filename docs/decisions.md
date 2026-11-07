@@ -822,3 +822,33 @@
   - Yerel bir marketplace ve `claude plugin install`: Claude Code'un kendi önbelleğine kopyalar, güncellemede eski sürüm kalır ve kaldırma için Claude Code'un komutu gerekir.
   - Mod'u `~/.claude/plugins` altına kopyalamak: Claude Code'un iç düzenine bağlanır ve güncellemede kopyalar senkron tutulmalıdır.
   - Kurulumda modu varsayılan olarak açmak: Kullanıcı, deneysel modun açıkça seçilmesini istedi.
+
+### ADR-048 — Tray panelinde ikinci görünüm: "Ayrıntı"
+**Durum:** Kabul (2026-11-07, Adım 12h, kullanıcı kararlarıyla).
+- **Bağlam:**
+  - Mod'un `/radar` paneli (ADR-046) uygulamada olmayan ayrıntılar gösteriyor: zaman işareti ve tempo, haftalık zaman şeridi, kullanım grafiği, limit başına kaynak rozeti, oturum maliyeti ve pay barı. Kullanıcı bunları uygulamada da görmek istedi.
+  - Tray paneli 360 px genişliğinde ve kısa. Hepsini mevcut görünüme eklemek paneli uzatırdı.
+- **Karar:**
+  - **İki görünüm:** Panel başlığının altında `Özet | Ayrıntı` geçişi var (`role="tablist"`, ←/→, `Ctrl+Tab`). Özet aynı kalır; tek eki limit barlarındaki zaman işaretidir. Son seçilen görünüm `[general] panel_view` olarak saklanır ve panel o görünümle açılır. Limit yokken geçiş görünmez.
+  - **Ayrıntı görünümü,** mod'un panelinin sırasıyla:
+    - Limit kartları: bar ve zaman işareti, limitin kendi kaynak rozeti, reset, projeksiyon ve tempo satırı ("Geçen zaman %54 · zaman çizgisinin 10 puan önünde"). Tempo, ADR-044/045 kuralıyla uyarı rengi alır; tahminlerde tempo yoktur.
+    - Haftalık zaman şeridi: takvim günleri, yerel gece yarısında noktalı sınır, reset'ten itibaren her 24 saatte düz sınır ve altında zaman çizgisinin değeri, "▲ şimdi". İlk günün reset saati gün genişliğine sığmadığı için açıklamada yazılır.
+    - Kullanım grafiği: satır içi SVG, tema token'larıyla. Kullanım eğrisi ve dolgusu, kesikli zaman çizgisi, 75/90 eşikleri, gün çizgileri (5 saatlik pencerede saat çizgileri) ve "şimdi" çizgisi. Kayıtlı okuma yoksa kısa bir not gösterilir.
+    - Oturumlar: maliyet ("API $2,57", fatura değil) ve küçük bar. Bar kuralı mod'dakiyle aynıdır: ≈pay biliniyorsa kesikli çizilen pay, bilinmiyorsa en az iki oturumun maliyeti varsa maliyet payı.
+    - Bağlam doluluğu barı gelmez. Mod bu değeri yalnızca içinde çalıştığı oturumdan bilir; uygulamada tek bir "o anki oturum" yok.
+  - **Veri:**
+    - `LimitView.window_start`: Zaman işareti, geri sayım gibi saatten konumlanır: `(şimdi − başlangıç) / (reset − başlangıç)`. Bu sayede her dakika `LimitsUpdated` gönderilmez; alan `VisibleKey`'e girmez.
+    - `get_panel_detail() -> PanelDetail`: limit başına tempo (`limits::pace`, statusline ile ortak) ve odak limitin (haftalık, yoksa 5 saatlik pencere) 24 saatlik işaretleri ile okumaları. Okumalar `tokenradar history` gibi veritabanından salt-okunur alınır (`history::window_readings` ortak). Son nokta panelin güncel değeridir; tahmin hiçbir zaman çizilmez.
+    - Ayrıntı görünümü açıkken veri dakikada bir ve her `limits_updated` olayında (en fazla 5 saniyede bir) yeniden alınır. Panel gizliyken hiçbir istek gitmez.
+  - **Yerel gece yarıları frontend'de hesaplanır:** Gün sınırları, yanlarındaki gün adları gibi takvim sunumudur. `Date`, sistem saat dilimini ve pencere içindeki yaz saati değişimini doğru uygular; mod'un sabit ofset sınırlaması burada yoktur. Plan bunu backend'de `jiff` ile öngörüyordu; core'a saat dilimi veritabanı eklemek CLI'ın 3 MB'lık boyut bütçesini zorlardı (2,21 MiB).
+  - **Bundle:** Ayrıntı dinamik `import()` ile ayrı bir parçadır. Grafik kütüphanesi kullanılmaz; uPlot ana pencereye (Adım 15) kalır.
+  - **Animasyon yok (ADR-019):** Geçiş anlıktır; zaman işareti 1 Hz saatle yer değiştirir, geçiş efekti yoktur.
+- **Bedel:**
+  - Panel sayfasının ilk yükü 39,2 KB'tan 42,8 KB'a çıktı (gzip JS, `scripts/check-bundle-size.mjs`); artışın çoğu yeni metinler. Ayrıntı ayrı bir parça: 3,6 KB JS + 1,2 KB CSS.
+  - Ayrıntı görünümü gerçek panelde 866 px (üç limit, üç canlı oturum); panel en fazla 600 px (design-language §5) olduğu için içerik panelin içinde kayar. Başlık ve görünüm geçişi de kayar; geri dönmek için yukarı kaydırmak ya da `Ctrl+Tab` gerekir. Kaydırma çubuğu ince (`scrollbar-width: thin`).
+  - Gerçek panel denemesi, Adım 10'dan beri gizli bir hatayı ortaya çıkardı: `#app`'in yüksekliği olmadığı için `main` hiç kaymıyor, uzun içerik kesiliyordu. Düzeltildi.
+  - Odak limit dışındaki limitlerin (5 saatlik pencere, Fable) grafiği yok; kartlarında tempo satırı var.
+- **Alternatifler:**
+  - Mevcut panele açılır bir bölüm: kullanıcı ikinci bir görünümü seçti.
+  - Ayrı bir rapor penceresi: ikinci bir WebView'in soğuk açılışını öder ve Adım 15'in ana penceresiyle çakışırdı.
+  - Görünüm tercihini WebView'in `localStorage`'ında tutmak: ayarlar `config.toml`'da toplanıyor; WebView verisi silinince tercih de kaybolurdu.

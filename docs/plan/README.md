@@ -50,6 +50,7 @@ Doğrulanmış Ultra hesaplarında 5 saatlik pencere kalktı (ADR-041). Bu adım
 | 12e | [Zaman temposu: statusline işareti ve mod'da tempo](12e-zaman-temposu.md) | 12d | ✅ |
 | 12f | [Görsel mod: panel, görsel bant ve diğer görsel yüzeyler](12f-gorsel-mod.md) | 12e | ✅ |
 | 12g | [Claude Code mod'unu kurma ve kaldırma](12g-mod-kurulumu.md) | 12f | ✅ |
+| 12h | [Tray panelinde ikinci görünüm: Ayrıntı](12h-panel-ayrinti.md) | 12f | ✅ (2026-11-07, ADR-048) |
 
 ### v0.2 — Analitik ve Atıf
 
