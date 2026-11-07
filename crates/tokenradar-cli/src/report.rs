@@ -13,7 +13,7 @@ use tokenradar_core::limits::presence;
 use tokenradar_core::live_sessions::running_sessions;
 use tokenradar_core::statusline::default_config_dir;
 use tokenradar_core::store::ReadOnlyStore;
-use tokenradar_i18n::{Arg, Localizer};
+use tokenradar_i18n::{Arg, Locale, Localizer};
 
 use crate::context::Context;
 
@@ -32,13 +32,24 @@ pub fn run(ctx: &Context, report: Report, json: bool) -> Result<String, String> 
     let status = from_app(ctx).unwrap_or_else(|| offline(ctx, now));
     if json {
         let value = match report {
-            Report::Status => serde_json::to_string_pretty(&status),
+            Report::Status => status_json(&status, ctx.l10n.locale()),
             Report::Limits => serde_json::to_string_pretty(&status.limits_reply()),
             Report::Sessions => serde_json::to_string_pretty(&status.sessions_reply()),
         };
         return value.map_err(|e| e.to_string());
     }
     Ok(human(&ctx.l10n, &status, report, now))
+}
+
+/// `status --json`: the app's reply plus the CLI's resolved `locale` (`en`, `tr`), so a
+/// script or the Claude Code mod speaks the user's language. The field lives only here, not
+/// in the IPC reply.
+fn status_json(status: &StatusReply, locale: Locale) -> serde_json::Result<String> {
+    let mut value = serde_json::to_value(status)?;
+    if let Some(map) = value.as_object_mut() {
+        map.insert("locale".to_owned(), locale.tag().into());
+    }
+    serde_json::to_string_pretty(&value)
 }
 
 /// The app's full status; `None` when it does not run or does not answer.
@@ -453,6 +464,16 @@ Weekly  ≈34.5%          —  estimate    —
             "
 {en}"
         );
+    }
+
+    #[test]
+    fn status_json_carries_the_locale() {
+        let now = Timestamp::from_millis(1_793_059_200_000);
+        let text = status_json(&reply(now), Locale::Tr).expect("json");
+        let v: serde_json::Value = serde_json::from_str(&text).expect("parse");
+        assert_eq!(v["locale"], "tr");
+        assert_eq!(v["schema"], 1);
+        assert_eq!(v["limits"][0]["kind"], "session");
     }
 
     #[test]
