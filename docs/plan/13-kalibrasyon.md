@@ -77,6 +77,7 @@ Kalibrasyon şu özelliklerin temelidir:
 
 ## Teknik notlar ve tuzaklar
 
+- **5 saatlik pencere her hesapta yok (ADR-041).** Doğrulanmış Ultra hesaplarında (kullanıcının hesabı dahil) `session` snapshot'ı gelmiyor. Bu hesaplarda `k_session` üretilmez; kalibrasyon `k_weekly` ve scoped `k`'lara dayanır. Veri keşfi bu dağılımı raporlamalı. "≥ 30 kullanılabilir aralık" eşiğine yalnızca haftalık aralıklarla ulaşmak daha uzun sürebilir.
 - **Dış tüketim oranı yukarı iter.** claude.ai'da bir sohbet `Δp`'yi artırır ama yerel `ΔC`'yi artırmaz. Medyan bu aykırı değerlere dayanıklıdır, ancak dış tüketim aralıkların çoğunda varsa `k` yukarı kayar. Bu durumda `seven_day_breakdown` içindeki `claude_code` payı kullanılarak haftalık `k` düzeltilebilir: `k_düz = k̂ × claude_code_payı`. Bu düzeltmenin yararı backtest ile ölçülür.
 - **Eşzamanlı oturumlar** kalibrasyonu etkilemez, çünkü `ΔC` tüm yerel oturumların toplamıdır. Etki yalnızca atıfta (Adım 14) önemlidir.
 - **S1'in ondalıklı değerleri** aslında yuvarlanmış başlık değerleri olabilir. Gerçek çözünürlüğü veriden gözlemle (örneğin 0,1 adımlar mı?) ve gürültü modelini buna göre ayarla.

@@ -38,6 +38,16 @@
 | 11 | [Bildirimler, ayarlar ve onboarding](11-bildirim-ayar-onboarding.md) | 10 | ✅ (11a, 11b, 11c). Açık işler Adım 12'de kurulu build ile kapandı |
 | 12 | [Paketleme, güncelleme ve v0.1 sürümü](12-paketleme-ve-v0.1.md) | 11 | ✅ v0.1.0 yayınlandı (2026-10-30). Açık: winget-pkgs PR'ı |
 
+### v0.1.x — Opsiyonel pencereler ve statusline v2
+
+Doğrulanmış Ultra hesaplarında 5 saatlik pencere kalktı (ADR-041). Bu adımlar veri toplama haftası sürerken dalda geliştirilir; kurulu sürüme dokunulmaz.
+
+| # | Adım | Bağımlılık | Durum |
+|---|---|---|---|
+| 12b | [Opsiyonel limit pencereleri: çekirdek, tray ve panel](12b-opsiyonel-pencereler.md) | 12 | ⬜ |
+| 12c | [Statusline v2: görünüm, ek bilgi, özelleştirme, tazelik](12c-statusline-v2.md) | 12b | ⬜ |
+| 12d | [Claude Code mod'u (tamamlayıcı)](12d-claude-code-modu.md) | 12c | ⬜ |
+
 ### v0.2 — Analitik ve Atıf
 
 | # | Adım | Bağımlılık | Durum |

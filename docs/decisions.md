@@ -636,3 +636,22 @@
   - COM activator (`INotificationActivationCallback` + CLSID kaydı + kısayolda `ToastActivatorCLSID`): Tauri şablonunda kısayol özelliği yok; daha fazla registry ve COM sunucusu kodu.
   - `tauri-plugin-deep-link`: yalnızca argüman ayrıştırması için bağımlılık; single-instance zaten yeterli.
   - Kısıtı v0.1'de bırakmak: kullanıcı reddetti.
+
+### ADR-041 — Limit pencereleri hesaba göre opsiyonel; olmayan pencere tahmin edilmez
+**Durum:** Kabul (2026-11-07, Adım 12b planlaması)
+- **Bağlam:**
+  - Anthropic, 30 Ekim 2026'da Max 20x planının adını Ultra olarak değiştirdi ve doğrulanmış Ultra hesaplarında 5 saatlik pencereyi kaldırdı. Pro, Max ve doğrulanmamış Ultra hesaplarında pencere sürüyor. Doğrulama otomatik yapılıyor ve hesap durumu zamanla değişebiliyor.
+  - Kullanıcının hesabında 5 Kasım'dan beri statusline payload'unda `five_hour` yok ve `limit_snapshots` tablosunda `session` kaydı oluşmuyor.
+  - Plan ve kod her hesapta 5 saatlik pencere varsayıyordu: tray'de çift halka, panelde 5 saatlik kart, statusline'da `5h` segmenti. `render.rs`, payload'da pencere yoksa uygulamanın değerine düşüyor. Limit motoru tahmin üretirse ortaya var olmayan bir limit için `≈%` çıkar. Bu "dürüst sayılar" ilkesine aykırı.
+- **Karar:**
+  - Her `(hesap, limit türü)` için pencere durumu üç değerlidir: **var**, **bilinmiyor**, **yok**.
+  - **Yok** kararı gözlemden çıkar: S2 yanıtında kayıt bulunmaması veya `seven_day` taşıyan art arda N payload'da (başlangıç önerisi 3) `five_hour` bulunmaması. İlk gözlemde karar geri alınır.
+  - **Yok** durumundaki pencere için tahmin üretilmez, bildirim tetiklenmez. Tray, panel, CLI ve statusline o pencereyi göstermez.
+  - Kural `five_hour`'a özel değildir; `spend_limit` ve ileride gelecek pencereler için de geçerlidir.
+- **Bedel:**
+  - Durum değişikliğinden sonra ilk birkaç güncellemede pencere "bilinmiyor" görünebilir.
+  - Adım 13'te bu hesaplar için `k_session` üretilmez; kalibrasyon haftalık aralıklara dayanır ve yeterli veriye ulaşmak daha uzun sürebilir.
+- **Alternatifler:**
+  - Plan türünden (`subscriptionType`, `rateLimitTier`) çıkarım: doğrulama durumu bu alanlarda görünmüyor, ayrıca aynı plan içinde iki durum var.
+  - 5 saatlik pencereyi `0 %` göstermek: yanlış. Limit dolmamış değil, limit yok.
+  - Kullanıcı ayarı ("bu hesapta 5 saat yok"): elle bakım gerektirir ve hesap durumu değiştiğinde bayatlar. Gözlem kuralı yetmezse ek olarak düşünülebilir.
