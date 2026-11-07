@@ -69,6 +69,27 @@ fn garbage_on_stdin_still_prints_a_line_and_spools_nothing() {
     assert_eq!(spooled_lines(tmp.path()), 0);
 }
 
+#[test]
+fn the_branch_is_read_from_git_head_only_when_the_line_shows_it() {
+    use tokenradar_core::statusline::line::{Item, SegmentKind};
+
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let repo = tmp.path().join("repo");
+    std::fs::create_dir_all(repo.join(".git")).expect("mkdir");
+    std::fs::write(repo.join(".git/HEAD"), "ref: refs/heads/feature/x\n").expect("head");
+    let cwd = serde_json::to_string(&repo).expect("path");
+    let payload = format!(r#"{{"session_id":"s1","cwd":{cwd}}}"#);
+    let l10n = Localizer::new(Locale::En, &[Domain::Cli]);
+    let mut d = deps(&l10n, &unique_pipe(), &tmp.path().join("spool"));
+    d.prefs.items.push(Item::new(SegmentKind::GitBranch));
+    let out = respond(Some(payload.as_bytes()), &d);
+    assert!(out.contains("feature/x"), "{out}");
+
+    let d = deps(&l10n, &unique_pipe(), &tmp.path().join("spool"));
+    let out = respond(Some(payload.as_bytes()), &d);
+    assert!(!out.contains("feature/x"), "{out}");
+}
+
 struct App {
     pushes: std::sync::Mutex<usize>,
 }

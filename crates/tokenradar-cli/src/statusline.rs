@@ -17,7 +17,8 @@ use tokenradar_core::ipc::{
     Client, Hello, MAX_MESSAGE_BYTES, Op, PROTOCOL_VERSION, Request, StatusQuery, StatusReply,
     with_deadline,
 };
-use tokenradar_core::statusline::line::{self, Line, StatuslinePrefs, Style};
+use tokenradar_core::statusline::git;
+use tokenradar_core::statusline::line::{self, Line, SegmentKind, StatuslinePrefs, Style};
 use tokenradar_core::statusline::shell::Shell;
 use tokenradar_core::statusline::{
     StatuslinePayload, StatuslinePush, default_config_dir, path_in_dir, spool,
@@ -65,7 +66,12 @@ pub fn respond(input: Option<&[u8]>, deps: &Deps<'_>) -> String {
             deps,
         )
     });
-    let line = Line::from_sources(payload.as_ref(), reply.as_ref(), Timestamp::now());
+    let mut line = Line::from_sources(payload.as_ref(), reply.as_ref(), Timestamp::now());
+    // `.git/HEAD` is read only when the line shows the branch and the payload had none.
+    if line.facts.git_branch.is_none() && deps.prefs.shows(SegmentKind::GitBranch) {
+        let dir = line.facts.cwd.as_deref().map(std::path::Path::new);
+        line.facts.git_branch = dir.and_then(git::branch);
+    }
     let ours = line::render(deps.l10n, &line, &deps.prefs, deps.style);
     let Some((chained, position)) = chained else {
         return ours;
