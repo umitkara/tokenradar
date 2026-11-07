@@ -83,4 +83,6 @@ Kullanıcının "Kota Zaman Çizelgesi" fikri: pencerenin zaman olarak yüzde ka
 - Tray ve panelde tempo gösterimi. İstenirse ayrı bir adım olur.
 - Mod'un görsel yüzeyleri (Pane, Svg grafik, görsel bant) → Adım 12f.
 
+**Sonradan düzeltme (aynı gün, ADR-045):** Tempo uyarısı hafta başında sıradan bir oturumda bile açılıyordu, çünkü zaman çizgisi %0'a yakındı. Kullanıcı kararıyla uyarı, pencerenin ilk yedide biri (`PACE_QUIET`, haftalıkta 1 gün) geçene kadar susar.
+
 **Sonraki adım:** 12f (görsel mod). Plan dosyası hazır, yeni oturumda başlanır.

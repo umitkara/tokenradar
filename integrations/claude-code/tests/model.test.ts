@@ -234,6 +234,10 @@ test('use ten points ahead of time shows on the band but never toasts', () => {
   expect(bandLine('en', found[0]!, NOW)).toBe(
     'Weekly use 10 points ahead of time: 60% used, ⏱50% of the window gone · Claude Code',
   )
+  // The window's first seventh stays quiet: one session reads as far ahead of a time line near 0.
+  expect(alertsOf([row({ percent: 12, elapsed: 1.2 })])).toEqual([])
+  expect(alertsOf([row({ percent: 40, elapsed: 14 })])).toEqual([])
+  expect(alertsOf([row({ percent: 40, elapsed: 14.3 })]).map(a => a.reason)).toEqual(['pace'])
   // A threshold alert beside it still toasts.
   expect(toastLevel(alertsOf([ahead, row({ id: 'five_hour', percent: 80 })]))).toBe(1)
 })

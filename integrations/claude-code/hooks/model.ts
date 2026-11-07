@@ -16,6 +16,12 @@ export const FETCH_EVERY_MS = 30_000
 export const BAND_LINES = 3
 /** Points of use ahead of the time line that the band warns about (ADR-044). */
 export const PACE_AHEAD = 10
+/**
+ * No pace warning before this much of the window has passed (its first seventh: a
+ * day of the week, ~43 minutes of the 5-hour window). Early on, the time line is
+ * near 0 and one ordinary session reads as far ahead of it (ADR-045).
+ */
+export const PACE_QUIET = 100 / 7
 
 const HOUR_MS = 3_600_000
 const DAY_MS = 24 * HOUR_MS
@@ -234,7 +240,8 @@ export function alertsOf(rows: readonly Row[]): Alert[] {
       if (level === 0) {
         // An estimate is not measured against the clock: it would warn on a guess.
         const ahead = aheadBy(row)
-        return ahead !== undefined && ahead >= PACE_AHEAD && !row.estimated
+        const early = (row.elapsed ?? 0) < PACE_QUIET
+        return ahead !== undefined && ahead >= PACE_AHEAD && !early && !row.estimated
           ? [{ row, level: 1, reason: 'pace' }]
           : []
       }

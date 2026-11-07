@@ -76,7 +76,7 @@ pace = true        # the time mark
 
 `integrations/claude-code/` holds an optional mod for Claude Code's plugin hooks. It works alongside the statusline bridge and does not replace it: the bridge keeps feeding TokenRadar, and the mod shows and warns inside Claude Code.
 
-- **Band above the prompt.** It appears only when a limit reaches 75 % (90 % in red), or when TokenRadar projects that a window fills before it resets. When your use runs 10 points or more ahead of the window's elapsed time, it says so too, without a toast. **Hide** keeps it away until the level rises.
+- **Band above the prompt.** It appears only when a limit reaches 75 % (90 % in red), or when TokenRadar projects that a window fills before it resets. From the window's second day on (its first seventh), when your use runs 10 points or more ahead of the window's elapsed time, it says so too, without a toast. **Hide** keeps it away until the level rises.
 - **Toast.** One per threshold crossing, and only while the desktop app is not running. When the app runs, it sends the notification itself.
 - **`/radar`.** Every limit with its source, reset time and projection, plus windows your account does not have, this session's share, the context window and the API-equivalent cost. A pace line compares your use with the time gone, and a time line shows where the weekly window's clock stands at the end of each coming day.
 

@@ -722,7 +722,7 @@
   - Statusline köprüsünü modla değiştirmek: kullanıcı tamamlayıcı rolü seçti. Ayrıca mod yalnızca Claude Code açıkken çalışır ve spool'a yazamaz.
 
 ### ADR-044 — Zaman temposu: statusline'da zaman işareti, mod'da tempo uyarısı ve zaman çizgisi
-**Durum:** Kabul (2026-11-07, Adım 12e, kullanıcı kararlarıyla)
+**Durum:** Kabul (2026-11-07, Adım 12e, kullanıcı kararlarıyla). Tempo uyarısının ne zaman çıktığı ADR-045 ile değişti.
 - **Bağlam:**
   - Kullanıcı kendi "Kota Zaman Çizelgesi" sayfasını örnek gösterdi. Sayfa, haftalık pencerenin ne kadarının geçtiğini yüzde olarak gösteriyor ve kullanımı bununla karşılaştırıyor.
   - "Kullanım zamanın önünde mi?" sorusunun cevabı, projeksiyondan (ADR-042, bu hızla dolar ya da dolmaz) farklı bir bilgi. Projeksiyon bir tahmin. Geçen zaman ise saatten okunan bir ölçüm.
@@ -739,3 +739,13 @@
   - Tempo için ayrı bir statusline segmenti açmak: satır uzar. Bar üstündeki işaret, aynı bilgiyi yer harcamadan verir.
   - Tempo uyarısında toast göstermek: hafta başında küçük sapmalar sık bildirim üretirdi. Bant yeterli.
   - Zaman çizgisini grafik olarak çizmek: mod'un görsel yüzeyleri Adım 12f'de ele alınır.
+
+### ADR-045 — Tempo uyarısı pencerenin ilk yedide birinde sessiz
+**Durum:** Kabul (2026-11-07, Adım 12e düzeltmesi, kullanıcı kararıyla). ADR-044'ün tempo uyarısı maddesini değiştirir.
+- **Bağlam:** Reset'ten hemen sonra zaman çizgisi %0'a yakındır. Örneğin reset'ten 2 saat sonra zaman %1,2'dedir. O sırada sıradan bir oturum %12 kullanım getirirse fark 10 puanı aşar ve bant açılır. Bu yüzden uyarılar her hafta başında yığılıyordu.
+- **Karar:** Pencerenin ilk yedide biri geçene kadar tempo uyarısı çıkmaz (`PACE_QUIET` = 100/7 ≈ %14,3). Bu süre haftalık pencerede bir gün, 5 saatlik pencerede yaklaşık 43 dakikadır. Bu sürenin ardından ADR-044'teki kural (en az 10 puan önde, tahmin değil, toast yok) aynen geçerlidir. `/radar` tempo satırı ve statusline'daki `⏱` her zaman görünür, çünkü bunlar uyarı değil, bilgidir.
+- **Bedel:** İlk gün gerçekten hızlı tüketen biri tempo uyarısı görmez. Bu durumu 75/90 eşikleri ve reset'ten önce dolma projeksiyonu yine yakalar.
+- **Alternatifler:**
+  - Zamanla daralan eşik, örneğin `max(10, 30 − geçen%)`: daha yumuşak, ama kuralı anlatmak zor.
+  - Uyarıyı yalnızca projeksiyon da varsa çıkarmak: projeksiyon uyarısı zaten bantta çıktığı için tempo uyarısı gereksizleşir.
+  - Tempo bandını kaldırmak.
