@@ -77,6 +77,7 @@ TokenRadar/
 │     ├─ lib/ (components, stores, i18n, ipc-bindings)
 │     └─ pages/ (panel/, main/, settings/, onboarding/, widget/)
 ├─ locales/{en,tr}/*.ftl         # TEK çeviri kaynağı (Rust ve TS ortak kullanır)
+├─ integrations/claude-code/     # Claude Code mod'u (tamamlayıcı, build'e bağlı değil; ADR-043)
 ├─ testdata/                     # anonimleştirilmiş JSONL / API / statusline fixture'ları
 ├─ scripts/                      # fixture anonimleştirici, sürüm yardımcıları, ölçüm scriptleri
 ├─ docs/                         # vizyon, mimari, kararlar, plan
@@ -354,8 +355,10 @@ S2 yalnızca **açık onay** varsa kullanılır.
   5. Zincirleme modu (`--chain`): Kullanıcının önceki statusline komutu aynı stdin ile çalıştırılır ve çıktısı bizim segmentimizle birleştirilir. Zaman aşımı 300 ms'dir.
   6. Yüzdeler ve reset süreleri stdin'deki payload'dan, projeksiyon ve oturum payı uygulamadan gelir (ADR-029).
   7. **Satır (v2, ADR-042):** Model ve render `tokenradar_core::statusline::line` içindedir; ayarlar penceresinin önizlemesi de aynı kodu kullanır. Segmentler `five_hour`, `seven_day`, `scoped`, `context`, `session_share`, `cost` ve `model`'dir. Hangilerinin, hangi sırayla ve tek mi iki satırda görüneceği `config.toml`'daki `[statusline]` tablosundan gelir. Her değer kaynağını ve gözlem zamanını taşır. Uygulamadan gelen ve 10 dakikadan eski değer soluk gösterilir. Uygulamanın tahminleri statusline'da gösterilmez.
+- **Claude Code mod'u (ADR-043):** `integrations/claude-code/` altında durur ve tamamlayıcıdır. Claude Code'un kendi limit değerlerini `session.measure` ile alır; projeksiyon, scoped limit ve oturum payı için en fazla 30 saniyede bir `tokenradar status --json` çalıştırır. Bant, toast ve `/radar` sunar. Uygulama açıkken toast göstermez, bildirimi uygulama gönderir.
 - **Diğer komutlar:**
   - `tokenradar status [--json]`, `limits`, `sessions`: Uygulama çalışmıyorsa SQLite'tan salt-okunur okunur.
+  - `status --json` çıktısında, IPC yanıtına ek olarak CLI'ın çözdüğü `locale` alanı (`en`, `tr`) bulunur. Bu alan Claude Code mod'unun dilini belirler (ADR-043).
   - `doctor`: Anonim bir tanılama paketi üretir.
   - `statusline install|uninstall`: `settings.json` dosyasını yedekler, değişikliği diff olarak gösterir, atomik olarak yazar ve önceki komutu korur. Yalnızca `statusLine` üyesinin baytları değişir; `install → uninstall` dosyayı bayt düzeyinde geri getirir (ADR-029).
 
@@ -371,6 +374,7 @@ S2 yalnızca **açık onay** varsa kullanılır.
 - **Tarih ve saat:**
   - Rust ve TS tarafında EN/TR için küçük, el yazımı biçimlendiriciler bulunur (TS: `app/src/lib/i18n/format.ts`, Rust'ın portu). `Intl` kullanılmaz: yuvarlama ve `-0` davranışı Rust'tan farklı ve ICU sürümüne bağlı (ADR-031). İki taraf da ortak test vektörleriyle doğrulanır. ICU verisi gömülmez, çünkü binary boyutunu artırır.
   - TR her zaman 24 saat kullanır. EN, işletim sistemi bölge ayarını izler.
+- **İstisna, Claude Code mod'u:** Mod `locales/` dosyalarına erişemez. Bu yüzden `integrations/claude-code/hooks/i18n.ts` içinde kendi küçük EN/TR tablosunu ve `NUM`/`PCT`/`DUR` portunu taşır (ADR-043).
 - **Dil seçimi:** İşletim sistemi dili (`sys-locale`) `tr` ile başlıyorsa TR, aksi halde EN seçilir. Kullanıcı ayarlardan değiştirebilir. Değişiklik yeniden başlatmadan uygulanır.
 - **Büyük-küçük harf:** `<html lang>` her zaman ayarlanır. JS'de `toUpperCase()` yerine `toLocaleUpperCase(lang)` kullanılır. Böylece `i → İ` ve `ı → I` dönüşümleri doğru çalışır.
 

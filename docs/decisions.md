@@ -690,3 +690,33 @@
   - Önizlemeyi UI'da TypeScript ile çizmek: kuralı iki yerde tutmak ve "UI'da hesap yok" kuralını bozmak demekti.
   - Önizleme için CLI'yi alt süreç olarak çalıştırmak: daha yavaş olur, gerçek pipe'a push gönderme riski taşır.
   - Yalnızca `[statusline]` tablosunu ayrı ayrıştırmak: gereksiz, çünkü CLI config'i zaten okuyor.
+
+### ADR-043 — Claude Code mod'u: tamamlayıcı rol, iki kaynaklı veri yolu, kendi EN/TR tablosu
+**Durum:** Kabul (2026-11-07, Adım 12d, kullanıcı kararlarıyla)
+- **Bağlam:**
+  - Claude Code'un mod (function hooks) API'si, prompt üstüne bant, toast ve slash komutu eklemeye izin veriyor. API erken erişimde ve sürümler arasında değişebilir.
+  - Kullanıcı, modun **tamamlayıcı** olmasını seçti: statusline köprüsü birincil veri kaynağı olarak kalır, mod yalnızca görselleştirir ve uyarır.
+  - Mod, Claude Code'un yalıtılmış ortamında çalışır: DOM, Node ve `locales/` dosyaları yoktur. Erişim yalnızca `$` üzerinden olur.
+- **Karar:**
+  - **Konum:** Mod `integrations/claude-code/` altında durur. Rust ve uygulama build'ine bağlı değildir; API değişirse TokenRadar etkilenmez. Geliştirme sırasında `claude --plugin-dir integrations/claude-code` ile yüklenir.
+  - **Veri yolu, iki kaynak:**
+    - `session.measure` olayı Claude Code'un kendi `rateLimits`, context ve maliyet değerlerini ücretsiz olarak push eder. Bu, statusline payload'ıyla aynı kaynaktır ve bir pencere için her zaman kazanır (`Claude Code` etiketiyle).
+    - Projeksiyon, scoped limit, "bu hesapta yok" bilgisi ve oturum payı için `tokenradar status --json` çalıştırılır (`$.process.run`). Mod, kendi oturumunu `live_sessions` içinde `session_uuid` ile bulur; bunun için CLI'ya bayrak gerekmedi.
+    - CLI en fazla 30 saniyede bir çağrılır (`session.start`, `session.measure`; `/radar` her seferinde). CLI yoksa, hata verirse veya şemayı tanımıyorsa mod sessizce yalnızca Claude Code değerleriyle çalışır ve `/radar` bunu açıkça söyler.
+    - CLI yolu `userConfig.cli` ile ayarlanabilir (varsayılan PATH'teki `tokenradar`). Portable kurulum ve geliştirme sırasında yeni build'i denemek için gereklidir.
+  - **Eşikler:** Tray ve statusline ile aynı sabit değerler kullanılır: `WARN_AT` = 75, `CRIT_AT` = 90 (ADR-042). Reset'ten önce %100'e ulaşma projeksiyonu uyarı seviyesi sayılır. Reset'i geçmiş pencere `≈ 0 %` olur ve uyarı üretmez.
+  - **Bant:** Bant, yalnızca bir eşik aşıldığında en acil üç satırı gösterir. "Gizle" düğmesi bandı mevcut seviyeye kadar gizler; seviye yükselince bant geri gelir. Bütün pencereler eşiğin altına inince (reset) gizleme sıfırlanır.
+  - **Toast ve çift bildirim kuralı:** Toast, seviye her yükseldiğinde bir kez çıkar. CLI `origin: "app"` dönüyorsa masaüstü uygulaması kendi bildirimini gönderdiği için mod toast göstermez. Uygulama kapalıysa veya CLI yoksa toast mod'dan gelir.
+  - **`/radar`:** Her limit için kaynak, reset ve projeksiyon gösterilir. Hesapta olmayan pencereler, oturum payı, context ve maliyet de dökümde yer alır. Son satırda veri kaynağı (uygulama, veritabanı veya yalnızca Claude Code) ve gerekiyorsa `≈` notu bulunur. Komut çıktısı Claude Code'da modelin bağlamına da girer; içinde yalnızca limit sayıları vardır, konuşma içeriği yoktur.
+  - **Metinler:** Mod, kendi küçük EN/TR tablosunu taşır (`hooks/i18n.ts`). İfadeler `cli.ftl`'den, sayı ve süre biçimleri `tokenradar-i18n/format.rs`'den kopyalanır. Dil, CLI'ın `status --json` çıktısına eklenen `locale` alanından (`en`, `tr`) gelir. Bu alan yalnızca CLI çıktısındadır; IPC yanıtı değişmedi. CLI yoksa veya eski sürümse dil İngilizce olur.
+  - **İlkeler:** `prompt.submit`, `prompt.compose` ve tool olaylarına hook eklenmez. Mod ağ çağrısı yapmaz ve kimlik bilgisine dokunmaz. `$.state` sözleşmesi `types/index.d.ts` içindedir ve her değer bir `shape` etiketi taşır.
+  - **Pane yapılmadı.** Statusline zaten sürekli görünür, `/radar` da ayrıntıyı verir. Pane ise 144 sütunun altında kendiliğinden açılmaz.
+  - **Dağıtım:** Bu adımda yalnızca repo içinde, `--plugin-dir` ile. Marketplace yayını (`marketplace.json`) dışa dönük bir adımdır ve kullanıcının onayını bekler.
+- **Bedel:**
+  - EN/TR metinler ve biçimlendiriciler üçüncü bir yerde (Rust ve TS'den sonra) duruyor. Mod testleri ortak test vektörlerini (`testdata/i18n-vectors.json`) okuyamıyor, çünkü test ortamında dosya erişimi yok. Aynı örnekler testlere elle yazıldı.
+  - Kurulu v0.1.0 CLI'ında `locale` ve `absent` yok. 0.1.1 kurulana kadar mod İngilizce konuşur ve "bu hesapta yok" satırını göstermez.
+- **Alternatifler:**
+  - Tüm metni CLI'dan almak (`tokenradar status` insan çıktısı): bant ve toast TokenRadar yokken de çalışmalı, bu yüzden tablo yine gerekirdi.
+  - Mod'a Fluent çalıştırıcısı gömmek: mod büyür ve `locales/` dosyaları modla birlikte dağıtılmak zorunda kalır.
+  - CLI'a `--session <uuid>` eklemek: gereksiz, çünkü oturum zaten `live_sessions` içinde.
+  - Statusline köprüsünü modla değiştirmek: kullanıcı tamamlayıcı rolü seçti. Ayrıca mod yalnızca Claude Code açıkken çalışır ve spool'a yazamaz.

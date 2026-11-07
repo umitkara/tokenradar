@@ -46,7 +46,7 @@ Doğrulanmış Ultra hesaplarında 5 saatlik pencere kalktı (ADR-041). Bu adım
 |---|---|---|---|
 | 12b | [Opsiyonel limit pencereleri: çekirdek, tray ve panel](12b-opsiyonel-pencereler.md) | 12 | ✅ (2026-11-07). Açık: haftalık oturum payı → Adım 14 |
 | 12c | [Statusline v2: görünüm, ek bilgi, özelleştirme, tazelik](12c-statusline-v2.md) | 12b | ✅ (2026-11-07). Açık: gerçek Claude Code'da `NO_COLOR` gözlemi |
-| 12d | [Claude Code mod'u (tamamlayıcı)](12d-claude-code-modu.md) | 12c | ⬜ |
+| 12d | [Claude Code mod'u (tamamlayıcı)](12d-claude-code-modu.md) | 12c | ✅ (2026-11-07, ADR-043). Açık: gerçek eşik geçişinde bant ve toast gözlemi |
 
 ### v0.2 — Analitik ve Atıf
 
