@@ -26,6 +26,7 @@ import {
   report,
   shouldToast,
   stepAlerts,
+  toastLevel,
   toastText,
   topLevel,
 } from './model'
@@ -88,7 +89,7 @@ export const register: Register = (on, options) => {
 
     const found = alertsOf(mergeRows(await read($, measure), r, now))
     const prev = await read($, alerts)
-    const step = stepAlerts(prev, topLevel(found))
+    const step = stepAlerts(prev, topLevel(found), toastLevel(found))
     if (step.state.hidden !== prev.hidden || step.state.toasted !== prev.toasted) {
       await update($, alerts, () => step.state)
     }
@@ -135,6 +136,8 @@ export const register: Register = (on, options) => {
     } catch {
       m = await read($, measure)
     }
-    return { text: report(r.lang, mergeRows(m, r, now), r, m, now) }
+    // The host's offset from UTC, for the time line's clock times.
+    const tzOffsetMin = -new Date(now).getTimezoneOffset()
+    return { text: report(r.lang, mergeRows(m, r, now), r, m, now, tzOffsetMin) }
   })
 }

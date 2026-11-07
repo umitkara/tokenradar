@@ -7,11 +7,16 @@ import type { Measure } from '../types'
 import { dur, pct } from '../hooks/i18n'
 import {
   alertsOf,
+  bandLine,
+  clock,
+  elapsedOf,
   mergeRows,
   parseStatus,
   report,
   rowLevel,
   stepAlerts,
+  toastLevel,
+  topLevel,
   type Row,
 } from '../hooks/model'
 
@@ -163,7 +168,8 @@ test('the report names sources, absent windows, estimates and the data origin', 
     costUsd: 4.125,
     at: NOW,
   }
-  const text = report('tr', mergeRows(m, r, NOW), r, m, NOW)
+  // Istanbul: three hours ahead of UTC.
+  const text = report('tr', mergeRows(m, r, NOW), r, m, NOW, 180)
   expect(text).toBe(
     [
       'TokenRadar · limitler',
@@ -172,6 +178,9 @@ test('the report names sources, absent windows, estimates and the data origin', 
       'Haftalık               %64  2 g 2 sa    Claude Code                  ≈20 sa içinde dolar',
       'Haftalık (Fable)     %12,5  2 g 2 sa    API (3 sa önce güncellendi)  —',
       '5 saatlik: bu hesapta yok.',
+      '',
+      'Zaman (Haftalık): pencerenin ⏱%70,2 kadarı geçti, kullanılan %64; zaman çizgisinin 6 puan (10 sa 28 dk) gerisinde.',
+      'Zaman çizgisi: Cmt 17:00 %71,4 · Paz 17:00 %85,7 · Pzt 17:00 sıfırlanma',
       '',
       'Bu oturumun 5 saatlik penceredeki payı: ≈%9,3',
       'Bağlam penceresi: %45 dolu (200.000 token)',
@@ -193,4 +202,51 @@ test('without TokenRadar the report says so and shows Claude Code alone', () => 
   expect(text).toContain('Weekly   21%  —          Claude Code  —')
   expect(text).toContain('Data: Claude Code only.')
   expect(text).not.toContain('≈ marks')
+})
+
+test('elapsed time comes from the reset and the window length', () => {
+  expect(elapsedOf('seven_day', NOW + 84 * H, NOW)).toBe(50)
+  expect(elapsedOf('scoped:model:Fable', NOW + 168 * H, NOW)).toBe(0)
+  expect(elapsedOf('five_hour', NOW + H, NOW)).toBe(80)
+  // Past the reset, beyond the window, or a window of unknown length: no reading.
+  expect(elapsedOf('five_hour', NOW, NOW)).toBeUndefined()
+  expect(elapsedOf('five_hour', NOW + 6 * H, NOW)).toBeUndefined()
+  expect(elapsedOf('other:spend_limit', NOW + H, NOW)).toBeUndefined()
+  const m: Measure = {
+    windows: [{ kind: 'seven_day', percentUsed: 21, resetsAt: NOW + 84 * H }],
+    contextWindow: 200_000,
+    at: NOW,
+  }
+  expect(mergeRows(m, null, NOW)[0]?.elapsed).toBe(50)
+})
+
+test('use ten points ahead of time shows on the band but never toasts', () => {
+  const ahead = row({ percent: 60, elapsed: 50 })
+  expect(alertsOf([row({ percent: 59.9, elapsed: 50 })])).toEqual([])
+  expect(alertsOf([row({ percent: 60, elapsed: 50, estimated: true })])).toEqual([])
+  const found = alertsOf([ahead])
+  expect(found.map(a => [a.level, a.reason])).toEqual([[1, 'pace']])
+  expect(topLevel(found)).toBe(1)
+  expect(toastLevel(found)).toBe(0)
+  expect(bandLine('tr', found[0]!, NOW)).toBe(
+    'Haftalık kullanım zamanın 10 puan önünde: kullanılan %60, geçen zaman ⏱%50 · Claude Code',
+  )
+  expect(bandLine('en', found[0]!, NOW)).toBe(
+    'Weekly use 10 points ahead of time: 60% used, ⏱50% of the window gone · Claude Code',
+  )
+  // A threshold alert beside it still toasts.
+  expect(toastLevel(alertsOf([ahead, row({ id: 'five_hour', percent: 80 })]))).toBe(1)
+})
+
+test('a pace alert keeps the band hidden and raises no toast', () => {
+  const pace = stepAlerts({ hidden: 1, toasted: 0 }, 1, 0)
+  expect(pace).toEqual({ state: { hidden: 1, toasted: 0 }, toast: false })
+  // Crossing 75 % afterwards still toasts once.
+  expect(stepAlerts(pace.state, 1, 1).toast).toBe(true)
+})
+
+test('the time line reads clock times at the given offset', () => {
+  expect(clock('tr', NOW, 180)).toBe('Cmt 15:00')
+  expect(clock('en', NOW, -300)).toBe('Sat 07:00')
+  expect(clock('en', NOW, -780)).toBe('Fri 23:00')
 })

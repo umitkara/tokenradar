@@ -93,9 +93,9 @@ function world(on: On, cli: { origin: 'app' | 'database'; locale?: string } | nu
   return { toasts, cliRuns: () => runs, clock }
 }
 
-const weekly = (percentUsed: number): SessionMeasureInput => ({
+const weekly = (percentUsed: number, resetsAt = RESETS): SessionMeasureInput => ({
   context: { window: 200_000, percent: 20 },
-  rateLimits: [{ kind: 'seven_day', percentUsed, resetsAt: RESETS }],
+  rateLimits: [{ kind: 'seven_day', percentUsed, resetsAt }],
   changed: ['rateLimits'],
 })
 
@@ -129,6 +129,19 @@ test('crossing a threshold shows the band and toasts once per level', async ($, 
     'TokenRadar: Haftalık limit %82 seviyesinde',
     'TokenRadar: Haftalık limit %91 seviyesinde',
   ])
+})
+
+test('use ahead of the time line shows on the band without a toast', async ($, on) => {
+  const w = world(on, { origin: 'database', locale: 'tr' })
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  // Two of the seven days gone (≈ 28.6 % of the time), 45 % used.
+  await $.session.measure(weekly(45, new Date(NOW + 120 * H).toISOString()))
+  expect(w.toasts).toEqual([])
+  const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  expect((await ui.find({ type: 'Text', text: /Haftalık/ }))?.text).toBe(
+    'Haftalık kullanım zamanın 16 puan önünde: kullanılan %45, geçen zaman ⏱%28,6 · Claude Code',
+  )
+  await ui.unmount()
 })
 
 test('while the desktop app runs, it notifies and the mod does not', async ($, on) => {

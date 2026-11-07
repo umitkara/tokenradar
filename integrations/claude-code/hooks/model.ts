@@ -14,6 +14,26 @@ export const CRIT_AT = 90
 export const FETCH_EVERY_MS = 30_000
 /** Lines the band shows at most. */
 export const BAND_LINES = 3
+/** Points of use ahead of the time line that the band warns about (ADR-044). */
+export const PACE_AHEAD = 10
+
+const HOUR_MS = 3_600_000
+const DAY_MS = 24 * HOUR_MS
+
+/** How long a window is, by row id; `null` when unknown. */
+export function windowLength(id: string): number | null {
+  if (id === 'five_hour') return 5 * HOUR_MS
+  if (id === 'seven_day' || id.startsWith('scoped:')) return 7 * DAY_MS
+  return null
+}
+
+/** The share of the window's time that has passed, %: a clock reading, not an estimate. */
+export function elapsedOf(id: string, resetsAt: number | undefined, now: number): number | undefined {
+  const length = windowLength(id)
+  if (length === null || resetsAt === undefined) return undefined
+  const left = resetsAt - now
+  return left > 0 && left <= length ? (1 - left / length) * 100 : undefined
+}
 
 export type Row = {
   id: string
@@ -27,9 +47,12 @@ export type Row = {
   projected: boolean
   willHit: boolean
   etaAt?: number
+  /** How much of the window's time has passed, %. */
+  elapsed?: number
 }
 
-export type Alert = { row: Row; level: Level; reason: 'used' | 'projection' }
+/** `pace`: use runs ahead of the time line; shown on the band, never toasted (ADR-044). */
+export type Alert = { row: Row; level: Level; reason: 'used' | 'projection' | 'pace' }
 
 // --- Input ---------------------------------------------------------------
 
@@ -181,7 +204,10 @@ export function mergeRows(m: Measure | null, r: Radar | null, now: number): Row[
 
   return out
     .map(row => {
-      if (row.resetsAt === undefined || row.resetsAt > now) return row
+      if (row.resetsAt === undefined || row.resetsAt > now) {
+        const elapsed = elapsedOf(row.id, row.resetsAt, now)
+        return elapsed === undefined ? row : { ...row, elapsed }
+      }
       const { resetsAt: _, etaAt: __, ...rest } = row
       return { ...rest, percent: 0, estimated: true, willHit: false, projected: false }
     })
@@ -196,12 +222,22 @@ export function rowLevel(row: Row): Level {
   return 0
 }
 
-/** Rows past a threshold, the most urgent first. */
+/** Points of use ahead of the time line; `undefined` without a time reading. */
+export const aheadBy = (row: Row) =>
+  row.elapsed === undefined ? undefined : row.percent - row.elapsed
+
+/** Rows past a threshold or ahead of time, the most urgent first. */
 export function alertsOf(rows: readonly Row[]): Alert[] {
   return rows
-    .flatMap(row => {
+    .flatMap((row): Alert[] => {
       const level = rowLevel(row)
-      if (level === 0) return []
+      if (level === 0) {
+        // An estimate is not measured against the clock: it would warn on a guess.
+        const ahead = aheadBy(row)
+        return ahead !== undefined && ahead >= PACE_AHEAD && !row.estimated
+          ? [{ row, level: 1, reason: 'pace' }]
+          : []
+      }
       const reason: Alert['reason'] =
         row.percent >= WARN_AT || row.etaAt === undefined ? 'used' : 'projection'
       return [{ row, level, reason }]
@@ -211,14 +247,23 @@ export function alertsOf(rows: readonly Row[]): Alert[] {
 
 export const topLevel = (alerts: readonly Alert[]): Level => alerts[0]?.level ?? 0
 
+/** The level that may raise a toast: a pace alert only shows on the band. */
+export const toastLevel = (alerts: readonly Alert[]): Level =>
+  alerts.find(a => a.reason !== 'pace')?.level ?? 0
+
 /**
- * A toast once per crossing: when the level rises past the last one toasted.
- * Below every threshold (a reset), both the toast and the band's "hide" start over.
+ * A toast once per crossing: when the toast level rises past the last one toasted.
+ * With nothing left on the band (a reset), both the toast and the band's "hide"
+ * start over; a pace alert keeps the band's "hide" as it is.
  */
-export function stepAlerts(prev: AlertState, level: Level): { state: AlertState; toast: boolean } {
-  if (level === 0) return { state: { hidden: 0, toasted: 0 }, toast: false }
-  const toast = level > prev.toasted
-  return { state: { hidden: prev.hidden, toasted: toast ? level : prev.toasted }, toast }
+export function stepAlerts(
+  prev: AlertState,
+  bandLevel: Level,
+  toastable: Level = bandLevel,
+): { state: AlertState; toast: boolean } {
+  if (bandLevel === 0) return { state: { hidden: 0, toasted: 0 }, toast: false }
+  const toast = toastable > prev.toasted
+  return { state: { hidden: prev.hidden, toasted: toast ? toastable : prev.toasted }, toast }
 }
 
 export const isBandShown = (state: AlertState, level: Level) => level > 0 && level > state.hidden
@@ -260,6 +305,11 @@ const value = (lang: Lang, row: Row) => `${row.estimated ? '≈' : ''}${pct(lang
 export function bandLine(lang: Lang, a: Alert, now: number): string {
   const d = t(lang)
   const name = limitName(lang, a.row.id)
+  const ahead = aheadBy(a.row)
+  if (a.reason === 'pace' && ahead !== undefined && a.row.elapsed !== undefined) {
+    const text = d.bandPace(name, num(lang, ahead, 0), pct(lang, a.row.percent), pct(lang, a.row.elapsed))
+    return `${text} · ${sourceName(lang, a.row.source)}`
+  }
   if (a.reason === 'projection' && a.row.etaAt !== undefined) {
     return `${d.bandProjection(name, dur(lang, a.row.etaAt - now))} · TokenRadar`
   }
@@ -282,6 +332,7 @@ export function report(
   r: Radar | null,
   m: Measure | null,
   now: number,
+  tzOffsetMin = 0,
 ): string {
   const d = t(lang)
   const lines: string[] = [d.title, '']
@@ -314,6 +365,7 @@ export function report(
     }
   }
   for (const id of r?.absent ?? []) lines.push(d.absent(limitName(lang, id)))
+  lines.push(...paceLines(lang, rows, now, tzOffsetMin))
 
   const session: string[] = []
   if (r?.share !== undefined) session.push(d.share(pct(lang, r.share)))
@@ -336,4 +388,62 @@ export function report(
     r?.share !== undefined
   if (anyEstimate) lines.push(d.estimateNote)
   return lines.join('\n')
+}
+
+// --- Pace (ADR-044) ------------------------------------------------------
+
+/** The weekly window's row with a time reading, else the 5-hour window's. */
+const paceRow = (rows: readonly Row[]) =>
+  rows.find(r => r.id === 'seven_day' && r.elapsed !== undefined) ??
+  rows.find(r => r.id === 'five_hour' && r.elapsed !== undefined)
+
+/**
+ * `/radar`'s pace: how much of the window's time has passed against how much was
+ * used, then, for the weekly window, where the time line stands at the end of each
+ * coming day of the window, so use can be read against it.
+ */
+export function paceLines(
+  lang: Lang,
+  rows: readonly Row[],
+  now: number,
+  tzOffsetMin: number,
+): string[] {
+  const row = paceRow(rows)
+  if (row?.elapsed === undefined || row.resetsAt === undefined) return []
+  const length = windowLength(row.id)
+  if (length === null) return []
+  const d = t(lang)
+  const ahead = row.percent - row.elapsed
+  const out = [
+    '',
+    d.paceLine(
+      limitName(lang, row.id),
+      pct(lang, row.elapsed),
+      value(lang, row),
+      num(lang, Math.abs(ahead), 0),
+      dur(lang, (Math.abs(ahead) / 100) * length),
+      ahead > 0,
+    ),
+  ]
+  if (row.id === 'seven_day') {
+    const start = row.resetsAt - length
+    const marks: string[] = []
+    for (let day = 1; day <= 7; day++) {
+      const at = start + day * DAY_MS
+      if (at <= now) continue
+      const when = clock(lang, at, tzOffsetMin)
+      marks.push(day === 7 ? `${when} ${d.resets}` : `${when} ${pct(lang, (day / 7) * 100)}`)
+    }
+    out.push(`${d.timeLine}: ${marks.join(' · ')}`)
+  }
+  return out
+}
+
+/** `Fri 11:00` / `Cum 11:00`, at the given offset from UTC in minutes. */
+export function clock(lang: Lang, at: number, tzOffsetMin: number): string {
+  const local = new Date(at + tzOffsetMin * 60_000)
+  const day = t(lang).weekdays[local.getUTCDay()] ?? ''
+  const hh = String(local.getUTCHours()).padStart(2, '0')
+  const mm = String(local.getUTCMinutes()).padStart(2, '0')
+  return `${day} ${hh}:${mm}`
 }

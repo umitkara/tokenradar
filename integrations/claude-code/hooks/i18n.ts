@@ -21,6 +21,18 @@ type Dict = {
   sourceCodexLog: string
   bandUsed: (name: string, pct: string, resets: string | null) => string
   bandProjection: (name: string, eta: string) => string
+  bandPace: (name: string, points: string, used: string, elapsed: string) => string
+  paceLine: (
+    name: string,
+    elapsed: string,
+    used: string,
+    points: string,
+    span: string,
+    ahead: boolean,
+  ) => string
+  timeLine: string
+  resets: string
+  weekdays: readonly string[]
   hide: string
   toastUsed: (name: string, pct: string) => string
   toastProjection: (name: string) => string
@@ -58,6 +70,14 @@ const EN: Dict = {
   bandUsed: (name, pct, resets) =>
     resets === null ? `${name} ${pct} used` : `${name} ${pct} used · resets in ${resets}`,
   bandProjection: (name, eta) => `${name} ≈ full in ${eta}, before the reset`,
+  bandPace: (name, points, used, elapsed) =>
+    `${name} use ${points} points ahead of time: ${used} used, ⏱${elapsed} of the window gone`,
+  paceLine: (name, elapsed, used, points, span, ahead) =>
+    `Time (${name}): ⏱${elapsed} of the window gone, ${used} used, ` +
+    `${points} points (${span}) ${ahead ? 'ahead of' : 'behind'} the time line.`,
+  timeLine: 'Time line',
+  resets: 'reset',
+  weekdays: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
   hide: 'Hide',
   toastUsed: (name, pct) => `TokenRadar: ${name} limit at ${pct}`,
   toastProjection: name => `TokenRadar: ${name} limit ≈ full before the reset`,
@@ -99,6 +119,14 @@ const TR: Dict = {
       ? `${name} limit: ${pct} kullanıldı`
       : `${name} limit: ${pct} kullanıldı · ${resets} içinde sıfırlanır`,
   bandProjection: (name, eta) => `${name} limit ≈ ${eta} içinde dolar, sıfırlanmadan önce`,
+  bandPace: (name, points, used, elapsed) =>
+    `${name} kullanım zamanın ${points} puan önünde: kullanılan ${used}, geçen zaman ⏱${elapsed}`,
+  paceLine: (name, elapsed, used, points, span, ahead) =>
+    `Zaman (${name}): pencerenin ⏱${elapsed} kadarı geçti, kullanılan ${used}; ` +
+    `zaman çizgisinin ${points} puan (${span}) ${ahead ? 'önünde' : 'gerisinde'}.`,
+  timeLine: 'Zaman çizgisi',
+  resets: 'sıfırlanma',
+  weekdays: ['Paz', 'Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt'],
   hide: 'Gizle',
   toastUsed: (name, pct) => `TokenRadar: ${name} limit ${pct} seviyesinde`,
   toastProjection: name => `TokenRadar: ${name} limit sıfırlanmadan ≈ dolacak`,
