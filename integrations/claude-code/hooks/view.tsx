@@ -130,7 +130,8 @@ export function paneTree(els: Els, p: PaneInput) {
         <Text dimColor>{s.labels}</Text>
         <Text>{Runs(els, s.cells, surface)}</Text>
         <Text>{s.pointer}</Text>
-        <Text dimColor>{s.values}</Text>
+        <Text dimColor>{s.periods}</Text>
+        <Text dimColor wrap="truncate-end">{d.stripLegend(s.reset)}</Text>
       </Box>,
     )
   }

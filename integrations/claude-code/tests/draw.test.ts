@@ -44,14 +44,21 @@ test('a bar fills the used share and marks the elapsed time in its cell', () => 
   expect(bar(50, 25, 8, 'warn').map(s => s.tone)).toEqual(['warn', 'mark', 'warn', 'track'])
 })
 
-test('the weekly strip has day names, boundaries, the now pointer and the time line', () => {
-  const s = strip('tr', weekly(), 'ok', 56, 180)
+test('the weekly strip is calendar days cut at local midnight, the window at the reset hour', () => {
+  // Resets Wed 11:00 at +03:00: the window runs Wed 11:00 to Wed 11:00, so the
+  // first day has 13 hours, the last 11, and 8 cells a day at 56 cells.
+  const resetsAt = Date.parse('2026-11-11T08:00:00Z')
+  const row = weekly({ resetsAt, elapsed: (1 - (resetsAt - NOW) / (7 * DAY)) * 100 })
+  const s = strip('tr', row, 'ok', 56, 180)
   expect(s).not.toBeNull()
-  // The window started Mon 14:00 at +03:00; 8 cells a day.
-  expect(s!.labels).toBe('Pzt     Sal     Çar     Per     Cum     Cmt     Paz')
-  expect(text(s!.cells)).toBe(`${'█'.repeat(17)}${'░'.repeat(7)}┊░░░░░░░┊░░░░░░░┊░░░░░░░┊░░░░░░░`)
-  expect(s!.pointer).toBe(`${' '.repeat(39)}▲ şimdi`)
-  expect(s!.values).toBe('     %14     %29     %43     %57     %71     %86    %100')
+  expect(s!.labels).toBe('Çar Per     Cum     Cmt     Paz     Pzt     Sal     Çar')
+  expect(text(s!.cells)).toBe(`${'█'.repeat(17)}░░░┊${'░░░░░░░┊'.repeat(4)}░░░`)
+  expect(s!.pointer).toBe(`${' '.repeat(25)}▲ şimdi`)
+  // The 24-hour periods from the reset hour, between the midnights.
+  expect(s!.periods).toBe(`${' '.repeat(8)}╵%14    ╵%29    ╵%43    ╵%57    ╵%71    ╵%86`)
+  expect(s!.reset).toBe('Çar 11:00')
+  // With room, the first day says the reset hour.
+  expect(strip('tr', row, 'ok', 140, 180)!.labels.startsWith('Çar 11:00  Per')).toBe(true)
   // The pointer turns left near the end; too narrow a strip is left out.
   expect(strip('en', weekly({ elapsed: 99 }), 'ok', 35, 0)!.pointer).toBe(`${' '.repeat(30)}now ▲`)
   expect(strip('en', weekly(), 'ok', 34, 0)).toBeNull()
@@ -69,7 +76,7 @@ const series: Series = {
 }
 
 test('the Raster chart packs columns × rows cells of three words each', () => {
-  const cells = chartCells(series, weekly(), 0, NOW, 14, 6)
+  const cells = chartCells(series, weekly(), 0, NOW, 14, 6, 180)
   expect(cells.length).toBe(Math.ceil((14 * 6 * 12) / 3) * 4)
   expect(base64(Uint8Array.of(1, 2, 3, 4))).toBe('AQIDBA==')
   expect(base64(Uint8Array.of(0xff, 0xfe))).toBe('//4=')

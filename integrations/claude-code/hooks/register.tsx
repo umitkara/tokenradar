@@ -246,7 +246,7 @@ export const register: Register = (on, options) => {
             key="chart"
             columns={columns}
             rows={CHART_ROWS}
-            cells={chartCells(series, row, level, now, columns, CHART_ROWS)}
+            cells={chartCells(series, row, level, now, columns, CHART_ROWS, tzOffsetMin)}
           />
         )
       } else {

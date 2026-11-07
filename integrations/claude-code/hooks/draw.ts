@@ -70,14 +70,34 @@ export function bar(
   return merge(cells)
 }
 
-/** The weekly time strip: day names, use against day boundaries, "now", end-of-day time line. */
-export type Strip = { labels: string; cells: Seg[]; pointer: string; values: string }
+/**
+ * The weekly time strip, both views at once: calendar days (names, `┊` at
+ * midnight) over the use, "now", then the 24-hour periods (`╵` at each reset
+ * hour with the time line's value) and the reset's day and hour.
+ */
+export type Strip = { labels: string; cells: Seg[]; pointer: string; periods: string; reset: string }
 
 const isWeekly = (id: string) => id === 'seven_day' || id.startsWith('scoped:')
 
 /**
- * The strip of a weekly row, `width` cells at most (a whole number of cells per
- * day); `null` without a reset or with fewer than 5 cells a day.
+ * The local `step` boundaries (midnights for days, whole hours for hours)
+ * strictly inside `start`..`end`. A fixed offset: a DST change inside the
+ * window shifts the later ones by its hour.
+ */
+export function boundaries(start: number, end: number, step: number, tzOffsetMin: number): number[] {
+  const off = tzOffsetMin * 60_000
+  const out: number[] = []
+  for (let at = Math.floor((start + off) / step) * step + step - off; at < end; at += step) {
+    if (at > start) out.push(at)
+  }
+  return out
+}
+
+/**
+ * The weekly window as one strip of calendar days: boundaries (`┊`) at local
+ * midnight, so the first and last days are partial (the window starts and ends
+ * at the reset hour). Day names stand at each day's start; the first says the
+ * reset hour when it has room. Below, the 24-hour periods from the reset.
  */
 export function strip(
   lang: Lang,
@@ -87,24 +107,41 @@ export function strip(
   tzOffsetMin: number,
 ): Strip | null {
   if (!isWeekly(row.id) || row.resetsAt === undefined || row.elapsed === undefined) return null
-  const per = Math.floor(width / 7)
-  if (per < 5) return null
-  const w = per * 7
-  const start = row.resetsAt - 7 * DAY_MS
-  const day = (at: number) => clock(lang, at, tzOffsetMin).split(' ')[0] ?? ''
+  if (width < 35) return null
+  const w = width
+  const length = 7 * DAY_MS
+  const start = row.resetsAt - length
+  const at = (c: number) => Math.round(((c - start) / length) * w)
+  const cuts = boundaries(start, row.resetsAt, DAY_MS, tzOffsetMin)
+  const cols = cuts.map(at)
 
-  let labels = ''
-  let values = ''
-  for (let d = 0; d < 7; d++) {
-    labels += day(start + d * DAY_MS).padEnd(per).slice(0, per)
-    values += pct(lang, Math.round(((d + 1) / 7) * 100)).padStart(per).slice(-per)
+  // Labels, left to right, each only where it fits before the next day.
+  const label = Array<string>(w).fill(' ')
+  const put = (line: string[], text: string, from: number) => {
+    for (let i = 0; i < text.length && from + i < w; i++) line[from + i] = text[i]!
+  }
+  const starts = [0, ...cols]
+  starts.forEach((from, i) => {
+    const room = (starts[i + 1] ?? w + 1) - from - 1
+    const [day = '', hm = ''] = clock(lang, i === 0 ? start : cuts[i - 1]!, tzOffsetMin).split(' ')
+    const text = i === 0 && `${day} ${hm}`.length <= room ? `${day} ${hm}` : day
+    if (text.length <= room) put(label, text, from)
+  })
+
+  // The 24-hour periods: a tick at each reset hour with the time line's value
+  // there (k/7 of the window), as long as it fits before the next tick.
+  const period = Array<string>(w).fill(' ')
+  for (let k = 1; k < 7; k++) {
+    const from = Math.round((k / 7) * w)
+    const text = `╵${pct(lang, Math.round((k / 7) * 100))}`
+    if (from + text.length <= Math.min(w, Math.round(((k + 1) / 7) * w) - 1)) put(period, text, from)
   }
 
   const filled = clampInt(Math.round((row.percent / 100) * w), 0, w)
   const cells: Seg[] = []
   for (let i = 0; i < w; i++) {
     if (i < filled) cells.push({ text: row.estimated ? '▒' : '█', tone })
-    else cells.push({ text: i % per === 0 && i > 0 ? '┊' : '░', tone: 'track' })
+    else cells.push({ text: cols.includes(i) ? '┊' : '░', tone: 'track' })
   }
 
   const col = clampInt((row.elapsed / 100) * w, 0, w - 1)
@@ -114,7 +151,13 @@ export function strip(
       ? `${' '.repeat(col)}▲ ${word}`
       : `${' '.repeat(Math.max(0, col - word.length - 1))}${word} ▲`
 
-  return { labels: labels.trimEnd(), cells: merge(cells), pointer, values }
+  return {
+    labels: label.join('').trimEnd(),
+    cells: merge(cells),
+    pointer,
+    periods: period.join('').trimEnd(),
+    reset: clock(lang, row.resetsAt, tzOffsetMin),
+  }
 }
 
 // --- The chart -----------------------------------------------------------
@@ -128,12 +171,9 @@ function curve(series: Series, row: Row, now: number): [number, number][] {
 }
 
 /** Gridline instants: each day of a week, each hour of the 5-hour window. */
-function grid(series: Series): number[] {
-  const length = series.resetsAt - series.start
-  const step = length > DAY_MS ? DAY_MS : 3_600_000
-  const out: number[] = []
-  for (let at = series.start + step; at < series.resetsAt; at += step) out.push(at)
-  return out
+function grid(series: Series, tzOffsetMin: number): number[] {
+  const step = series.resetsAt - series.start > DAY_MS ? DAY_MS : 3_600_000
+  return boundaries(series.start, series.resetsAt, step, tzOffsetMin)
 }
 
 const SVG_W = 700
@@ -164,13 +204,19 @@ export function chartSvg(
     first === undefined ? '' : `${line} L${x(now)},${y(0)} L${x(first[0])},${y(0)} Z`
   const tone = levelTone(level)
   const weekly = length > DAY_MS
-  const lines = grid(series)
+  const cuts = grid(series, tzOffsetMin)
+  const lines = cuts
     .map(at => `<line class="g" x1="${x(at)}" y1="${TOP}" x2="${x(at)}" y2="${y(0)}"/>`)
     .join('')
-  const labels = [series.start, ...grid(series)]
-    .map(at => {
+  // Calendar days: the first one starts at the reset hour, so it says so when
+  // its part of the width has room for it.
+  const starts = [series.start, ...cuts]
+  const labels = starts
+    .map((at, i) => {
       const [day, hm] = clock(lang, at, tzOffsetMin).split(' ')
-      return `<text x="${(Number(x(at)) + 4).toFixed(1)}" y="${SVG_H - 6}">${weekly ? day : hm}</text>`
+      const room = Number(x(starts[i + 1] ?? series.resetsAt)) - Number(x(at))
+      const text = !weekly ? hm : i === 0 && room >= 64 ? `${day} ${hm}` : room >= 28 ? day : ''
+      return text === '' ? '' : `<text x="${(Number(x(at)) + 4).toFixed(1)}" y="${SVG_H - 6}">${text}</text>`
     })
     .join('')
   const dash = row.estimated ? ' stroke-dasharray="6 4"' : ''
@@ -219,12 +265,13 @@ export function chartCells(
   now: number,
   columns: number,
   rows: number,
+  tzOffsetMin: number,
 ): string {
   const length = series.resetsAt - series.start
   const pts = curve(series, row, now)
   const fg = RASTER_TONE[levelTone(level) as 'ok' | 'warn' | 'crit']
   const span = length / columns
-  const boundaries = grid(series).map(at => Math.floor((at - series.start) / span))
+  const cuts = grid(series, tzOffsetMin).map(at => Math.floor((at - series.start) / span))
   const words = new Uint32Array(columns * rows * 3)
   let p = 0
   let used = 0
@@ -242,7 +289,7 @@ export function chartCells(
       if (n === 0 && Math.floor(time / 8) === bottom) {
         glyph = 0x00b7
         color = RASTER_TRACK
-      } else if (n === 0 && boundaries.includes(c)) {
+      } else if (n === 0 && cuts.includes(c)) {
         glyph = 0x250a
         color = RASTER_TRACK
       }
