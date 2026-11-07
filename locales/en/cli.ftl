@@ -95,6 +95,7 @@ cli-help =
       status [--json]                     Limits, live sessions and data sources
       limits [--json]                     Current limit readings
       sessions [--json]                   Running Claude Code sessions
+      history [--json]                    Readings of the current windows, for charts (JSON)
       statusline [--chain]                Claude Code statusline (reads JSON from stdin)
       statusline install [--chain|--no-chain] [--yes] [--config-dir <DIR>]
       statusline uninstall [--yes] [--config-dir <DIR> | --all]

@@ -3,6 +3,7 @@
 //! - `statusline` is Claude Code's statusline command: it hands the reading to the app (or
 //!   spools it while the app is closed) and prints one line.
 //! - `status`, `limits` and `sessions` ask the app, or read its database when it is closed.
+//! - `history` reads the current window's stored readings from the database (ADR-046).
 //! - `statusline install|uninstall` edit Claude Code's `settings.json`, with a diff and the
 //!   user's yes.
 //! - `doctor` writes a diagnostics bundle the user can read and share.
@@ -87,6 +88,19 @@ fn run(ctx: &Context, command: Command) -> ExitCode {
         Command::Status { json } => print_report(ctx, Report::Status, json),
         Command::Limits { json } => print_report(ctx, Report::Limits, json),
         Command::Sessions { json } => print_report(ctx, Report::Sessions, json),
+        Command::History => match report::history(ctx) {
+            Ok(text) => {
+                println!("{text}");
+                ExitCode::SUCCESS
+            }
+            Err(message) => {
+                eprintln!(
+                    "{}",
+                    ctx.l10n.fmt("error", &[("message", Arg::Str(&message))])
+                );
+                ExitCode::FAILURE
+            }
+        },
         Command::Doctor { out } => exit(doctor::run(ctx, out)),
         Command::Path { add } => path(ctx, add),
     }

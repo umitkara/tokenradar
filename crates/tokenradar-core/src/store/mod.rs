@@ -468,6 +468,16 @@ impl ReadOnlyStore {
         snapshots::latest(&self.conn, account)
     }
 
+    /// Snapshots with `from <= observed_at < to`, oldest first.
+    pub fn snapshots_between(
+        &self,
+        account: AccountId,
+        from: Timestamp,
+        to: Timestamp,
+    ) -> Result<Vec<LimitObservation>> {
+        snapshots::between(&self.conn, account, from, to)
+    }
+
     pub fn account_stats(&self, account: AccountId) -> Result<AccountStats> {
         stats::account_stats(&self.conn, account)
     }

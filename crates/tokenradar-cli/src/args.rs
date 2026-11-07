@@ -31,6 +31,8 @@ pub enum Command {
     Sessions {
         json: bool,
     },
+    /// The current window's stored readings per limit, as JSON (ADR-046).
+    History,
     /// A diagnostics bundle; `out` defaults to a stamped name in the current directory.
     Doctor {
         out: Option<PathBuf>,
@@ -108,6 +110,8 @@ pub fn parse(mut parser: lexopt::Parser) -> Result<Command, lexopt::Error> {
         ["status"] => Command::Status { json: f.json },
         ["limits"] => Command::Limits { json: f.json },
         ["sessions"] => Command::Sessions { json: f.json },
+        // JSON is its only form; `--json` is taken so it reads like the others.
+        ["history"] => Command::History,
         ["doctor"] => Command::Doctor { out: f.out.take() },
         ["path", "add"] => Command::Path { add: true },
         ["path", "remove"] => Command::Path { add: false },
@@ -123,9 +127,10 @@ fn check_flags(command: &Command, f: &Flags) -> Result<(), lexopt::Error> {
         Command::Statusline { .. } => (false, true, false, false, false, false, false),
         Command::Install { .. } => (false, true, true, true, true, false, false),
         Command::Uninstall { .. } => (false, false, false, true, true, false, true),
-        Command::Status { .. } | Command::Limits { .. } | Command::Sessions { .. } => {
-            (true, false, false, false, false, false, false)
-        }
+        Command::Status { .. }
+        | Command::Limits { .. }
+        | Command::Sessions { .. }
+        | Command::History => (true, false, false, false, false, false, false),
         Command::Doctor { .. } => (false, false, false, false, false, true, false),
         Command::Path { .. } => (false, false, false, false, false, false, false),
         Command::Help | Command::Version => return Ok(()),
@@ -209,6 +214,8 @@ mod tests {
             parse_args(&["limits", "--json"]),
             Ok(Command::Limits { json: true })
         );
+        assert_eq!(parse_args(&["history"]), Ok(Command::History));
+        assert_eq!(parse_args(&["history", "--json"]), Ok(Command::History));
         assert_eq!(parse_args(&["doctor"]), Ok(Command::Doctor { out: None }));
         assert_eq!(
             parse_args(&["doctor", "--out", "D:/x.zip"]),
@@ -235,6 +242,7 @@ mod tests {
         assert!(parse_args(&["status", "extra", "words"]).is_err());
         assert!(parse_args(&["--frobnicate"]).is_err());
         assert!(parse_args(&["status", "--out", "x.zip"]).is_err());
+        assert!(parse_args(&["history", "--yes"]).is_err());
         assert!(parse_args(&["doctor", "--json"]).is_err());
         assert!(parse_args(&["path"]).is_err());
         assert!(parse_args(&["path", "add", "--yes"]).is_err());

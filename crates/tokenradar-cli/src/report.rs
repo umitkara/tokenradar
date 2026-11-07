@@ -9,7 +9,8 @@ use tokenradar_core::ipc::{
     AbsentLimit, AccountInfo, Client, Hello, LimitInfo, Op, Origin, PROTOCOL_VERSION, Request,
     SessionInfo, StatusQuery, StatusReply, with_deadline,
 };
-use tokenradar_core::limits::presence;
+use tokenradar_core::limits::history::{HISTORY_SCHEMA, HistoryReply, window_series};
+use tokenradar_core::limits::{WEEK_MS, presence};
 use tokenradar_core::live_sessions::running_sessions;
 use tokenradar_core::statusline::default_config_dir;
 use tokenradar_core::store::ReadOnlyStore;
@@ -68,6 +69,50 @@ pub fn from_app(ctx: &Context) -> Option<StatusReply> {
     ];
     let replies = with_deadline(EXCHANGE_TIMEOUT, move || client.call(&requests)).ok()?;
     replies.into_iter().find(|r| r.id == 2)?.into_data().ok()
+}
+
+/// `history`: each limit's readings in its current window, read-only from the database even
+/// while the app runs (WAL lets a reader in beside the writer), so the IPC stays as it is
+/// (ADR-046). No database or no account is an empty `series`, not an error.
+pub fn history(ctx: &Context) -> Result<String, String> {
+    let now = Timestamp::now();
+    let store = match ctx.paths.as_ref() {
+        Some(p) => ReadOnlyStore::open(p.db_path()).map_err(|e| e.to_string())?,
+        None => None,
+    };
+    let mut series = Vec::new();
+    if let Some(store) = &store
+        && let Some(account) = store
+            .accounts()
+            .map_err(|e| e.to_string())?
+            .into_iter()
+            .next()
+    {
+        let absent = store
+            .kv_get(&presence::kv_key(account.id))
+            .ok()
+            .flatten()
+            .map(|v| presence::decode(&v))
+            .unwrap_or_default();
+        let latest = store
+            .latest_snapshots(account.id)
+            .map_err(|e| e.to_string())?;
+        // The longest window is a week: one read covers every series.
+        let snapshots = store
+            .snapshots_between(
+                account.id,
+                now.saturating_sub_millis(WEEK_MS),
+                now.saturating_add_millis(1),
+            )
+            .map_err(|e| e.to_string())?;
+        series = window_series(&latest, &snapshots, &absent, now);
+    }
+    let reply = HistoryReply {
+        schema: HISTORY_SCHEMA,
+        generated_at: now,
+        series,
+    };
+    serde_json::to_string(&reply).map_err(|e| e.to_string())
 }
 
 /// What the app last stored, as it would show it now, plus the running sessions.

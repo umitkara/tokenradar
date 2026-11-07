@@ -95,6 +95,7 @@ cli-help =
       status [--json]                     Limitler, canlı oturumlar ve veri kaynakları
       limits [--json]                     Güncel limit değerleri
       sessions [--json]                   Çalışan Claude Code oturumları
+      history [--json]                    Geçerli pencerelerin okumaları, grafik için (JSON)
       statusline [--chain]                Claude Code statusline'ı (JSON'u stdin'den okur)
       statusline install [--chain|--no-chain] [--yes] [--config-dir <DİZİN>]
       statusline uninstall [--yes] [--config-dir <DİZİN> | --all]

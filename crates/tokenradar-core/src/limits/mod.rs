@@ -2,6 +2,7 @@
 //! detection, burn rate and projection, the v0.1 session shares and the panel view model.
 
 mod engine;
+pub mod history;
 pub mod presence;
 pub mod rate;
 mod share;
