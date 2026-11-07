@@ -86,7 +86,6 @@ detail-pace = Geçen zaman { PCT($elapsed) } · { $dir ->
 detail-strip-title = { $name } · geçen zaman { PCT($elapsed) }
 detail-chart-title = { $name }, pencere boyunca
 detail-now = şimdi
-detail-strip-reset = Sıfırlanma { $at }
 detail-legend-midnight = gece yarısı
 detail-legend-period = reset'ten itibaren her 24 saat, altında zaman çizgisinin değeri
 detail-legend-time = zaman çizgisi

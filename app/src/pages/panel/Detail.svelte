@@ -73,7 +73,7 @@ $effect(() => {
       {#if weekly}<TimeStrip {focus} limit={focusLimit} />{/if}
       <UsageChart {focus} limit={focusLimit} pace={focusPace} />
       <p class="legend">
-        <span>{t("detail-strip-reset", { at: resetText })}</span>
+        <span>{t("resets-at", { at: resetText })}</span>
         {#if weekly}
           <span><i class="key midnight" aria-hidden="true"></i>{t("detail-legend-midnight")}</span>
           <span><i class="key period" aria-hidden="true"></i>{t("detail-legend-period")}</span>

@@ -56,7 +56,7 @@ const pctText = (n: number) => t("value-pct", { pct: Math.round(n), estimate: "n
   </div>
   <div class="below">
     {#each periods as p (p.pos)}
-      {#if clearOfNow(p.pos, nowPos)}
+      {#if clearOfNow(p.pos, nowPos, nowLeft)}
         <span class="value" style:left="{p.pos}%">{pctText(p.value)}</span>
       {/if}
     {/each}

@@ -276,9 +276,17 @@ $effect(() => {
     height: 100%;
     overflow: hidden;
   }
+  /* Without a height here `main` grows with its content and never scrolls: a view taller than
+     the window (the detail view, many sessions) was cut off at the bottom. */
+  :global(#app) {
+    height: 100%;
+  }
   main {
     height: 100%;
     overflow-y: auto;
+    /* Thin, without arrow buttons: the classic bar takes a tenth of a 360 px panel. */
+    scrollbar-width: thin;
+    scrollbar-color: var(--text-3) transparent;
     color: var(--text-1);
   }
   .content {

@@ -94,6 +94,15 @@ describe("clearOfNow", () => {
     expect(clearOfNow(42.9, 45)).toBe(false);
     expect(clearOfNow(28.6, 45)).toBe(true);
   });
+
+  it("leaves more room on the side the word runs to", () => {
+    // "▲ now" at 57 % runs right: 71 % would touch it, 43 % is clear.
+    expect(clearOfNow(71.4, 57)).toBe(false);
+    expect(clearOfNow(42.9, 57)).toBe(true);
+    // Near the right edge the word runs left.
+    expect(clearOfNow(71.4, 85, true)).toBe(false);
+    expect(clearOfNow(100, 85, true)).toBe(true);
+  });
 });
 
 describe("usagePaths", () => {

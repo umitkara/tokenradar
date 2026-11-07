@@ -73,11 +73,19 @@ export function stripDays(start: number, end: number): StripDay[] {
 }
 
 /** Distance, in percent, a period value keeps from the "now" mark. */
+/** Room for a value on the side of the "now" mark without its word. */
 const NOW_ROOM = 10;
+/** Room on the side the "▲ now" word runs to: the word and the value are each ~40 px wide. */
+const NOW_WORD_ROOM = 20;
 
-/** Whether a 24-hour mark at `pos` leaves room for the "now" mark at `nowPos`. */
-export function clearOfNow(pos: number, nowPos: number): boolean {
-  return Math.abs(pos - nowPos) >= NOW_ROOM;
+/**
+ * Whether a 24-hour mark at `pos` leaves room for the "now" mark at `nowPos`. The word runs to
+ * the right of the mark, or to its left when `wordLeft` (near the right edge).
+ */
+export function clearOfNow(pos: number, nowPos: number, wordLeft = false): boolean {
+  const after = pos - nowPos;
+  const wordSide = wordLeft ? -after : after;
+  return wordSide >= 0 ? wordSide >= NOW_WORD_ROOM : -wordSide >= NOW_ROOM;
 }
 
 export interface ChartGeometry {

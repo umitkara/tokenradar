@@ -89,8 +89,6 @@ detail-pace = Time gone { PCT($elapsed) } · { $dir ->
 detail-strip-title = { $name } · time gone { PCT($elapsed) }
 detail-chart-title = { $name } over the window
 detail-now = now
-# $at is a weekday and time, e.g. "Wed 10:59".
-detail-strip-reset = Resets { $at }
 detail-legend-midnight = midnight
 detail-legend-period = every 24 hours from the reset, with the time line's value
 detail-legend-time = time line
