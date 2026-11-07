@@ -21,13 +21,6 @@ import {
 
 type Els = ElementTable
 
-/**
- * The widest a bar, the strip and the terminal chart grow: past it a wide
- * terminal spreads them thin and pushes the value far from its bar.
- */
-export const MAX_BAR = 48
-export const MAX_STRIP = 84
-
 /** Colored runs as one line of text. */
 function Runs(els: Els, segs: readonly Seg[], surface: string) {
   const { Text } = els
@@ -63,7 +56,7 @@ function card(els: Els, lang: Lang, row: Row, width: number, now: number, surfac
   const shown = value(lang, row)
   // The time mark stays on the bar; the elapsed share is written once, on the strip.
   const inner = Math.max(10, width - 4)
-  const barWidth = Math.max(4, Math.min(MAX_BAR, inner - shown.length - 1))
+  const barWidth = Math.max(4, inner - shown.length - 1)
   const details: string[] = []
   if (row.resetsAt !== undefined) details.push(d.resetsIn(dur(lang, row.resetsAt - now)))
   if (row.willHit && row.etaAt !== undefined) {
@@ -129,7 +122,7 @@ export function paneTree(els: Els, p: PaneInput) {
   }
 
   const weekly = paceRow(rows)
-  const s = weekly === undefined ? null : strip(lang, weekly, levelTone(rowLevel(weekly)), Math.min(width, MAX_STRIP), p.tzOffsetMin)
+  const s = weekly === undefined ? null : strip(lang, weekly, levelTone(rowLevel(weekly)), width, p.tzOffsetMin)
   if (weekly !== undefined && s !== null) {
     sections.push(
       <Box key="strip" flexDirection="column" marginTop={1}>

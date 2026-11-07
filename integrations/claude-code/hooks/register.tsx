@@ -42,7 +42,7 @@ import {
   topLevel,
   value,
 } from './model'
-import { MAX_STRIP, bandTree, paneTree, resetTree } from './view'
+import { bandTree, paneTree, resetTree } from './view'
 
 const CLI_TIMEOUT_MS = 5_000
 const PANE = 'tokenradar'
@@ -239,7 +239,8 @@ export const register: Register = (on, options) => {
       if (e.surface === 'terminal') {
         const { Raster } = $.ui.resolve(e)
         // As wide as the strip above it, so days line up.
-        const columns = Math.max(14, Math.floor(Math.min(width, MAX_STRIP) / 7) * 7)
+        // Raster takes at most 512 columns.
+        const columns = Math.max(14, Math.floor(Math.min(width, 511) / 7) * 7)
         chart = (
           <Raster
             key="chart"
