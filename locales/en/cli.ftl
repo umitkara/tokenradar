@@ -38,7 +38,7 @@ source-estimate = estimate
 source-codex-log = Codex log
 
 projection-full-in = full in { DUR($ms) }
-projection-reset-first = resets first
+projection-reset-first = won't fill
 status-busy = busy
 status-idle = idle
 status-unknown = unknown

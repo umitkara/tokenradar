@@ -38,7 +38,7 @@ source-estimate = tahmin
 source-codex-log = Codex günlüğü
 
 projection-full-in = { DUR($ms) } içinde dolar
-projection-reset-first = önce sıfırlanır
+projection-reset-first = dolmaz
 status-busy = meşgul
 status-idle = boşta
 status-unknown = bilinmiyor
