@@ -105,6 +105,26 @@ statusline-error-changed-meanwhile = settings.json changed while this was open. 
 statusline-error-stale-plan = These changes are out of date. Nothing was written; review them again.
 statusline-error-io = The file could not be written. Nothing was changed.
 
+## Data sources: Claude Code mod
+
+mod-title = Panel inside Claude Code
+mod-experimental = Experimental
+mod-hint = A side panel with your limits, a warning band above the prompt, and the /radar command, in every Claude Code session. Claude Code loads it from the app's folder; nothing else is downloaded.
+mod-installed = Installed. Claude Code loads it from:
+mod-missing = The mod's files are not next to the app, so it cannot be installed from here.
+mod-dialog-install = Install the Claude Code mod
+mod-dialog-uninstall = Remove the Claude Code mod
+mod-dialog-restart = Restart Claude Code afterwards. If you started it with --plugin-dir for this mod before, stop doing that, or the mod loads twice.
+mod-kept = { $count ->
+    [one] One other plugin folder in the list stays.
+   *[other] { $count } other plugin folders in the list stay.
+}
+mod-already = The mod is already installed.
+mod-nothing = The mod is not installed, so there is nothing to remove.
+mod-done-install = Installed. Restart Claude Code to load it.
+mod-done-uninstall = Removed. Restart Claude Code to unload it.
+mod-backup = Backup of the old file: { $path }
+
 ## Data sources: statusline appearance
 
 statusline-look = Appearance

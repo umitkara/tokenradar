@@ -1,6 +1,6 @@
 <!--
-  Data sources: the Claude Code folders, the statusline bridge and the usage API consent.
-  Section ids (`dirs`, `statusline`, `api`) are the targets of the panel's links.
+  Data sources: the Claude Code folders, the statusline bridge, the Claude Code mod and the usage
+  API consent. Section ids (`dirs`, `statusline`, `mod`, `api`) are the targets of links.
 -->
 <script lang="ts">
 import Button from "../../lib/components/Button.svelte";
@@ -9,6 +9,7 @@ import { t } from "../../lib/i18n/i18n.svelte";
 import { commands } from "../../lib/ipc/bindings";
 import { clock } from "../../lib/time/clock.svelte";
 import ApiConsent from "./ApiConsent.svelte";
+import ClaudeModCard from "./ClaudeModCard.svelte";
 import StatuslineDialog from "./StatuslineDialog.svelte";
 import StatuslineLook from "./StatuslineLook.svelte";
 import { loadSources, store } from "./state.svelte";
@@ -166,6 +167,10 @@ async function dialogDone(result: { backup: string | null } | null) {
     {/if}
     <StatuslineLook {onerror} />
   </Card>
+</section>
+
+<section id="mod" tabindex="-1">
+  <ClaudeModCard />
 </section>
 
 <section id="api" tabindex="-1">

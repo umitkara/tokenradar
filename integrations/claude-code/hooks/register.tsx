@@ -45,6 +45,7 @@ import {
 import { bandTree, paneTree, resetTree } from './view'
 
 const CLI_TIMEOUT_MS = 5_000
+const DEFAULT_CLI = 'tokenradar'
 const PANE = 'tokenradar'
 const CHART_ROWS = 6
 /** The pane's wished-for height inline: its content, up to what the layout spares. */
@@ -165,10 +166,43 @@ async function settle($: EngineInterface, r: Radar) {
   }
 }
 
+/**
+ * The CLI installed beside this mod: the app puts the mod in `<install>/claude-code` and the CLI
+ * in `<install>/bin` (ADR-047). `root` is the mod's folder, in the platform's spelling.
+ */
+export function installedCli(root: string): string | null {
+  const cut = Math.max(root.lastIndexOf('/'), root.lastIndexOf('\\'))
+  if (cut <= 0) return null
+  const sep = root[cut]
+  const exe = /^[A-Za-z]:[\\/]/.test(root) ? 'tokenradar.exe' : 'tokenradar'
+  return `${root.slice(0, cut)}${sep}bin${sep}${exe}`
+}
+
+let foundCli: string | undefined
+
+/** The configured CLI; left at the default, the installed one beside the mod before PATH's. */
+async function resolveCli($: EngineInterface, configured: string): Promise<string> {
+  if (configured !== DEFAULT_CLI) return configured
+  if (foundCli === undefined) {
+    const beside = installedCli($.plugin.root)
+    let exists = false
+    try {
+      exists = beside !== null && (await $.fs.exists(beside))
+    } catch {
+      // A network location: PATH's tokenradar it is.
+    }
+    foundCli = exists && beside !== null ? beside : DEFAULT_CLI
+  }
+  return foundCli
+}
+
 export const register: Register = (on, options) => {
-  const cli =
-    typeof options.cli === 'string' && options.cli.trim() !== '' ? options.cli.trim() : 'tokenradar'
+  const configured =
+    typeof options.cli === 'string' && options.cli.trim() !== '' ? options.cli.trim() : DEFAULT_CLI
+  let cli = configured
+  foundCli = undefined
   on('session.start', async ($, e, next) => {
+    cli = await resolveCli($, configured)
     const r = await refresh($, cli, FETCH_EVERY_MS)
     await $.command.register({ name: 'radar', description: t(r.lang).commandDescription })
     try {

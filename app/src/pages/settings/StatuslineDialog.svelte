@@ -1,13 +1,15 @@
 <!--
   Shows the `settings.json` change line by line before anything is written (ADR-009). Only the
-  plan shown here can be applied: `apply_statusline` takes its token, and the core still refuses
-  if the file changed in between. Closing the dialog discards the plan.
+  plan shown here can be applied: `apply_statusline` (or `apply_claude_mod`) takes its token, and
+  the core still refuses if the file changed in between. Closing the dialog discards the plan.
+  `target` picks the change: the statusline bridge or the Claude Code mod (ADR-047).
 -->
 <script lang="ts">
 import { tick } from "svelte";
 import Button from "../../lib/components/Button.svelte";
 import { t } from "../../lib/i18n/i18n.svelte";
 import {
+  type ClaudeModPlanView,
   commands,
   type StatuslineAction,
   type StatuslineError,
@@ -16,18 +18,19 @@ import {
 import { statuslineErrorKey } from "./view";
 
 interface Props {
+  target?: "statusline" | "mod";
   /** The user's current command; the chain option is offered only when there is one. */
   currentCommand: string | null;
   /** Called after the dialog closed; `backup` is set after a successful change. */
   ondone: (result: { backup: string | null } | null) => void;
 }
 
-let { currentCommand, ondone }: Props = $props();
+let { target = "statusline", currentCommand, ondone }: Props = $props();
 
 let dialog: HTMLDialogElement;
 let mode = $state<"install" | "uninstall">("install");
 let chain = $state(true);
-let plan = $state<StatuslinePlanView | null>(null);
+let plan = $state<StatuslinePlanView | ClaudeModPlanView | null>(null);
 let error = $state<string | null>(null);
 let busy = $state(false);
 let applied = false;
@@ -36,6 +39,10 @@ const action = $derived<StatuslineAction>(
   mode === "uninstall" ? "uninstall" : chain || !currentCommand ? "install" : "install_no_chain",
 );
 const ready = $derived(plan?.outcome === "ready" ? plan : null);
+const statuslineReady = $derived(ready && "chained_mangled" in ready ? ready : null);
+const kept = $derived(ready && "kept" in ready ? ready.kept : []);
+/** Message key prefix: `statusline-…` or `mod-…`. */
+const k = $derived(target === "mod" ? "mod" : "statusline");
 
 function fail(e: StatuslineError) {
   error = t(statuslineErrorKey(e));
@@ -44,7 +51,8 @@ function fail(e: StatuslineError) {
 async function makePlan() {
   busy = true;
   error = null;
-  const r = await commands.planStatusline(action);
+  const r =
+    target === "mod" ? await commands.planClaudeMod(mode) : await commands.planStatusline(action);
   busy = false;
   if (r.status === "ok") plan = r.data;
   else {
@@ -74,7 +82,10 @@ async function confirm() {
   if (!ready) return;
   busy = true;
   error = null;
-  const r = await commands.applyStatusline(ready.token);
+  const r =
+    target === "mod"
+      ? await commands.applyClaudeMod(ready.token)
+      : await commands.applyStatusline(ready.token);
   busy = false;
   if (r.status === "ok") {
     applied = true;
@@ -98,11 +109,11 @@ function closed() {
 
 <dialog bind:this={dialog} onclose={closed} aria-labelledby="statusline-dialog-title">
   <h2 id="statusline-dialog-title">
-    {t(mode === "install" ? "statusline-dialog-install" : "statusline-dialog-uninstall")}
+    {t(mode === "install" ? `${k}-dialog-install` : `${k}-dialog-uninstall`)}
   </h2>
   <p>{t("statusline-dialog-intro")}</p>
 
-  {#if mode === "install" && currentCommand}
+  {#if target === "statusline" && mode === "install" && currentCommand}
     <label class="chain">
       <input type="checkbox" checked={chain} disabled={busy} onchange={setChain} />
       <span>
@@ -117,19 +128,25 @@ function closed() {
     <!-- Focusable so the keyboard can scroll a long diff. -->
     <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
     <pre class="diff" aria-label={t("statusline-diff")} tabindex="0">{#each ready.diff as line, i (i)}<span class={line.kind}>{line.text}</span>{/each}</pre>
-    {#if ready.chained_command}
+    {#if statuslineReady?.chained_command}
       <p class="note">{t("statusline-chain-note")}</p>
     {/if}
-    {#if ready.chained_mangled}
+    {#if statuslineReady?.chained_mangled}
       <p class="note warn">{t("statusline-mangled")}</p>
     {/if}
-    {#if ready.restores_previous}
+    {#if statuslineReady?.restores_previous}
       <p class="note">{t("statusline-restores")}</p>
     {/if}
+    {#if kept.length > 0}
+      <p class="note">{t("mod-kept", { count: kept.length })}</p>
+    {/if}
+    {#if target === "mod" && mode === "install"}
+      <p class="note">{t("mod-dialog-restart")}</p>
+    {/if}
   {:else if plan?.outcome === "already_installed"}
-    <p class="note">{t("statusline-already")}</p>
+    <p class="note">{t(`${k}-already`)}</p>
   {:else if plan?.outcome === "not_installed"}
-    <p class="note">{t("statusline-nothing")}</p>
+    <p class="note">{t(`${k}-nothing`)}</p>
   {/if}
 
   {#if error}<p class="error" role="alert">{error}</p>{/if}

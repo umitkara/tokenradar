@@ -1,7 +1,8 @@
 <!--
   Step 3: where limit percentages come from. The statusline bridge (recommended) installs with
   the same diff dialog as the settings; the usage API shows the same consent text. Both can be
-  skipped, and the line at the bottom says plainly what that means.
+  skipped, and the line at the bottom says plainly what that means. Below the bridge, the Claude
+  Code mod is offered too; nothing installs it unless the user asks (ADR-047).
 -->
 <script lang="ts">
 import Button from "../../lib/components/Button.svelte";
@@ -9,6 +10,7 @@ import Card from "../../lib/components/Card.svelte";
 import { t } from "../../lib/i18n/i18n.svelte";
 import { clock } from "../../lib/time/clock.svelte";
 import ApiConsent from "../settings/ApiConsent.svelte";
+import ClaudeModCard from "../settings/ClaudeModCard.svelte";
 import StatuslineDialog from "../settings/StatuslineDialog.svelte";
 import { loadSources, store } from "../settings/state.svelte";
 import { limitsOutcome, OUTCOME_KEYS } from "./view";
@@ -66,6 +68,8 @@ async function dialogDone(result: { backup: string | null } | null) {
     {#if notice}<p class="note" role="status">{notice}</p>{/if}
   {/if}
 </Card>
+
+<ClaudeModCard />
 
 <Card title={t("api-title")}>
   {#snippet corner()}<span class="tag">{t("onb-limits-api-optional")}</span>{/snippet}

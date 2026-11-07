@@ -21,6 +21,7 @@ function sources(overrides: Partial<DataSourcesView>): DataSourcesView {
     statusline: { state: "not_installed", current_command: null },
     statusline_last_seen: null,
     cli_missing: false,
+    claude_mod: { state: "not_installed" },
     api: { granted: false, granted_at: null, outdated: false, status: null },
     ...overrides,
   };

@@ -140,6 +140,8 @@ export function statuslineErrorKey(error: StatuslineError): string {
       return "statusline-error-no-directory";
     case "cli_missing":
       return "statusline-error-cli-missing";
+    case "mod_missing":
+      return "mod-missing";
     case "invalid_settings":
       return "statusline-error-invalid-settings";
     case "changed_meanwhile":

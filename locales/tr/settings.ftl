@@ -96,6 +96,26 @@ statusline-error-changed-meanwhile = Bu pencere açıkken settings.json değişt
 statusline-error-stale-plan = Bu değişiklikler artık güncel değil. Hiçbir şey yazılmadı; yeniden gözden geçirin.
 statusline-error-io = Dosya yazılamadı. Hiçbir şey değişmedi.
 
+## Veri kaynakları: Claude Code mod'u
+
+mod-title = Claude Code içinde panel
+mod-experimental = Deneysel
+mod-hint = Her Claude Code oturumunda limitlerinizi gösteren bir yan panel, istemin üstünde bir uyarı bandı ve /radar komutu. Claude Code bunu uygulamanın klasöründen yükler; başka bir şey indirilmez.
+mod-installed = Kurulu. Claude Code şuradan yüklüyor:
+mod-missing = Mod dosyaları uygulamanın yanında değil; buradan kurulamıyor.
+mod-dialog-install = Claude Code mod'unu kur
+mod-dialog-uninstall = Claude Code mod'unu kaldır
+mod-dialog-restart = Ardından Claude Code'u yeniden başlatın. Bu mod için daha önce --plugin-dir kullandıysanız artık kullanmayın, yoksa mod iki kez yüklenir.
+mod-kept = { $count ->
+    [one] Listedeki diğer bir eklenti klasörü yerinde kalır.
+   *[other] Listedeki diğer { $count } eklenti klasörü yerinde kalır.
+}
+mod-already = Mod zaten kurulu.
+mod-nothing = Mod kurulu değil; kaldırılacak bir şey yok.
+mod-done-install = Kuruldu. Yüklenmesi için Claude Code'u yeniden başlatın.
+mod-done-uninstall = Kaldırıldı. Devre dışı kalması için Claude Code'u yeniden başlatın.
+mod-backup = Eski dosyanın yedeği: { $path }
+
 ## Veri kaynakları: statusline görünümü
 
 statusline-look = Görünüm

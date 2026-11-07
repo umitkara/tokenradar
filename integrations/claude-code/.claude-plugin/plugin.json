@@ -10,7 +10,7 @@
     "cli": {
       "type": "string",
       "title": "TokenRadar CLI",
-      "description": "The tokenradar command the mod runs for projections, scoped limits and the session share. Leave it as tokenradar to use the one on PATH.",
+      "description": "The tokenradar command the mod runs for projections, scoped limits and the session share. Leave it as tokenradar to use the one installed with the app, or else the one on PATH.",
       "default": "tokenradar"
     }
   }

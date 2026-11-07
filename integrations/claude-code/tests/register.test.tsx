@@ -53,6 +53,8 @@ type Options = {
   placed?: boolean
   /** Claude Code's settings.json; absent, the file is missing. */
   settings?: string
+  /** Whether a CLI sits in `bin` beside the mod's folder, as the app installs it (ADR-047). */
+  installed?: boolean
 }
 
 type World = {
@@ -62,6 +64,8 @@ type World = {
   reads: string[]
   cliRuns: () => number
   historyRuns: () => number
+  /** The program each CLI run started. */
+  programs: string[]
   clock: ReturnType<typeof mock.clock>
 }
 
@@ -125,6 +129,7 @@ function world(on: On, o: Options | null): World {
   const statuses: (string | undefined)[] = []
   const opened: string[] = []
   const reads: string[] = []
+  const programs: string[] = []
   let runs = 0
   let historyRuns = 0
   on('session.id', () => ({ value: 's-1' }))
@@ -162,7 +167,11 @@ function world(on: On, o: Options | null): World {
     }
     return { deny: 'ENOENT' }
   })
+  on('fs.exists', (_, e) => ({
+    value: o?.installed === true && /[\\/]bin[\\/]tokenradar(\.exe)?$/.test(e.path),
+  }))
   on('process.run', (_, e) => {
+    programs.push(e.argv[0] ?? '')
     if (o === null) return { deny: 'not found' }
     const isHistory = e.argv[1] === 'history'
     if (isHistory) historyRuns += 1
@@ -182,7 +191,16 @@ function world(on: On, o: Options | null): World {
     const { Text } = $.ui.resolve(e)
     return <Text>engine</Text>
   })
-  return { toasts, statuses, opened, reads, cliRuns: () => runs, historyRuns: () => historyRuns, clock }
+  return {
+    toasts,
+    statuses,
+    opened,
+    reads,
+    cliRuns: () => runs,
+    historyRuns: () => historyRuns,
+    programs,
+    clock,
+  }
 }
 
 const weekly = (percentUsed: number, resetsAt = RESETS): SessionMeasureInput => ({
@@ -401,4 +419,18 @@ test('/radar falls back to the full report where the pane is not placed', async 
   expect(text).toContain('Haftalık (Fable)')
   expect(text).toContain('5 saatlik: bu hesapta yok.')
   expect(text).toContain('Veri: Claude Code ve TokenRadar uygulamasından canlı veri.')
+})
+
+test('left at the default, the CLI installed beside the mod runs before PATH', async ($, on) => {
+  const w = world(on, { origin: 'app', installed: true })
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  expect(w.programs.length > 0).toBe(true)
+  expect(w.programs.every((p) => /[\\/]bin[\\/]tokenradar(\.exe)?$/.test(p))).toBe(true)
+})
+
+test('without an installed CLI beside the mod, PATH has it', async ($, on) => {
+  const w = world(on, { origin: 'app' })
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  expect(w.programs.length > 0).toBe(true)
+  expect(w.programs.every((p) => p === 'tokenradar')).toBe(true)
 })

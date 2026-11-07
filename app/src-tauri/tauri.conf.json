@@ -29,6 +29,9 @@
     "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.ico"],
     "resources": {
       "../../target/release-cli/tokenradar.exe": "bin/tokenradar.exe",
+      "../../integrations/claude-code/.claude-plugin/plugin.json": "claude-code/.claude-plugin/plugin.json",
+      "../../integrations/claude-code/hooks/*": "claude-code/hooks/",
+      "../../integrations/claude-code/types/index.d.ts": "claude-code/types/index.d.ts",
       "../../target/third-party/THIRD-PARTY-NOTICES.txt": "THIRD-PARTY-NOTICES.txt"
     },
     "windows": {

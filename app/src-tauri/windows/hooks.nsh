@@ -46,6 +46,21 @@
       ${EndIf}
     ${EndIf}
 
+    ; Claude Code would otherwise look for a mod folder that is gone (ADR-047). The folder goes
+    ; too: Claude Code writes generated types into it, which the file list does not know.
+    nsExec::ExecToLog '"$INSTDIR\bin\tokenradar.exe" mod uninstall --all --yes'
+    Pop $0
+    ${If} $0 != 0
+    ${AndIf} $PassiveMode <> 1
+    ${AndIfNot} ${Silent}
+      ${If} $LANGUAGE == 1055
+        MessageBox MB_ICONEXCLAMATION|MB_OK "TokenRadar'ın Claude Code mod'u ayarlardan kaldırılamadı.$\n$\nKaldırma tamamlandıktan sonra Claude Code'un settings.json dosyasını açın ve $\"env$\" içindeki CLAUDE_CODE_PLUGIN_DIRS değerinden $INSTDIR\claude-code yolunu silin."
+      ${Else}
+        MessageBox MB_ICONEXCLAMATION|MB_OK "TokenRadar could not remove its Claude Code mod from the settings.$\n$\nAfter the uninstall, open Claude Code's settings.json and delete $INSTDIR\claude-code from CLAUDE_CODE_PLUGIN_DIRS under $\"env$\"."
+      ${EndIf}
+    ${EndIf}
+    RMDir /r "$INSTDIR\claude-code"
+
     nsExec::ExecToLog '"$INSTDIR\bin\tokenradar.exe" path remove'
     Pop $0
 
