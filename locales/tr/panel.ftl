@@ -68,3 +68,31 @@ panel-token-stale = Claude Code'u bir kez çalıştırınca güncellenecek.
 panel-offline = Çevrimdışı · son değer { DUR($ms) } önce
 panel-schema-drift = Claude Code güncellenmiş olabilir; bazı veriler okunamıyor.
 panel-diagnostics = Tanılamayı göster
+
+## Panelin iki görünümü (ADR-048)
+
+panel-views = Panel görünümü
+panel-view-summary = Özet
+panel-view-detail = Ayrıntı
+
+## Ayrıntı görünümü: her limit zamana karşı, haftalık zaman şeridi, kullanım grafiği
+
+detail-loading = Ayrıntılar yükleniyor…
+detail-pace = Geçen zaman { PCT($elapsed) } · { $dir ->
+    [ahead] zaman çizgisinin { NUM($points, 0) } puan önünde
+    [behind] zaman çizgisinin { NUM($points, 0) } puan gerisinde
+   *[even] zaman çizgisiyle aynı hızda
+}
+detail-strip-title = { $name } · geçen zaman { PCT($elapsed) }
+detail-chart-title = { $name }, pencere boyunca
+detail-now = şimdi
+detail-strip-reset = Sıfırlanma { $at }
+detail-legend-midnight = gece yarısı
+detail-legend-period = reset'ten itibaren her 24 saat, altında zaman çizgisinin değeri
+detail-legend-time = zaman çizgisi
+detail-legend-use = kullanım
+detail-chart-empty = Bu pencereye ait kayıtlı okuma henüz yok.
+detail-chart-alt = { $name } kullanımının pencere boyunca zaman çizgisiyle karşılaştırması: kullanılan { PCT($used) }, geçen zaman { PCT($elapsed) }.
+detail-session-cost = API ${ NUM($usd, 2) }
+detail-session-cost-tip = Bu penceredeki API karşılığı maliyet; fatura değildir.
+detail-estimate-note = ≈ işareti ölçümü değil tahmini gösterir.

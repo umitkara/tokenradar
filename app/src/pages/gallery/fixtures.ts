@@ -40,12 +40,15 @@ export function limit(percent: number | null, o: LimitOptions = {}): LimitView {
   const now = Date.now();
   const source = o.source ?? "statusline";
   const kind = o.kind ?? "session";
+  // Half a minute of slack so "1h 48m" holds while a test or screenshot runs.
+  const resetsAt = percent == null ? null : now + 30_000 + (o.resetsIn ?? defaultReset(kind));
+  const length = kind === "session" ? 5 * HOUR : 7 * 24 * HOUR;
   return {
     kind,
     scope: o.model ? { model: o.model } : null,
     percent,
-    // Half a minute of slack so "1h 48m" holds while a test or screenshot runs.
-    resets_at: percent == null ? null : now + 30_000 + (o.resetsIn ?? defaultReset(kind)),
+    resets_at: resetsAt,
+    window_start: resetsAt == null ? null : resetsAt - length,
     severity: o.severity ?? "ok",
     provider_severity: null,
     source,

@@ -1,5 +1,7 @@
 <!--
-  The tray panel (Step 10): header, notices, limits, sessions and footer.
+  The tray panel (Step 10): header, notices, limits, sessions and footer. Two views (ADR-048):
+  the summary (ring, rows, sessions) and the detail (the Claude Code mod's report: pace, time
+  strip, usage chart, costs), switched under the header and remembered between openings.
 
   Talks to the window lifecycle in src-tauri/src/panel/mod.rs:
   - After the first load it reports its content height (`panel_ready`); the window is sized,
@@ -15,14 +17,14 @@ import IconButton from "../../lib/components/IconButton.svelte";
 import Skeleton from "../../lib/components/Skeleton.svelte";
 import SourceBadge from "../../lib/components/SourceBadge.svelte";
 import { t } from "../../lib/i18n/i18n.svelte";
-import { commands, events, type SettingsSection } from "../../lib/ipc/bindings";
+import { commands, events, type PanelView, type SettingsSection } from "../../lib/ipc/bindings";
 import { inTauri } from "../../lib/ipc/runtime";
 import { clock } from "../../lib/time/clock.svelte";
 import Icon from "./Icon.svelte";
 import LimitsCard from "./LimitsCard.svelte";
 import Notices from "./Notices.svelte";
 import SessionsCard from "./SessionsCard.svelte";
-import { load, panel, startPanel } from "./state.svelte";
+import { load, panel, setView, startPanel } from "./state.svelte";
 import {
   activeCount,
   emptyState,
@@ -42,6 +44,24 @@ let readySent = false;
 let pre = $state(true);
 let refreshClickedAt = $state<number | null>(null);
 let fallback: ReturnType<typeof setTimeout> | undefined;
+
+const VIEWS: readonly PanelView[] = ["summary", "detail"];
+/** The detail view only has something to add when there are limits. */
+const canSwitch = $derived(panel.snapshot != null && emptyState(panel.snapshot) == null);
+const view = $derived<PanelView>(canSwitch ? panel.view : "summary");
+let tabs: HTMLButtonElement[] = $state([]);
+
+function other(v: PanelView): PanelView {
+  return v === "summary" ? "detail" : "summary";
+}
+
+function onTabKey(e: KeyboardEvent) {
+  if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+  e.preventDefault();
+  const next = other(view);
+  setView(next);
+  tabs[VIEWS.indexOf(next)]?.focus();
+}
 
 const snapshot = $derived(panel.snapshot);
 const plan = $derived(planLabel(snapshot?.account ?? null));
@@ -104,6 +124,10 @@ onMount(() => {
   resize.observe(content);
   const onKey = (e: KeyboardEvent) => {
     if (e.key === "Escape" && !e.defaultPrevented && inTauri()) void commands.panelHide();
+    if (e.key === "Tab" && e.ctrlKey && canSwitch) {
+      e.preventDefault();
+      setView(other(view));
+    }
   };
   const onVisibility = () => {
     if (document.visibilityState === "hidden") {
@@ -162,14 +186,47 @@ $effect(() => {
       </span>
     </header>
 
+    {#if canSwitch}
+      <div class="views" role="tablist" aria-label={t("panel-views")}>
+        {#each VIEWS as v, i (v)}
+          <button
+            bind:this={tabs[i]}
+            type="button"
+            role="tab"
+            id="tab-{v}"
+            aria-selected={view === v}
+            aria-controls="view"
+            tabindex={view === v ? 0 : -1}
+            onclick={() => setView(v)}
+            onkeydown={onTabKey}
+          >
+            {t(v === "summary" ? "panel-view-summary" : "panel-view-detail")}
+          </button>
+        {/each}
+      </div>
+    {/if}
+
     {#if snapshot}
       <Notices notices={notices(snapshot)} {openSettings} />
-      <LimitsCard {snapshot} {openSettings} />
-      {#if emptyState(snapshot) !== "no-claude"}
-        <section aria-label={t("panel-sessions")}>
-          <SessionsCard {snapshot} />
-        </section>
-      {/if}
+      <div
+        class="view"
+        id="view"
+        role={canSwitch ? "tabpanel" : undefined}
+        aria-labelledby={canSwitch ? `tab-${view}` : undefined}
+      >
+        {#if view === "detail"}
+          {#await import("./Detail.svelte") then { default: Detail }}
+            <Detail {snapshot} detail={panel.detail} />
+          {/await}
+        {:else}
+          <LimitsCard {snapshot} {openSettings} />
+          {#if emptyState(snapshot) !== "no-claude"}
+            <section aria-label={t("panel-sessions")}>
+              <SessionsCard {snapshot} />
+            </section>
+          {/if}
+        {/if}
+      </div>
     {:else}
       <div class="loading" aria-busy="true">
         <span class="visually-hidden">{t("panel-loading")}</span>
@@ -279,6 +336,42 @@ $effect(() => {
     background: var(--signal-ok);
   }
 
+  .views {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2px;
+    padding: 2px;
+    border-radius: var(--radius-control);
+    background: var(--surface-1);
+    border: 1px solid var(--stroke);
+  }
+  .views button {
+    appearance: none;
+    border: 0;
+    border-radius: calc(var(--radius-control) - 2px);
+    padding: var(--space-1) var(--space-2);
+    background: transparent;
+    font: var(--type-body);
+    color: var(--text-2);
+    cursor: pointer;
+  }
+  .views button:hover {
+    color: var(--text-1);
+  }
+  .views button[aria-selected="true"] {
+    background: var(--track);
+    color: var(--text-1);
+    font-weight: 600;
+  }
+  .views button:focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 1px;
+  }
+  .view {
+    display: grid;
+    gap: var(--space-3);
+  }
+
   .loading {
     display: flex;
     gap: var(--space-3);
@@ -314,6 +407,11 @@ $effect(() => {
   @media (forced-colors: active) {
     .live {
       background: CanvasText;
+    }
+    .views button[aria-selected="true"] {
+      forced-color-adjust: none;
+      background: Highlight;
+      color: HighlightText;
     }
   }
 </style>

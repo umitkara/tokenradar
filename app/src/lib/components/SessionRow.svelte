@@ -5,12 +5,22 @@
       Busy · 12.4k tok/min
   The name falls back to the transcript title, then the project. A busy dot pulses twice when
   the session turns busy, then stays still (ADR-019). Sessions that are not running are dimmed.
+  The detail view (ADR-048) adds the API-equivalent cost to the second line and, when it has
+  something to compare, a small bar: dashed for a ≈ share, solid for a part of the cost.
 -->
 <script lang="ts">
 import { t } from "../i18n/i18n.svelte";
 import type { LiveStatus, SessionShareView } from "../ipc/bindings";
 
-let { session }: { session: SessionShareView } = $props();
+interface Props {
+  session: SessionShareView;
+  /** Show the window's API-equivalent cost (detail view). */
+  cost?: boolean;
+  /** 0–100; `estimate` draws it dashed. */
+  bar?: { width: number; estimate: boolean } | null;
+}
+
+let { session, cost = false, bar = null }: Props = $props();
 
 const STATUS_KEYS: Record<LiveStatus, string> = {
   busy: "session-busy",
@@ -27,6 +37,7 @@ const details = $derived(
   [
     session.status ? t(STATUS_KEYS[session.status]) : null,
     session.tokens_per_min ? t("session-rate", { k: session.tokens_per_min / 1000 }) : null,
+    cost && session.cost > 0 ? t("detail-session-cost", { usd: session.cost / 1_000_000 }) : null,
   ].filter((d) => d != null),
 );
 </script>
@@ -43,7 +54,14 @@ const details = $derived(
     <span class="share">{t("session-share", { pct: session.share_percent })}</span>
   {/if}
   {#if details.length > 0}
-    <span class="details">{details.join(" · ")}</span>
+    <span class="details" title={cost && session.cost > 0 ? t("detail-session-cost-tip") : undefined}
+      >{details.join(" · ")}</span
+    >
+  {/if}
+  {#if bar}
+    <span class="bar" class:est={bar.estimate} aria-hidden="true">
+      <span class="fill" style:width="{bar.width}%"></span>
+    </span>
   {/if}
 </div>
 
@@ -112,6 +130,26 @@ const details = $derived(
     grid-column: 2 / -1;
     color: var(--text-3);
   }
+  .bar {
+    grid-column: 2 / -1;
+    height: 3px;
+    margin-top: var(--space-1);
+    border-radius: var(--radius-pill);
+    background: var(--track);
+    overflow: hidden;
+    color: var(--signal-ok);
+  }
+  .bar.est {
+    color: var(--signal-est);
+  }
+  .fill {
+    display: block;
+    height: 100%;
+    background: currentColor;
+  }
+  .est .fill {
+    background: repeating-linear-gradient(90deg, currentColor 0 6px, transparent 6px 9px);
+  }
   @media (prefers-reduced-motion: reduce) {
     .dot.busy {
       animation: none;
@@ -119,6 +157,13 @@ const details = $derived(
   }
   @media (forced-colors: active) {
     .dot.busy {
+      background: CanvasText;
+    }
+    .bar {
+      border: 1px solid CanvasText;
+    }
+    .fill {
+      forced-color-adjust: none;
       background: CanvasText;
     }
   }

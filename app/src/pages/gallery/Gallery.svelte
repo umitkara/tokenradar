@@ -20,12 +20,29 @@ import { locale, setLocale, t } from "../../lib/i18n/i18n.svelte";
 import type { Source, ThemePref } from "../../lib/ipc/bindings";
 import { inTauri } from "../../lib/ipc/runtime";
 import { applyTheme, settings } from "../../lib/settings.svelte";
-import { bars as initialBars, nudge, ringCases, sessions } from "./fixtures";
+import Detail from "../panel/Detail.svelte";
+import { detailOf, session, snapshot } from "../panel/fixtures";
+import { bars as initialBars, limit, nudge, ringCases, sessions, weekly } from "./fixtures";
 
 let rings = $state(ringCases);
 let bars = $state(initialBars);
 let theme = $state<ThemePref>("system");
 let estimates = $state(true);
+
+const DAY = 24 * 3_600_000;
+/** The panel's detail view (ADR-048): ahead of the time line, two costed sessions. */
+const detailSnapshot = snapshot({
+  limits: [
+    limit(42, { projected: 68 }),
+    weekly(64, { resetsIn: 3 * DAY + 5 * 3_600_000, projected: 118 }),
+    weekly(12, { kind: "weekly_scoped", model: "Fable", source: "api", resetsIn: 3 * DAY }),
+  ],
+  live_sessions: [
+    session(1, { name: "panel-layout", share_percent: 18.4, cost: 2_570_000 }),
+    session(2, { name: "upload-test", project: "web-shop", share_percent: 9.2, cost: 1_290_000 }),
+  ],
+});
+const detail = detailOf(detailSnapshot);
 
 const SOURCES: Source[] = ["statusline", "api", "estimate", "codex_log"];
 const THEMES: ThemePref[] = ["system", "light", "dark"];
@@ -148,6 +165,11 @@ function change() {
       </div>
     </Card>
 
+    <section class="panel-frame">
+      <h2>{t("gallery-detail")}</h2>
+      <Detail snapshot={detailSnapshot} {detail} />
+    </section>
+
     <Card title={t("gallery-states")}>
       <div class="stack">
         <Skeleton width="60%" />
@@ -227,6 +249,13 @@ function change() {
     flex-wrap: wrap;
     align-items: center;
     gap: var(--space-2);
+  }
+  .panel-frame {
+    display: grid;
+    gap: var(--space-3);
+    width: 360px;
+    box-sizing: border-box;
+    padding: 0 var(--space-4);
   }
   .hint {
     font: var(--type-body);

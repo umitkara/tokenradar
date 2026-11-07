@@ -37,6 +37,18 @@ export function projectedPercent(limit: LimitView | null): number | null {
   return limit?.projection?.projected_at_reset ?? null;
 }
 
+/**
+ * Where the time mark stands on the bar (ADR-044): the share of the window gone at `now`, from
+ * the window the core reported. A position like a countdown, not a figure: `null` without a
+ * window, before it or after its reset.
+ */
+export function timeMark(limit: LimitView | null, now: number): number | null {
+  const start = limit?.window_start;
+  const end = limit?.resets_at;
+  if (start == null || end == null || end <= start || now < start || now >= end) return null;
+  return ((now - start) / (end - start)) * 100;
+}
+
 /** The arc length for `percent`, clamped to the ring. */
 export function arc(percent: number | null): number {
   return percent == null ? 0 : Math.min(100, Math.max(0, percent));

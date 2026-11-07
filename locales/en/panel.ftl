@@ -68,3 +68,36 @@ panel-token-stale = Updates after you run Claude Code once.
 panel-offline = Offline · last value { DUR($ms) } ago
 panel-schema-drift = Claude Code may have been updated; some data can't be read.
 panel-diagnostics = Show diagnostics
+
+## The panel's two views (ADR-048)
+
+panel-views = Panel view
+panel-view-summary = Summary
+panel-view-detail = Details
+
+## The detail view: each limit against the time, the weekly time strip, the usage chart
+
+detail-loading = Loading details…
+# $elapsed is the share of the window that has passed; $points how far use is from it.
+# $dir is "ahead", "behind" or "even".
+detail-pace = Time gone { PCT($elapsed) } · { $dir ->
+    [ahead] { NUM($points, 0) } points ahead of the time line
+    [behind] { NUM($points, 0) } points behind the time line
+   *[even] in step with the time line
+}
+# $name is a limit name such as "Weekly limit".
+detail-strip-title = { $name } · time gone { PCT($elapsed) }
+detail-chart-title = { $name } over the window
+detail-now = now
+# $at is a weekday and time, e.g. "Wed 10:59".
+detail-strip-reset = Resets { $at }
+detail-legend-midnight = midnight
+detail-legend-period = every 24 hours from the reset, with the time line's value
+detail-legend-time = time line
+detail-legend-use = use
+detail-chart-empty = No stored readings of this window yet.
+detail-chart-alt = { $name } over the window against the time line: { PCT($used) } used, { PCT($elapsed) } of the time gone.
+# What the session cost at API prices in this window; not a bill. Keep the `API` mark.
+detail-session-cost = API ${ NUM($usd, 2) }
+detail-session-cost-tip = API-equivalent cost in this window, not a bill.
+detail-estimate-note = ≈ marks an estimate, not a measurement.

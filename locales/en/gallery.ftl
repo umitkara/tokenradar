@@ -12,6 +12,7 @@ gallery-bars = Limit bars
 gallery-badges = Source badges
 gallery-sessions = Session rows
 gallery-controls = Controls
+gallery-detail = Panel detail view
 gallery-states = Loading and empty
 gallery-case-ok = Normal
 gallery-case-warn = Warning

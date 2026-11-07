@@ -12,6 +12,7 @@ gallery-bars = Limit çubukları
 gallery-badges = Kaynak rozetleri
 gallery-sessions = Oturum satırları
 gallery-controls = Kontroller
+gallery-detail = Panel ayrıntı görünümü
 gallery-states = Yükleniyor ve boş
 gallery-case-ok = Normal
 gallery-case-warn = Uyarı

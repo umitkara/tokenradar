@@ -8,7 +8,15 @@
 import type { LimitView } from "../ipc/bindings";
 import { clock } from "../time/clock.svelte";
 import Countdown from "./Countdown.svelte";
-import { arc, ariaSentence, isEstimate, limitName, projectedPercent, valueText } from "./limit";
+import {
+  arc,
+  ariaSentence,
+  isEstimate,
+  limitName,
+  projectedPercent,
+  timeMark,
+  valueText,
+} from "./limit";
 import SeverityIcon from "./SeverityIcon.svelte";
 
 interface Props {
@@ -24,6 +32,7 @@ const name = $derived(limitName(limit));
 const percent = $derived(arc(limit.percent));
 const projected = $derived(projectedPercent(limit));
 const estimated = $derived(isEstimate(limit));
+const mark = $derived(timeMark(limit, clock.now));
 </script>
 
 <div
@@ -45,7 +54,8 @@ const estimated = $derived(isEstimate(limit));
       <span class="when"><Countdown at={limit.resets_at} mode={countdown} /></span>
     {/if}
   </div>
-  <div class="bar {estimated ? 'est' : limit.severity}" aria-hidden="true">
+  <div class="track" aria-hidden="true">
+  <div class="bar {estimated ? 'est' : limit.severity}">
     {#if projected != null && projected > percent}
       <span
         class="ghost"
@@ -54,6 +64,8 @@ const estimated = $derived(isEstimate(limit));
       ></span>
     {/if}
     <span class="fill" style:clip-path="inset(0 {100 - percent}% 0 0)"></span>
+  </div>
+  {#if mark != null}<span class="mark" style:left="{mark}%"></span>{/if}
   </div>
   {#if limit.resets_at != null && layout === "stacked"}
     <span class="when below" aria-hidden="true">
@@ -105,6 +117,23 @@ const estimated = $derived(isEstimate(limit));
     text-overflow: ellipsis;
   }
 
+  .track {
+    position: relative;
+  }
+  /* The time mark (ADR-044): how much of the window has passed, across the bar. */
+  .mark {
+    position: absolute;
+    top: -3px;
+    bottom: -3px;
+    width: 2px;
+    margin-left: -1px;
+    border-radius: 1px;
+    background: var(--text-1);
+    box-shadow: 0 0 0 1px var(--surface-1);
+  }
+  .stale .mark {
+    opacity: 0.5;
+  }
   .bar {
     position: relative;
     height: 4px;
@@ -150,6 +179,11 @@ const estimated = $derived(isEstimate(limit));
     }
     .fill {
       background: CanvasText;
+    }
+    .mark {
+      forced-color-adjust: none;
+      background: Highlight;
+      box-shadow: 0 0 0 1px Canvas;
     }
   }
 </style>

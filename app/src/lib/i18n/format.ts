@@ -126,6 +126,11 @@ export function clock(locale: Locale, hour: number, minute: number, hour12: bool
   return `${String(hour).padStart(2, "0")}:${mm}`;
 }
 
+/** A short weekday name (`0` = Sunday, as `Date#getDay`): TR `Çar`, EN `Wed`. */
+export function weekdayName(locale: Locale, day: number): string {
+  return WEEKDAYS[locale][((day % 7) + 7) % 7] ?? "";
+}
+
 /** Weekday (`0` = Sunday, as `Date#getDay`) and time: TR `Çar 10:59`, EN `Wed 10:59 AM`. */
 export function weekdayClock(
   locale: Locale,
@@ -134,7 +139,7 @@ export function weekdayClock(
   minute: number,
   hour12: boolean,
 ): string {
-  return `${WEEKDAYS[locale][((weekday % 7) + 7) % 7]} ${clock(locale, hour, minute, hour12)}`;
+  return `${weekdayName(locale, weekday)} ${clock(locale, hour, minute, hour12)}`;
 }
 
 /** Fraction digits needed to print `n` without trailing zeros (at most 6). */
