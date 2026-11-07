@@ -59,7 +59,7 @@ pub fn show(app: &AppHandle, section: Option<SettingsSection>) -> tauri::Result<
         let builder = WebviewWindowBuilder::new(app, LABEL, WebviewUrl::App(page.into()));
         chrome::dress(app, builder, Surface::Window)
             .title("TokenRadar")
-            .inner_size(800.0, 600.0)
+            .inner_size(960.0, 680.0)
             .min_inner_size(640.0, 480.0)
             .build()?
     };

@@ -55,6 +55,34 @@
   --radius-control: 4px;
   --radius-pill: 999px;
 
+  /*
+   * The statusline preview's terminal (Step 12j): dark in both app themes, with the 16 ANSI
+   * colors of Windows Terminal's default scheme, so the preview shows what most users see.
+   * `gray` is ANSI "bright black".
+   */
+  --term-bg: #0c0c0c;
+  --term-fg: #cccccc;
+  --term-black: #0c0c0c;
+  --term-red: #c50f1f;
+  --term-green: #13a10e;
+  --term-yellow: #c19c00;
+  --term-blue: #0037da;
+  --term-magenta: #881798;
+  --term-cyan: #3a96dd;
+  --term-white: #cccccc;
+  --term-gray: #767676;
+  --term-bright-red: #e74856;
+  --term-bright-green: #16c60c;
+  --term-bright-yellow: #f9f1a5;
+  --term-bright-blue: #3b78ff;
+  --term-bright-magenta: #b4009e;
+  --term-bright-cyan: #61d6d6;
+  --term-bright-white: #f2f2f2;
+  /* Cascadia ships with Windows 11; the PL and Nerd Font builds add the Powerline glyphs. */
+  --font-term:
+    "CaskaydiaCove Nerd Font Mono", "Cascadia Mono PL", "Cascadia Code PL", "Cascadia Mono",
+    Consolas, monospace;
+
   /* Motion (ADR-019: only on change, at most 600 ms). Windows' decelerate curve. */
   --dur-fast: 120ms;
   --dur-base: 200ms;

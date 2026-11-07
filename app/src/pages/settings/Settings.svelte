@@ -14,12 +14,14 @@ import GeneralTab from "./GeneralTab.svelte";
 import NotificationsTab from "./NotificationsTab.svelte";
 import PrivacyTab from "./PrivacyTab.svelte";
 import SourcesTab from "./SourcesTab.svelte";
+import StatuslineTab from "./StatuslineTab.svelte";
 import { startSettings } from "./state.svelte";
 import { TABS, type Tab, targetFor } from "./view";
 
 const LABELS: Record<Tab, string> = {
   general: "tab-general",
   sources: "tab-sources",
+  statusline: "tab-statusline",
   notifications: "tab-notifications",
   privacy: "tab-privacy",
   about: "tab-about",
@@ -99,12 +101,21 @@ onMount(() => {
       {/each}
     </div>
   </nav>
-  <div class="content" bind:this={content} id="tabpanel" role="tabpanel" aria-labelledby="tab-{tab}">
+  <div
+    class="content"
+    class:fill={tab === "statusline"}
+    bind:this={content}
+    id="tabpanel"
+    role="tabpanel"
+    aria-labelledby="tab-{tab}"
+  >
     {#if error}<p class="error" role="alert">{t(error)}</p>{/if}
     {#if tab === "general"}
       <GeneralTab {onerror} />
     {:else if tab === "sources"}
-      <SourcesTab {onerror} />
+      <SourcesTab {onerror} onnavigate={show} />
+    {:else if tab === "statusline"}
+      <StatuslineTab {onerror} onnavigate={show} />
     {:else if tab === "notifications"}
       <NotificationsTab {onerror} />
     {:else if tab === "privacy"}
@@ -169,6 +180,10 @@ onMount(() => {
     display: flex;
     flex-direction: column;
     gap: var(--space-3);
+  }
+  /* The statusline editor scrolls its own columns and keeps the preview in view. */
+  .content.fill {
+    overflow: hidden;
   }
   .error {
     padding: var(--space-2) var(--space-3);

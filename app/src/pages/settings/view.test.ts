@@ -1,27 +1,57 @@
-import { describe, expect, it } from "vitest";
-import type { ApiConsentView, Item, SegmentKind, UpdateView } from "../../lib/ipc/bindings";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { describe, expect, it, vi } from "vitest";
+import type {
+  ApiConsentView,
+  Item,
+  SegmentKind,
+  Span,
+  StatuslineKind,
+  StatuslinePrefs,
+  UpdateView,
+} from "../../lib/ipc/bindings";
 import {
+  ANSI_COLORS,
+  addItem,
   addThreshold,
   apiStatus,
-  barOn,
+  COLOR_MODES,
+  canAdd,
+  canDrop,
+  colorKey,
+  colorModeKey,
   consentAge,
-  isDouble,
+  createSaver,
+  dropIndex,
+  emptyHistory,
+  formatKey,
+  GROUPS,
+  groupKey,
+  HISTORY_LIMIT,
+  itemText,
+  kindHintKey,
+  kindKey,
+  MAX_ITEMS,
   MAX_THRESHOLDS,
-  moveSegment,
+  moveItem,
   newItem,
   optionsWith,
-  paceOn,
+  palette,
   parseThreshold,
+  record,
+  removeItem,
   removeThreshold,
-  SEGMENTS,
-  segmentLabelKey,
-  segmentRows,
-  setBar,
-  setDouble,
-  setPace,
+  SAMPLE_STATES,
+  selectionAfterRemove,
   sizeMessage,
+  spanClasses,
+  stateKey,
+  THEMES,
   targetFor,
-  toggleSegment,
+  themeKey,
+  toggleHidden,
+  undo,
+  updateItem,
   updateUi,
 } from "./view";
 
@@ -184,50 +214,257 @@ describe("updateUi", () => {
   });
 });
 
-describe("statusline segments", () => {
-  const kinds = (items: Item[]) => items.filter((i) => i.enabled).map((i) => i.kind);
+describe("statusline items", () => {
   const items = (...k: SegmentKind[]) => k.map(newItem);
+  const kinds = (list: Item[]) => list.map((i) => (i.enabled ? i.kind : `(${i.kind})`));
 
-  it("lists the enabled segments in order, then the rest", () => {
-    const rows = segmentRows([...items("cost", "seven_day"), newItem("git_branch")]);
-    expect(rows.slice(0, 3)).toEqual([
-      { kind: "cost", enabled: true, index: 0 },
-      { kind: "seven_day", enabled: true, index: 1 },
-      { kind: "five_hour", enabled: false, index: null },
+  it("keeps the last value item visible", () => {
+    const list = items("cost", "line_break");
+    expect(canDrop(list, 0)).toBe(false);
+    expect(canDrop(list, 1)).toBe(true);
+    expect(toggleHidden(list, 0)).toEqual(list);
+    expect(removeItem(list, 0)).toEqual(list);
+    expect(kinds(removeItem(list, 1))).toEqual(["cost"]);
+    const two = items("cost", "model");
+    const hidden = toggleHidden(two, 0);
+    expect(kinds(hidden)).toEqual(["(cost)", "model"]);
+    expect(canDrop(hidden, 1)).toBe(false);
+    expect(canDrop(hidden, 0)).toBe(true);
+    expect(kinds(toggleHidden(hidden, 0))).toEqual(["cost", "model"]);
+  });
+
+  it("moves an item to an index and maps drop slots to it", () => {
+    const list = items("five_hour", "seven_day", "cost", "model");
+    expect(kinds(moveItem(list, 0, 2))).toEqual(["seven_day", "cost", "five_hour", "model"]);
+    expect(kinds(moveItem(list, 3, 0))).toEqual(["model", "five_hour", "seven_day", "cost"]);
+    expect(moveItem(list, 0, 4)).toEqual(list);
+    expect(moveItem(list, -1, 0)).toEqual(list);
+    // Dropping row 0 into the gap before row 2 puts it at index 1.
+    expect(dropIndex(0, 2)).toBe(1);
+    expect(dropIndex(0, 4)).toBe(3);
+    expect(dropIndex(3, 0)).toBe(0);
+    expect(dropIndex(2, 2)).toBe(2);
+  });
+
+  it("adds layout items freely and value items once, after the selection", () => {
+    const list = items("five_hour", "cost");
+    expect(canAdd(list, "cost")).toBe(false);
+    expect(canAdd(list, "separator")).toBe(true);
+    expect(addItem(list, "cost", null)).toBeNull();
+    const added = addItem(list, "model", 0);
+    expect(added?.index).toBe(1);
+    expect(kinds(added?.items ?? [])).toEqual(["five_hour", "model", "cost"]);
+    expect(addItem(list, "separator", null)?.index).toBe(2);
+    const full = Array.from({ length: MAX_ITEMS }, () => newItem("separator"));
+    expect(canAdd(full, "separator")).toBe(false);
+  });
+
+  it("patches one item and picks the next selection after a removal", () => {
+    const list = items("five_hour", "cost");
+    expect(updateItem(list, 1, { label: "$" })[1]?.label).toBe("$");
+    expect(updateItem(list, 1, { label: "$" })[0]).toBe(list[0]);
+    expect(selectionAfterRemove(3, 2)).toBe(1);
+    expect(selectionAfterRemove(3, 0)).toBe(0);
+    expect(selectionAfterRemove(1, 0)).toBeNull();
+    expect(kindKey("session_share")).toBe("statusline-kind-session-share");
+  });
+
+  it("groups the palette and marks used and absent kinds", () => {
+    const kind = (
+      k: SegmentKind,
+      group: StatuslineKind["group"],
+      absent = false,
+    ): StatuslineKind => ({
+      kind: k,
+      group,
+      formats: [],
+      default_format: null,
+      labeled: false,
+      default_label: "",
+      colored: false,
+      sample: k,
+      absent,
+    });
+    const catalog = [
+      kind("five_hour", "limit", true),
+      kind("seven_day", "limit"),
+      kind("cwd", "project"),
+      kind("separator", "layout"),
+    ];
+    const groups = palette(catalog, items("seven_day", "separator"));
+    expect(groups.map((g) => g.group)).toEqual(["limit", "project", "layout"]);
+    expect(groups[0]?.entries).toEqual([
+      { kind: "five_hour", sample: "five_hour", used: false, absent: true },
+      { kind: "seven_day", sample: "seven_day", used: true, absent: false },
     ]);
-    expect(rows.map((r) => r.kind).sort()).toEqual([...SEGMENTS].sort());
-    expect(segmentLabelKey("session_share")).toBe("statusline-segment-session-share");
+    expect(groups[2]?.entries[0]?.used).toBe(false);
+  });
+});
+
+describe("statusline preview", () => {
+  const span = (text: string, item: number | null, more: Partial<Span> = {}): Span => ({
+    text,
+    paint: "plain",
+    fg: null,
+    bg: null,
+    item,
+    ...more,
   });
 
-  it("appends a switched-on segment and keeps the last one on", () => {
-    expect(kinds(toggleSegment(items("cost"), "model", true))).toEqual(["cost", "model"]);
-    const off = toggleSegment(items("cost", "model"), "cost", false);
-    expect(kinds(off)).toEqual(["model"]);
-    expect(kinds(toggleSegment(off, "cost", true))).toEqual(["cost", "model"]);
-    const last = [...items("cost"), newItem("line_break")];
-    expect(kinds(toggleSegment(last, "cost", false))).toEqual(["cost", "line_break"]);
+  it("finds an item's text across lines", () => {
+    const preview = {
+      lines: [[span("7d ", 0), span("42%", 0), span(" │ ", null)], [span("API $4.12", 2)]],
+      absent: [],
+    };
+    expect(itemText(preview, 0)).toBe("7d 42%");
+    expect(itemText(preview, 2)).toBe("API $4.12");
+    expect(itemText(preview, 1)).toBeNull();
   });
 
-  it("moves a segment within bounds, past items the picker does not show", () => {
-    const list = items("seven_day", "git_branch", "cost");
-    expect(moveSegment(list, 1, -1).map((i) => i.kind)).toEqual([
-      "cost",
-      "git_branch",
-      "seven_day",
-    ]);
-    expect(moveSegment(list, 1, 1)).toEqual(list);
-    expect(moveSegment(list, 0, -1)).toEqual(list);
+  it("lets the user's color replace the paint and keeps faint on top", () => {
+    expect(spanClasses(span("a", 0))).toBe("");
+    expect(spanClasses(span("a", 0, { paint: "warn" }))).toBe("p-warn");
+    expect(spanClasses(span("a", 0, { paint: "ok", fg: "bright_cyan" }))).toBe("fg-bright-cyan");
+    expect(spanClasses(span("a", 0, { paint: "dim", fg: "gray", bg: "blue" }))).toBe(
+      "fg-gray p-dim bg-blue",
+    );
+  });
+});
+
+describe("statusline undo", () => {
+  const prefs = (separator: string): StatuslinePrefs => ({
+    items: [newItem("cost")],
+    theme: "plain",
+    separator,
+    color: "auto",
   });
 
-  it("maps the 12c layout, bar and time mark onto the items", () => {
-    const list = items("five_hour", "seven_day", "cost");
-    const double = setDouble(list, true);
-    expect(double.map((i) => i.kind)).toEqual(["five_hour", "seven_day", "line_break", "cost"]);
-    expect(isDouble(double)).toBe(true);
-    expect(setDouble(double, false)).toEqual(list);
-    expect(barOn(list)).toBe(true);
-    expect(barOn(setBar(list, false))).toBe(false);
-    expect(setBar(list, false)[2]?.format).toBeNull();
-    expect(paceOn(setPace(list, false))).toBe(false);
+  it("undoes step by step and joins quick edits of one field", () => {
+    let h = emptyHistory();
+    h = record(h, prefs("a"), null, 0);
+    h = record(h, prefs("b"), "label:0", 100);
+    h = record(h, prefs("c"), "label:0", 600);
+    h = record(h, prefs("d"), "label:0", 1500);
+    expect(h.past.map((p) => p.separator)).toEqual(["a", "b"]);
+    h = record(h, prefs("e"), "label:0", 2600);
+    expect(h.past.map((p) => p.separator)).toEqual(["a", "b", "e"]);
+    const back = undo(h);
+    expect(back?.prefs.separator).toBe("e");
+    // After an undo the next edit starts a new step.
+    expect(record(back?.history ?? h, prefs("f"), "label:0", 2700).past).toHaveLength(3);
+    expect(undo(emptyHistory())).toBeNull();
+  });
+
+  it("keeps at most HISTORY_LIMIT steps", () => {
+    let h = emptyHistory();
+    for (let n = 0; n < HISTORY_LIMIT + 5; n++) h = record(h, prefs(String(n)), null, n);
+    expect(h.past).toHaveLength(HISTORY_LIMIT);
+    expect(h.past[0]?.separator).toBe("5");
+  });
+});
+
+describe("statusline saver", () => {
+  it("saves the last of rapid changes once, and one save at a time", async () => {
+    vi.useFakeTimers();
+    try {
+      const saved: number[] = [];
+      let release: () => void = () => {};
+      const saver = createSaver<number>(400, async (v) => {
+        saved.push(v);
+        if (v === 2) await new Promise<void>((r) => (release = r));
+      });
+      saver.schedule(1);
+      vi.advanceTimersByTime(200);
+      saver.schedule(2);
+      expect(saver.pending()).toBe(true);
+      vi.advanceTimersByTime(400);
+      expect(saved).toEqual([2]);
+      // A change while a save runs waits for it.
+      saver.schedule(3);
+      vi.advanceTimersByTime(400);
+      expect(saved).toEqual([2]);
+      release();
+      await vi.runAllTimersAsync();
+      expect(saved).toEqual([2, 3]);
+      expect(saver.pending()).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("flushes a waiting value at once", async () => {
+    const saved: number[] = [];
+    const saver = createSaver<number>(10_000, async (v) => {
+      saved.push(v);
+    });
+    saver.schedule(7);
+    await saver.flush();
+    expect(saved).toEqual([7]);
+    expect(saver.pending()).toBe(false);
+    await saver.flush();
+    expect(saved).toEqual([7]);
+  });
+});
+
+describe("statusline message keys", () => {
+  // Every kind and format the core has (prefs.rs `SegmentKind::ALL`, `Format::ALL`).
+  const KINDS: SegmentKind[] = [
+    "five_hour",
+    "seven_day",
+    "scoped",
+    "context",
+    "session_share",
+    "cost",
+    "model",
+    "tokens_in",
+    "tokens_out",
+    "duration",
+    "api_duration",
+    "lines_changed",
+    "vim_mode",
+    "version",
+    "agent_name",
+    "session_id",
+    "cwd",
+    "project_dir",
+    "git_branch",
+    "separator",
+    "line_break",
+    "custom_text",
+  ];
+  const FORMATS = [
+    "bar",
+    "percent",
+    "fraction",
+    "two_decimals",
+    "four_decimals",
+    "short",
+    "full",
+    "compact",
+    "hms",
+    "both",
+    "net",
+    "basename",
+    "home",
+  ] as const;
+  const PRESETS = ["default", "minimal", "detailed", "two-line", "powerline"];
+
+  it("has a message for every key the editor builds", () => {
+    const ftl = readFileSync(
+      resolve(import.meta.dirname, "../../../../locales/en/settings.ftl"),
+      "utf8",
+    );
+    const keys = [
+      ...KINDS.flatMap((k) => [kindKey(k), kindHintKey(k)]),
+      ...FORMATS.map(formatKey),
+      ...ANSI_COLORS.map(colorKey),
+      ...GROUPS.map(groupKey),
+      ...THEMES.map(themeKey),
+      ...COLOR_MODES.map(colorModeKey),
+      ...SAMPLE_STATES.map(stateKey),
+      ...PRESETS.flatMap((p) => [`statusline-preset-${p}`, `statusline-preset-${p}-hint`]),
+    ];
+    const missing = keys.filter((k) => !new RegExp(`^${k} =`, "m").test(ftl));
+    expect(missing).toEqual([]);
   });
 });

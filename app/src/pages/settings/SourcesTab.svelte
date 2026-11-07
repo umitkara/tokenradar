@@ -11,11 +11,15 @@ import { clock } from "../../lib/time/clock.svelte";
 import ApiConsent from "./ApiConsent.svelte";
 import ClaudeModCard from "./ClaudeModCard.svelte";
 import StatuslineDialog from "./StatuslineDialog.svelte";
-import StatuslineLook from "./StatuslineLook.svelte";
 import { loadSources, store } from "./state.svelte";
-import { pickErrorKey } from "./view";
+import { pickErrorKey, type Tab } from "./view";
 
-let { onerror }: { onerror: (key: string | null) => void } = $props();
+interface Props {
+  onerror: (key: string | null) => void;
+  onnavigate: (tab: Tab, anchor: string | null) => void;
+}
+
+let { onerror, onnavigate }: Props = $props();
 
 let dialog: StatuslineDialog;
 let notice = $state<string | null>(null);
@@ -165,7 +169,10 @@ async function dialogDone(result: { backup: string | null } | null) {
         {/if}
       </div>
     {/if}
-    <StatuslineLook {onerror} />
+    <p class="look">
+      <span>{t("statusline-look-moved")}</span>
+      <Button onclick={() => onnavigate("statusline", null)}>{t("statusline-edit-look")}</Button>
+    </p>
   </Card>
 </section>
 
@@ -238,5 +245,16 @@ async function dialogDone(result: { backup: string | null } | null) {
     display: flex;
     gap: var(--space-2);
     margin-top: var(--space-3);
+  }
+  .look {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+    margin-top: var(--space-3);
+    padding-top: var(--space-3);
+    border-top: 1px solid var(--stroke);
+    color: var(--text-2);
   }
 </style>
