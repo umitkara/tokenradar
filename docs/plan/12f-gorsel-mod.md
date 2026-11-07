@@ -2,7 +2,7 @@
 
 | Sürüm | Bağımlılık | Tahmini süre | Durum |
 |---|---|---|---|
-| v0.1.x | 12e | 1 oturum | ⬜ |
+| v0.1.x | 12e | 1 oturum | ✅ |
 
 ## Amaç
 
@@ -40,4 +40,55 @@ Adım 12d'nin modu yalnızca metin kullanıyor: bant renkli satırlardan oluşuy
 - Konuşma içeriğine erişen her şey. `ToolUse` satırına çizim yapılmaz, çünkü props alanı tool girdisini taşır.
 
 ## Devir notu
-_(Oturum sonunda doldurulur)_
+
+**Tarih:** 2026-11-07 · **Durum:** ✅ Tamamlandı
+
+**Kullanıcı kararları (adım başında):** Canlı oturum barları, bağlam barı, kaynak/tazelik rozetleri ve reset satırı eklendi. `$.ui.status` yalnızca köprü kurulu değilken gösterilir. Geçmiş veri `tokenradar history --json`'dan gelir. Terminalde `Raster`, diğer yüzeylerde `Svg` kullanılır. Hepsi ADR-046'da.
+
+**Yapılanlar:**
+- **Core ve CLI:**
+  - `limits::history::window_series` eklendi. Mevcut pencerenin aynı reset'e ait okumalarını alır ve 168 dilimin her birinden sonuncusunu tutar. `absent`, reset'i geçmiş ve penceresiz limitler dışarıda kalır.
+  - `ReadOnlyStore::snapshots_between` eklendi.
+  - `tokenradar history [--json]` eklendi: salt-okunur, IPC'ye dokunmaz. Yardım satırı EN ve TR.
+- **Mod (`integrations/claude-code`):**
+  - `hooks/draw.ts` (yeni): bar, haftalık şerit, `Svg` grafik, `Raster` hücreleri, base64.
+  - `hooks/view.tsx` (yeni): panel, kart, rozet, canlı oturumlar, bant ve reset ağaçları.
+  - `hooks/register.tsx` yeniden yazıldı: atom'lar, `Pane` ve `AbovePrompt` render'ı, `/radar`.
+  - `hooks/model.ts` genişletildi: `parseHistory`, `bridgeInstalled`, `stepResets`, `resetNotice`, `statusText`, `summary`, canlı oturumlar. Oturum `title` alanı okunmaz.
+- **Ekran görüntüleriyle yapılan düzeltmeler:**
+  - Panel kırpılıyordu, `rows` verildi.
+  - İstenmeden konan genişlik sınırları kaldırıldı; panel artık tam genişlik.
+  - "API" rozeti "kullanım API'si" oldu.
+  - `⏱` kartlardan çıkarıldı; çift genişlikte çiziliyordu.
+- **Zaman şeridi:**
+  - İlk sürüm reset'ten başlayan 24 saatlik parçaları yalnızca gün adıyla etiketliyordu. Çar 11:00'de sıfırlanan pencere gece yarısından başlıyormuş gibi okunuyordu.
+  - Kullanıcının "Kota Zaman Çizelgesi" HTML'ine göre iki görünüm birleştirildi:
+    - Takvim günleri: gece yarısında `┊`, ilk ve son gün kısmi.
+    - Reset'ten itibaren her 24 saatte `│` ve altında zaman çizgisinin değeri (%14, %29 …), "▲ şimdi" ile aynı satırda.
+  - Grafiğin altında açıklama satırı var: sıfırlanma günü ve saati, işaretlerin anlamı, grafik anahtarı.
+- **Terminal grafiği:**
+  - Önce noktalar, sonra braille denendi. Bu fontta ikisi de kesik bir merdiven gibi göründü.
+  - Son hâli barlar gibi: şimdiye kadar geçen zaman gri sekizlik bloklarla, kullanım önünde renkli.
+  - Grafik ve şerit aynı genişliği ve aynı yuvarlamayı kullanır, gün çizgileri aynı sütunlara düşer. Bunu bir test denetliyor.
+- **Canlı oturumlar:** Bar yalnızca karşılaştıracak bir şey varken çizilir: ≈pay biliniyorsa ya da en az iki oturumun maliyeti varsa.
+- **Belgeler:** ADR-046 yazıldı. Architecture §11 (mod ve `history`), design-language sözlüğü, README (mod bölümü, CLI) ve CHANGELOG güncellendi.
+
+**Doğrulama:**
+- `cargo fmt --check`, clippy (`-D warnings`) ve `cargo test --workspace`: temiz.
+- `pnpm -C app check`, `pnpm -C app lint` ve `pnpm -C app test` (87): temiz.
+- `claude plugin validate`: geçti. `tsc -p integrations/claude-code`: temiz. `claude plugin test`: 38/38.
+- Terminal paneli kullanıcının ekran görüntüleriyle elle denendi; kullanıcı onayladı.
+
+**Ölçülmeyenler ve riskler:**
+- `Svg` grafiğin masaüstü, VS Code ve mobildeki görünümü ile renk şemasını izleyip izlemediği elle denenmedi; yalnızca testlerde dört yüzeyle doğrulandı.
+- `Raster` tema bilgisi almaz. Gri ton (`#5a5f64`) ve sinyal renkleri orta açıklıkta seçildi. Açık temalı terminalde denenmedi.
+- Gün sınırları sabit saat dilimi ofsetiyle hesaplanır; pencere içinde yaz saati değişirse sonraki sınırlar bir saat kayar (ADR-046).
+- Yan tarafa yerleşen panel tam yükseklikte açılır, içerik kısa kalınca altı boş görünür. API yüksekliği yalnızca açılışta alıyor.
+- Kart barlarındaki zaman işareti ile şeritteki "▲ şimdi" aynı sütunda değil, çünkü kart barı daha dar. Kullanıcıya soruldu, böyle kaldı.
+- **Geçici kurulum:** Elle denemede mod'un CLI yolu (`/config` → TokenRadar CLI) geçici bir kopyaya, `%LOCALAPPDATA%\Temp\tokenradar-12f\tokenradar.exe`'ye yöneltildi. Bu yol yayınlanmış ya da kurulu CLI'a geri alınmalı. Kopya ondan sonra silinebilir.
+
+**Kapsam dışı kalanlar:**
+- **Fable (`weekly_scoped`) kartı:** Usage API'den gelir ve Fable'ın haftalık limitin en fazla %50'sini kullanabileceğini gösterir (destek makalesi: "Claude Fable models on your plan"). Fable kullanımı normal haftalık limitten de düşer. Kullanıcı kartı olduğu gibi bıraktı. İstenirse ileride haftalık kartın alt satırı yapılabilir; `docs/data-sources.md`'deki `weekly_scoped` notuna bu %50 tavan bilgisi eklenebilir.
+- Marketplace yayını, sürekli animasyon ve `ToolUse` çizimi bu adımda yapılmadı (planda kapsam dışı).
+
+**Sonraki adım:** 13 (kalibrasyon motoru). En az bir haftalık veri gerektirir.

@@ -24,7 +24,7 @@ TokenRadar sits in the Windows tray and shows how much of your **Claude Code** 5
 - **Usage API, only with consent.** If you allow it, TokenRadar asks `api.anthropic.com` for your limit percentages every few minutes, the same request Claude Code makes.
 - **Honest numbers.** Every value carries its source: statusline, API or estimate. Estimates are marked with `≈`; low-confidence values are dimmed.
 - **Small footprint.** About 25 MB of memory while it sits in the tray, no windows kept alive, near-zero idle CPU.
-- **CLI.** `tokenradar status`, `limits`, `sessions` (also as `--json`) and `doctor` for a privacy-safe diagnostics bundle.
+- **CLI.** `tokenradar status`, `limits`, `sessions` (also as `--json`), `history --json` for the current windows' readings, and `doctor` for a privacy-safe diagnostics bundle.
 - **English and Turkish** UI.
 
 ## Install
@@ -76,11 +76,12 @@ pace = true        # the time mark
 
 `integrations/claude-code/` holds an optional mod for Claude Code's plugin hooks. It works alongside the statusline bridge and does not replace it: the bridge keeps feeding TokenRadar, and the mod shows and warns inside Claude Code.
 
-- **Band above the prompt.** It appears only when a limit reaches 75 % (90 % in red), or when TokenRadar projects that a window fills before it resets. From the window's second day on (its first seventh), when your use runs 10 points or more ahead of the window's elapsed time, it says so too, without a toast. **Hide** keeps it away until the level rises.
+- **Band above the prompt.** One bordered line with a mini bar. It appears only when a limit reaches 75 % (90 % in red), or when TokenRadar projects that a window fills before it resets. From the window's second day on (its first seventh), when your use runs 10 points or more ahead of the window's elapsed time, it says so too, without a toast. **Details** opens the pane; **Hide** keeps the band away until the level rises. When a window resets, the band says so once.
 - **Toast.** One per threshold crossing, and only while the desktop app is not running. When the app runs, it sends the notification itself.
-- **`/radar`.** Every limit with its source, reset time and projection, plus windows your account does not have, this session's share, the context window and the API-equivalent cost. A pace line compares your use with the time gone, and a time line shows where the weekly window's clock stands at the end of each coming day.
+- **`/radar` opens a pane.** A card per limit with its bar, time mark, source badge, reset time and projection; the weekly time strip (days, now, and where the time line stands at the end of each day); a chart of your use over the window against the time line (an SVG in the desktop app, VS Code and mobile, colored cells in the terminal); live sessions with their cost; and the context window. Where no pane can be shown, `/radar` prints the full report instead, with a pace line and the weekly time line.
+- **Status entry.** If Claude Code's status line is not TokenRadar's bridge, the mod shows a short entry such as `TokenRadar · Weekly 42% ⏱43%`. With the bridge installed it stays quiet.
 
-The mod reads Claude Code's own limit figures and runs `tokenradar status --json` at most every 30 seconds for what only TokenRadar knows. Without the CLI it still works with Claude Code's figures and says so. It reads no conversation, makes no network request and never touches credentials. The API is early access and may change between Claude Code releases.
+The mod reads Claude Code's own limit figures and runs `tokenradar status --json` at most every 30 seconds for what only TokenRadar knows, and `tokenradar history --json` at most every 5 minutes while the pane is open. Without the CLI it still works with Claude Code's figures and says so. Of Claude Code's `settings.json` it reads only `statusLine.command`. It reads no conversation (live sessions are shown by name or folder, never by title), makes no network request and never touches credentials. The API is early access and may change between Claude Code releases.
 
 Try it from a clone of this repository:
 

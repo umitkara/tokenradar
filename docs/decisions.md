@@ -749,3 +749,51 @@
   - Zamanla daralan eşik, örneğin `max(10, 30 − geçen%)`: daha yumuşak, ama kuralı anlatmak zor.
   - Uyarıyı yalnızca projeksiyon da varsa çıkarmak: projeksiyon uyarısı zaten bantta çıktığı için tempo uyarısı gereksizleşir.
   - Tempo bandını kaldırmak.
+
+### ADR-046 — Görsel mod: panel, tek satırlık bant, geçmiş için `tokenradar history`
+**Durum:** Kabul (2026-11-07, Adım 12f, kullanıcı kararlarıyla). ADR-043'ün bant ve `/radar` maddelerini değiştirir.
+- **Bağlam:**
+  - Adım 12d'nin modu yalnızca metin kullanıyordu. Bant renkli satırlardan oluşuyordu. `/radar` uzun bir metin döndürüyordu ve bu metin modelin bağlamına da giriyordu.
+  - Mod API'sinin görsel yüzeyleri var: `Pane`, kenarlıklı ve renkli `Box`/`Text`, terminalde `Raster` (renkli hücre ızgarası), masaüstü, VS Code ve mobilde `Svg`, ayrıca `$.ui.status`.
+  - Kullanım eğrisi için geçmiş veri gerekiyor. Bu veri yalnızca TokenRadar'ın veritabanında (`limit_snapshots`) var.
+- **Karar:**
+  - **`/radar` bir panel açar.** Panelde sırasıyla şunlar bulunur:
+    - **Limit kartları:** Her kartta renkli bar, zaman işareti (`│`, ADR-044), değer, `⏱`, kaynak rozeti, reset süresi, projeksiyon ve tazelik bulunur. Eski ya da tahmini değerler soluk görünür; tahmin barı `▒` ile çizilir.
+    - **Haftalık zaman şeridi:** İki görünüm aynı şeritte. Üstte takvim günleri: gün adları ve gece yarısındaki gün sınırları (`┊`). Pencere reset saatinde başlayıp bittiği için ilk ve son gün kısmidir; ilk gün, yer varsa reset saatini de yazar. Ortada kullanım dolgusu. Reset'ten itibaren her 24 saatte şeritte düz bir sınır (`│`); şeridin hemen altındaki tek satırda zaman çizgisinin oradaki değeri (%14, %29 …) ve "▲ şimdi" işareti. İşarete değen değerler yer açar. Grafiğin altında açıklama: reset'in günü ve saati, işaretlerin anlamı ve grafiğin anahtarı. Gün sınırları yerel saat dilimine göre çizilir (sabit ofset; pencere içinde yaz saati değişirse sonraki sınırlar bir saat kayar). Grafiğin gün çizgileri de gece yarısındadır.
+    - **Kullanım grafiği:** Masaüstü, VS Code ve mobilde `Svg`, terminalde `Raster` ile çizilir. Grafikte kullanım eğrisi, kesikli zaman çizgisi (terminalde barlar gibi: şimdiye kadar geçen zaman gri sekizlik bloklarla, kullanım önünde renkli), 75/90 eşikleri, gün çizgileri ve "şimdi" çizgisi bulunur.
+    - **Canlı oturumlar:** Her oturum için küçük bir bar ve API maliyeti. Bar yalnızca karşılaştıracak bir şey varken çizilir: ≈pay biliniyorsa ya da en az iki oturumun maliyeti varsa. Bar, TokenRadar ≈payı biliyorsa o payı (tahmin, `▒`), bilmiyorsa oturumun canlı oturumların toplam maliyetindeki payını gösterir. Bu oturum ilk sırada yer alır.
+    - **Bağlam doluluğu barı** ve oturum maliyeti.
+    - **Veri kaynağı satırı.**
+  - Aynı Box/Text ağacı dört yüzeyde de çizilir. Yalnızca grafik yüzeye göre değişir.
+  - **`/radar` metni kısa:** Yanıt "panel açıldı" ve limit başına tek bir özet satırıdır. Panel yerleştirilemezse (`isPlaced: false`) eski tam döküm döner.
+  - **Bant tek satırdır:**
+    - Kenarlıklı bir kutu, uyarının renginde.
+    - İçinde mini bar (10 hücre, zaman işaretiyle) ve bant metni. Birden fazla uyarı varsa `+n` eklenir.
+    - "Ayrıntı" düğmesi paneli açar, "Gizle" düğmesi ADR-043'teki gibi çalışır.
+  - **Reset satırı:** Mod, bir pencerenin reset anını önceden görmüşse ve o an geçmişse, bantta bir kez "✓ Haftalık limit sıfırlandı" satırı gösterir. Satır "Tamam" ile ya da reset'ten bir saat sonra kapanır. Reset'ten sonra ilk kez görülen bir pencere için satır çıkmaz. Bu satır toast üretmez.
+  - **`$.ui.status`:**
+    - Mod, Claude Code'un `settings.json` dosyasını (`CLAUDE_CONFIG_DIR`, yoksa `~/.claude`) salt-okunur okur ve yalnızca `statusLine.command` alanına bakar.
+    - Komutta `tokenradar` geçiyorsa durum girdisi gösterilmez, böylece aynı bilgi iki kez görünmez.
+    - Geçmiyorsa kısa bir girdi gösterilir: `TokenRadar · Haftalık %42 ⏱%43`.
+    - Dosyanın geri kalanı kullanılmaz ve saklanmaz.
+  - **Geçmiş verisi, `tokenradar history --json`:**
+    - CLI'a yeni bir salt-okunur komut eklendi. Komut, veritabanını uygulama çalışırken de WAL sayesinde salt-okunur açar. IPC'ye dokunulmaz.
+    - Her limit için, en son okuması geleceğe dönük bir reset taşıyorsa, o pencerenin okumalarını verir. Okumalar aynı pencereye aittir (`resets_at` farkı 5 dakika toleransın içindedir), pencerenin başlangıcından bugüne kadardır ve pencerenin 168 eşit dilimi başına sonuncusu alınır. Haftalık pencerede bu saatte bir nokta, 5 saatlik pencerede yaklaşık 107 saniyede bir nokta demektir.
+    - `absent` pencereler dışarıda kalır. Tahminler zaten saklanmadığı için çıktıda yoktur, her nokta bir ölçümdür ve kaynağını taşır. Şema `{schema: 1, generated_at, series: [{kind, scope, window_start, resets_at, points: [{at, percent, source}]}]}` biçimindedir.
+    - Mod bu komutu yalnızca panel açıkken ve en fazla 5 dakikada bir çalıştırır. Eski bir CLI'da komut yoktur; o durumda grafik çizilmez, panelin geri kalanı çalışır.
+  - **Renkler:**
+    - Metinde uyarı ve kritik durumlar tema anahtarlarıyla (`warning`, `error`) gösterilir, iz rengi `subtle`'dır. Normal durum terminalde statusline'ın cyan rengini, uzak yüzeylerde tasarımın orta açıklıktaki camgöbeği tonunu (`#00afaf`) kullanır.
+    - `Svg`, design-language'in açık ve koyu token'larını `prefers-color-scheme` ile seçer.
+    - `Raster`'da tema bilgisi yoktur, bu yüzden her iki zeminde de okunan orta açıklık tonları kullanılır: ok `#00afaf`, warn `#dd9314`, crit `#e54c4a`, iz `#7c8186`.
+  - **Gizlilik:** Canlı oturumlar adlarıyla, yoksa proje klasörünün adıyla gösterilir. Oturumun `title` alanı okunmaz, çünkü Claude Code bu alanı konuşmadan üretebilir.
+  - **Animasyon yok (ADR-019):** Panel yalnızca veri değiştiğinde yeniden çizilir. Zamanlayıcı ve SMIL kullanılmaz.
+- **Bedel:**
+  - Mod artık Claude Code'un ayar dosyasını okuyor. Dosyada başka araçların `env` değerleri de bulunabilir. Mod dosyanın tamamını belleğe ayrıştırır, ama yalnızca tek bir alanı kullanır ve hiçbir şey saklamaz.
+  - `Svg` uzak yüzeylerde resim olarak çizilir. Görüntüleyicinin renk şemasını izleyip izlemediği yüzeye bağlıdır ve bu adımda elle denenmedi.
+  - Bant kenarlıklı olduğu için terminalde üç satır yer kaplar; içerik tek satırdır.
+  - Panelin terminal dışındaki yüzeylerde görünümü yalnızca testlerde, dört yüzeyle doğrulandı.
+- **Alternatifler:**
+  - Mod'un kendi geçmişini `$.store`'da tutması: CLI değişmezdi, ama yalnızca Claude Code açıkken toplanan noktalar olurdu ve eğri boşluklu çıkardı.
+  - Geçmişi IPC'ye `history.get` olarak eklemek: uygulama kapalıyken çalışmaz ve protokol büyür. Veritabanından salt-okunur okumak her iki durumda da çalışır.
+  - Terminalde grafiği yalnızca metinle çizmek: `Raster`, sekizlik bloklarla 6 satırda 48 düzey çözünürlük veriyor.
+  - `$.ui.status`'ı her zaman ya da ayarla göstermek: kullanıcı, köprü varsa susan girdiyi seçti.
