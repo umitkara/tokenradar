@@ -143,24 +143,38 @@ pub fn render(visual: TrayVisual, px: u32, theme: Theme) -> Pixmap {
     let g = Geometry::of(px);
     let pal = Palette::of(theme);
 
-    ring(
-        &mut pixmap,
-        &pal,
-        g.center,
-        g.outer_r,
-        g.outer_w,
-        g.notch,
-        visual.weekly,
-    );
-    ring(
-        &mut pixmap,
-        &pal,
-        g.center,
-        g.inner_r,
-        g.inner_w,
-        g.notch,
-        visual.five_hour,
-    );
+    if visual.single {
+        // No 5-hour window (ADR-041): the weekly ring takes the whole band, so it stays
+        // legible at 16 px and cannot be read as an empty inner ring.
+        ring(
+            &mut pixmap,
+            &pal,
+            g.center,
+            g.outer_r,
+            g.outer_r - g.hole_r(),
+            g.notch,
+            visual.weekly,
+        );
+    } else {
+        ring(
+            &mut pixmap,
+            &pal,
+            g.center,
+            g.outer_r,
+            g.outer_w,
+            g.notch,
+            visual.weekly,
+        );
+        ring(
+            &mut pixmap,
+            &pal,
+            g.center,
+            g.inner_r,
+            g.inner_w,
+            g.notch,
+            visual.five_hour,
+        );
+    }
 
     if visual.weekly.is_none() && visual.five_hour.is_none() {
         let r = (g.hole_r() * 0.5).max(1.0);

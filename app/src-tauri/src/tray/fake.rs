@@ -3,7 +3,8 @@
 //! `TOKENRADAR_FAKE_LIMITS` replaces the core: the app does not open the database, index or
 //! call the API, so these runs never touch real data.
 //!
-//! - `cycle`: every 2 s the next state (no data, ok, warn, crit, stale, error, muted, partial);
+//! - `cycle`: every 2 s the next state (no data, ok, warn, crit, stale, error, muted, partial,
+//!   no 5-hour window);
 //!   each round switches between English and Turkish.
 //! - `sweep`: one `LimitsUpdated`-like snapshot per second with a moving percentage, for the
 //!   10-minute CPU measurement.
@@ -18,7 +19,7 @@ use std::time::{Duration, Instant};
 
 use tauri::AppHandle;
 use tauri::image::Image;
-use tokenradar_core::domain::{LimitKind, Source, Timestamp};
+use tokenradar_core::domain::{LimitKind, LimitRef, Source, Timestamp};
 use tokenradar_core::limits::{
     ApiStatusView, Freshness, IndexState, LimitView, PanelSnapshot, Severity, StatuslineState,
 };
@@ -93,6 +94,7 @@ fn snapshot(limits: Vec<LimitView>, api: ApiState) -> Box<PanelSnapshot> {
     Box::new(PanelSnapshot {
         account: None,
         limits,
+        absent: Vec::new(),
         live_sessions: Vec::new(),
         top_sessions: Vec::new(),
         index_state: IndexState::default(),
@@ -113,6 +115,21 @@ fn both(five_hour: f64, weekly: f64, freshness: Freshness, api: ApiState) -> Box
         ],
         api,
     )
+}
+
+/// An account without a 5-hour window (ADR-041): weekly only, the session window absent.
+fn without_five_hour(weekly: f64) -> Box<PanelSnapshot> {
+    let mut s = snapshot(
+        vec![limit(
+            LimitKind::WeeklyAll,
+            weekly,
+            Freshness::Fresh,
+            3 * 24 * 60 + 17,
+        )],
+        ApiState::Active,
+    );
+    s.absent = vec![LimitRef::new(LimitKind::Session, None)];
+    s
 }
 
 fn cycle(app: &AppHandle) {
@@ -143,6 +160,7 @@ fn cycle(app: &AppHandle) {
                 snapshot(vec![limit(LimitKind::Session, 55.0, fresh, 30)], active()),
                 false,
             ),
+            ("no-five-hour", without_five_hour(34.0), false),
         ];
         for (name, snap, muted) in scenes {
             log(&format!("state {name}"));

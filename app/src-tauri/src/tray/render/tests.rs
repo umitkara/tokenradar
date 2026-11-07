@@ -24,7 +24,7 @@ fn ring(percent: u8) -> Option<Ring> {
     })
 }
 
-/// The seven states of step 08 plus both partial-data cases.
+/// The seven states of step 08, both partial-data cases and the single ring (ADR-041).
 fn fixtures() -> Vec<(&'static str, TrayVisual)> {
     let ok = TrayVisual {
         weekly: ring(34),
@@ -58,6 +58,23 @@ fn fixtures() -> Vec<(&'static str, TrayVisual)> {
             "weekly-only",
             TrayVisual {
                 five_hour: None,
+                ..ok
+            },
+        ),
+        (
+            "single",
+            TrayVisual {
+                five_hour: None,
+                single: true,
+                ..ok
+            },
+        ),
+        (
+            "single-crit",
+            TrayVisual {
+                weekly: ring(93),
+                five_hour: None,
+                single: true,
                 ..ok
             },
         ),
@@ -158,6 +175,32 @@ fn tray_no_data_draws_tracks_and_a_centre_dot() {
     assert_eq!(alpha_at(&p, 8, 1), 255);
     assert_eq!(alpha_at(&p, 8, 4), 255);
     assert!(alpha_at(&p, 8, 8) > 0);
+}
+
+#[test]
+fn tray_single_ring_fills_the_whole_band() {
+    let two = render(
+        TrayVisual {
+            weekly: ring(100),
+            ..TrayVisual::default()
+        },
+        16,
+        Theme::Light,
+    );
+    let single = render(
+        TrayVisual {
+            weekly: ring(100),
+            single: true,
+            ..TrayVisual::default()
+        },
+        16,
+        Theme::Light,
+    );
+    // Row 2 at 12 o'clock is the gap between the rings; the single ring covers it.
+    assert_eq!(alpha_at(&two, 8, 2), 0);
+    assert_eq!(alpha_at(&single, 8, 2), 255);
+    // Both leave the same hole in the middle.
+    assert_eq!(alpha_at(&single, 8, 8), 0);
 }
 
 #[test]

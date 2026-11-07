@@ -20,6 +20,15 @@ describe("limitsOf", () => {
     expect(l.fiveHour?.percent).toBe(42);
     expect(l.weekly?.percent).toBe(34);
     expect(l.scoped).toEqual([scoped]);
+    expect(l.fiveHourAbsent).toBe(false);
+  });
+
+  it("tells an absent 5-hour window from a missing reading", () => {
+    const absent = [{ kind: "session" as const, scope: null }];
+    expect(limitsOf(snapshot({ limits: [weekly(34)] })).fiveHourAbsent).toBe(false);
+    const l = limitsOf(snapshot({ limits: [weekly(34)], absent }));
+    expect(l.fiveHourAbsent).toBe(true);
+    expect(l.fiveHour).toBeNull();
   });
 });
 
@@ -66,6 +75,13 @@ describe("projectionLine", () => {
   it("says so when usage stopped", () => {
     const five = projected(limit(42), { rate_per_min: 0, eta_100_at: null });
     expect(projectionLine(limitsOf(snapshot({ limits: [five] })))).toEqual({ type: "idle" });
+  });
+
+  it("states the weekly level when the account has no 5-hour window", () => {
+    const week = projected(weekly(34), { projected_at_reset: 61 });
+    const absent = [{ kind: "session" as const, scope: null }];
+    const line = projectionLine(limitsOf(snapshot({ limits: [week], absent })));
+    expect(line).toEqual({ type: "at-reset", kind: "weekly", pct: 61, low: false });
   });
 
   it("stays silent without a projection (estimates, no data)", () => {

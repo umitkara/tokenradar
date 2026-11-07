@@ -23,6 +23,15 @@ describe("RingGauge", () => {
     );
   });
 
+  it("draws one weekly ring and centers its value without a 5-hour window", () => {
+    const body = ring({ inner: limit(72), outer: weekly(34), single: true });
+    expect(body).toContain("%34");
+    expect(body).not.toContain("%72");
+    expect(body).not.toContain("5 saatlik");
+    expect(body.match(/class="track[ "]/g)).toHaveLength(1);
+    expect(body).toContain('stroke-width="20"');
+  });
+
   it("marks estimates with ≈ and a dashed mask", () => {
     const body = ring({ inner: limit(35, { source: "estimate" }), outer: null });
     expect(body).toContain("≈%35");

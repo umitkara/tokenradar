@@ -20,6 +20,8 @@ export const REFRESH_COOLDOWN_MS = 60_000;
 
 export interface Limits {
   fiveHour: LimitView | null;
+  /** The account has no 5-hour window at all (ADR-041), which is not the same as no reading. */
+  fiveHourAbsent: boolean;
   weekly: LimitView | null;
   /** Weekly limits of one model or surface, under the weekly row. */
   scoped: LimitView[];
@@ -29,6 +31,7 @@ export function limitsOf(snapshot: PanelSnapshot): Limits {
   const find = (kind: string) => snapshot.limits.find((l) => l.kind === kind) ?? null;
   return {
     fiveHour: find("session"),
+    fiveHourAbsent: snapshot.absent.some((r) => r.kind === "session" && r.scope == null),
     weekly: find("weekly_all"),
     scoped: snapshot.limits.filter((l) => l.kind === "weekly_scoped"),
   };
@@ -58,6 +61,7 @@ export type ProjectionLine =
 /**
  * The one projection the panel states. A limit that fills before its reset wins (5-hour
  * first); otherwise the 5-hour window's level at the reset, or "no usage" once it stopped.
+ * Without a 5-hour window the weekly limit takes its place.
  */
 export function projectionLine(limits: Limits): ProjectionLine | null {
   const candidates = [
@@ -76,13 +80,14 @@ export function projectionLine(limits: Limits): ProjectionLine | null {
       };
     }
   }
-  const p = limits.fiveHour?.projection;
+  const kind = limits.fiveHourAbsent ? "weekly" : "five_hour";
+  const p = (limits.fiveHourAbsent ? limits.weekly : limits.fiveHour)?.projection;
   if (!p) return null;
   if (p.eta_100_at == null) return { type: "idle" };
   if (p.projected_at_reset == null) return null;
   return {
     type: "at-reset",
-    kind: "five_hour",
+    kind,
     pct: p.projected_at_reset,
     low: p.confidence === "low",
   };

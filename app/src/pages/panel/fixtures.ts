@@ -31,6 +31,7 @@ export function snapshot(o: Partial<PanelSnapshot> = {}): PanelSnapshot {
       extra_usage_enabled: false,
     },
     limits: [limit(42, { projected: 68 }), weekly(34)],
+    absent: [],
     live_sessions: [session(1), session(2)],
     top_sessions: [],
     index_state: {

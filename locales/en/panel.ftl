@@ -15,6 +15,8 @@ panel-limits = Limits
 panel-sessions = Sessions
 panel-loading = Loading usage…
 panel-extra-usage = Extra usage is on: usage past a limit is billed separately.
+# The account has no 5-hour window (verified Ultra accounts, for example); only weekly limits apply.
+panel-no-five-hour = This account has no 5-hour window. Only the weekly limits apply.
 
 ## Projection under the limits. $kind is "weekly" for the weekly limit, else "five_hour".
 

@@ -306,6 +306,12 @@ export type LimitKind =
 /**  A weekly limit restricted to a scope, e.g. one model. */
 "weekly_scoped" | "spend" | { other: string };
 
+/**  A limit by name, without a value: its kind and scope. */
+export type LimitRef = {
+	kind: LimitKind,
+	scope: Scope | null,
+};
+
 export type LimitView = {
 	kind: LimitKind,
 	scope: Scope | null,
@@ -400,6 +406,8 @@ export type PanelSnapshot = {
 	/**  The primary account; `None` when no Claude Code directory exists. */
 	account: AccountView | null,
 	limits: LimitView[],
+	/**  Limits this account does not have (ADR-041); none of them is in `limits`. */
+	absent: LimitRef[],
 	/**  Running sessions, largest share first. */
 	live_sessions: SessionShareView[],
 	/**  The window's largest consumers, live or not (shown when nothing is live). */

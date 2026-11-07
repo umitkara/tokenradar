@@ -15,6 +15,8 @@ panel-limits = Limitler
 panel-sessions = Oturumlar
 panel-loading = Kullanım yükleniyor…
 panel-extra-usage = Ek kullanım açık: limit aşımı ayrıca ücretlendirilir.
+# Hesapta 5 saatlik pencere yok (örneğin doğrulanmış Ultra hesapları); yalnızca haftalık limitler geçerli.
+panel-no-five-hour = Bu hesapta 5 saatlik pencere yok. Yalnızca haftalık limitler geçerli.
 
 ## Limitlerin altındaki projeksiyon. $kind yalnızca haftalık limitte "weekly" olur.
 

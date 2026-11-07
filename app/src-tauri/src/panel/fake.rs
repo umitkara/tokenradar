@@ -9,7 +9,7 @@ use std::sync::Mutex;
 
 use tauri::{AppHandle, Manager};
 use tokenradar_core::domain::{
-    AccountId, LimitKind, MicroUsd, Scope, SessionId, Source, Timestamp,
+    AccountId, LimitKind, LimitRef, MicroUsd, Scope, SessionId, Source, Timestamp,
 };
 use tokenradar_core::events::CoreEvent;
 use tokenradar_core::indexer::{IndexPhase, IndexProgress};
@@ -24,7 +24,7 @@ use tokenradar_core::providers::claude::usage_api::{ApiState, PollDiagnostics};
 use crate::ipc;
 use crate::tray::{self, TrayMsg};
 
-pub const SCENES: [&str; 14] = [
+pub const SCENES: [&str; 15] = [
     "ok",
     "crit",
     "many",
@@ -39,6 +39,7 @@ pub const SCENES: [&str; 14] = [
     "drift",
     "no-claude",
     "five-hour-only",
+    "no-five-hour",
 ];
 
 /// The scene the panel shows; `None` until a scene was set, or for `loading`.
@@ -228,6 +229,7 @@ fn base(limits: Vec<LimitView>, live_sessions: Vec<SessionShareView>) -> PanelSn
             extra_usage_enabled: Some(false),
         }),
         limits,
+        absent: Vec::new(),
         live_sessions,
         top_sessions: Vec::new(),
         index_state: IndexState {
@@ -450,6 +452,24 @@ fn build(scene: &str) -> Option<PanelSnapshot> {
             ],
             live(),
         ),
+        "no-five-hour" => {
+            // A verified Ultra account (ADR-041): weekly limits only. Shares are of the 5-hour
+            // window, so without one the sessions show cost and rate but no share.
+            let limits = normal_limits()
+                .into_iter()
+                .filter(|l| l.kind != LimitKind::Session)
+                .collect();
+            let sessions = live()
+                .into_iter()
+                .map(|mut x| {
+                    x.share_percent = None;
+                    x
+                })
+                .collect();
+            let mut s = base(limits, sessions);
+            s.absent = vec![LimitRef::new(LimitKind::Session, None)];
+            s
+        }
         _ => base(normal_limits(), live()),
     };
     Some(snapshot)

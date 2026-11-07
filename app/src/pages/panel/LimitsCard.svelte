@@ -1,6 +1,7 @@
 <!--
   The ring and the limit rows (design-language.md §4): outer ring weekly, inner ring the 5-hour
-  window, the rows beside it, then the one projection the panel states. Without honest data it
+  window, the rows beside it, then the one projection the panel states. An account without a
+  5-hour window (ADR-041) gets one weekly ring and a note instead of an empty inner ring. Without honest data it
   shows what is missing and how to get it, never a made-up percentage (§9).
 -->
 <script lang="ts">
@@ -72,7 +73,12 @@ const needsApi = $derived(snapshot.api.state.state === "off");
     </EmptyState>
   {:else}
     <div class="limits">
-      <RingGauge outer={limits.weekly} inner={limits.fiveHour} size={120} />
+      <RingGauge
+        outer={limits.weekly}
+        inner={limits.fiveHour}
+        single={limits.fiveHourAbsent}
+        size={120}
+      />
       <div class="rows">
         {#if limits.fiveHour}<LimitBar limit={limits.fiveHour} layout="stacked" />{/if}
         {#if limits.weekly}
@@ -92,6 +98,9 @@ const needsApi = $derived(snapshot.api.state.state === "off");
       >
         {projectionText}
       </p>
+    {/if}
+    {#if limits.fiveHourAbsent}
+      <p class="extra"><Icon name="info" />{t("panel-no-five-hour")}</p>
     {/if}
     {#if snapshot.account?.extra_usage_enabled}
       <p class="extra"><Icon name="info" />{t("panel-extra-usage")}</p>

@@ -4,7 +4,7 @@
 //! is a flag. Two snapshots that map to the same visual draw the same pixels, so the icon is
 //! not replaced (step 08, update throttle).
 
-use tokenradar_core::domain::{LimitKind, Timestamp};
+use tokenradar_core::domain::{LimitKind, Timestamp, WindowPresence};
 use tokenradar_core::limits::{Freshness, LimitView, PanelSnapshot, Severity, WARN_AT};
 use tokenradar_core::providers::claude::usage_api::ApiState;
 
@@ -28,11 +28,14 @@ impl Ring {
 }
 
 /// The icon's content. Outer ring = weekly, inner ring = 5-hour window, on every surface
-/// (design-language §1).
+/// (design-language §1). An account without a 5-hour window gets one thick weekly ring.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[allow(clippy::struct_excessive_bools)] // independent flags of one icon
 pub struct TrayVisual {
     pub weekly: Option<Ring>,
     pub five_hour: Option<Ring>,
+    /// The account has no 5-hour window (ADR-041): a single ring, not an empty inner one.
+    pub single: bool,
     /// Every shown reading is older than 30 minutes: drawn at 50 % opacity.
     pub stale: bool,
     /// Limits cannot be read: a dot in the top-right corner.
@@ -104,6 +107,13 @@ impl TrayModel {
         self.limit(&LimitKind::Session)
     }
 
+    /// The account evidently has no 5-hour window (ADR-041).
+    pub fn five_hour_absent(&self) -> bool {
+        self.snapshot
+            .as_ref()
+            .is_some_and(|s| s.presence(&LimitKind::Session, None) == WindowPresence::Absent)
+    }
+
     /// The all-models weekly limit shown on the outer ring. Scoped weekly limits are panel-only.
     pub fn weekly(&self) -> Option<&LimitView> {
         self.limit(&LimitKind::WeeklyAll)
@@ -165,6 +175,7 @@ impl TrayModel {
         TrayVisual {
             weekly: self.weekly().map(Ring::of),
             five_hour: self.five_hour().map(Ring::of),
+            single: self.five_hour_absent(),
             stale: self.is_stale(),
             error: self.is_error(),
             paused: self.is_muted(now),
@@ -200,6 +211,7 @@ pub(crate) mod tests {
         PanelSnapshot {
             account: None,
             limits,
+            absent: Vec::new(),
             live_sessions: Vec::new(),
             top_sessions: Vec::new(),
             index_state: IndexState::default(),

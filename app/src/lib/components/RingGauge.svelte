@@ -3,6 +3,8 @@
   clockwise from 12 o'clock. Arcs are circles with `pathLength="100"`, so a percentage is a dash
   length and value changes are a CSS transition of `stroke-dasharray` (400 ms). A changed value
   also plays one radar sweep (600 ms). Nothing moves otherwise (ADR-019).
+  `single`: the account has no 5-hour window (ADR-041). One weekly ring fills the band of both,
+  and the center shows the weekly value.
 -->
 <script lang="ts">
 import { t } from "../i18n/i18n.svelte";
@@ -16,11 +18,13 @@ interface Props {
   outer: LimitView | null;
   /** The 5-hour window (inner ring and the center readout). */
   inner: LimitView | null;
+  /** No 5-hour window on this account: one thick weekly ring, `inner` is ignored. */
+  single?: boolean;
   /** Rendered width and height in px; the geometry is drawn at 168. */
   size?: number;
 }
 
-let { outer, inner, size = 168 }: Props = $props();
+let { outer, inner, single = false, size = 168 }: Props = $props();
 
 const uid = $props.id();
 const C = 84;
@@ -34,10 +38,17 @@ interface Ring {
   limit: LimitView | null;
 }
 
-const rings = $derived<Ring[]>([
-  { key: "outer", r: 77, width: 6, limit: outer },
-  { key: "inner", r: 65, width: 10, limit: inner },
-]);
+// The single ring spans from the outer ring's outer edge (80) to the inner ring's inner edge (60).
+const rings = $derived<Ring[]>(
+  single
+    ? [{ key: "outer", r: 70, width: 20, limit: outer }]
+    : [
+        { key: "outer", r: 77, width: 6, limit: outer },
+        { key: "inner", r: 65, width: 10, limit: inner },
+      ],
+);
+/** The value in the center: the 5-hour window, or the weekly limit when there is none. */
+const centered = $derived(single ? outer : inner);
 
 /** Ticks at 25/50/75 % across both tracks, under the arcs. */
 const TICKS = [25, 50, 75].map((p) => {
@@ -69,10 +80,12 @@ function tone(limit: LimitView | null): string {
 }
 
 const label = $derived(
-  t("aria-ring", {
-    outer: ariaSentence(outer, t("limit-weekly"), clock.now),
-    inner: ariaSentence(inner, t("limit-five-hour"), clock.now),
-  }),
+  single
+    ? ariaSentence(outer, t("limit-weekly"), clock.now)
+    : t("aria-ring", {
+        outer: ariaSentence(outer, t("limit-weekly"), clock.now),
+        inner: ariaSentence(inner, t("limit-five-hour"), clock.now),
+      }),
 );
 
 // One sweep per value change, never on mount.
@@ -156,8 +169,8 @@ $effect(() => {
   {/key}
 
   <div class="center" aria-hidden="true">
-    <span class="readout pct" class:dim={inner?.freshness === "stale"}>{valueText(inner)}</span>
-    <span class="caption"><Countdown at={inner?.resets_at ?? null} mode="short" /></span>
+    <span class="readout pct" class:dim={centered?.freshness === "stale"}>{valueText(centered)}</span>
+    <span class="caption"><Countdown at={centered?.resets_at ?? null} mode="short" /></span>
   </div>
 </div>
 
