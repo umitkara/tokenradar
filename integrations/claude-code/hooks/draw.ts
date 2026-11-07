@@ -262,6 +262,9 @@ export function chartSvg(
   )
 }
 
+/** Raster's widest; the strip keeps to it too, so the two line up. */
+export const RASTER_MAX = 512
+
 /** The design's mid-lightness signals (readable on light and dark terminals), 0xRRGGBB. */
 const RASTER_TONE: Record<'ok' | 'warn' | 'crit', number> = {
   ok: 0x00afaf,
@@ -295,7 +298,8 @@ export function chartCells(
   const pts = curve(series, row, now)
   const fg = RASTER_TONE[levelTone(level) as 'ok' | 'warn' | 'crit']
   const span = length / columns
-  const cuts = grid(series, tzOffsetMin).map(at => Math.floor((at - series.start) / span))
+  // The same rounding as the strip's, so its boundaries stand over these.
+  const cuts = grid(series, tzOffsetMin).map(at => Math.round(((at - series.start) / length) * columns))
   const words = new Uint32Array(columns * rows * 3)
   const eighths = (p: number) => Math.round((Math.min(Math.max(p, 0), 100) / 100) * rows * 8)
   let p = 0

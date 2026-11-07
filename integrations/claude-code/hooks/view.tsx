@@ -6,7 +6,7 @@
 import type { ElementTable, RenderChildren } from 'claude-code'
 
 import type { Level, Measure, Radar } from '../types'
-import { bar, levelTone, strip, toneColor, type Seg, type Tone } from './draw'
+import { RASTER_MAX, bar, levelTone, strip, toneColor, type Seg, type Tone } from './draw'
 import { dur, num, pct, t, type Lang } from './i18n'
 import {
   type Alert,
@@ -122,7 +122,7 @@ export function paneTree(els: Els, p: PaneInput) {
   }
 
   const weekly = paceRow(rows)
-  const s = weekly === undefined ? null : strip(lang, weekly, levelTone(rowLevel(weekly)), width, p.tzOffsetMin)
+  const s = weekly === undefined ? null : strip(lang, weekly, levelTone(rowLevel(weekly)), Math.min(width, RASTER_MAX), p.tzOffsetMin)
   if (weekly !== undefined && s !== null) {
     sections.push(
       <Box key="strip" flexDirection="column" marginTop={1}>

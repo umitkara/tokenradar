@@ -14,7 +14,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, RenderChildren } from 'claude-code'
 
 import type { AlertState, History, Measure, Radar, ResetState } from '../types'
-import { chartCells, chartSvg, seriesFor } from './draw'
+import { RASTER_MAX, chartCells, chartSvg, seriesFor } from './draw'
 import { pct, t } from './i18n'
 import {
   FETCH_EVERY_MS,
@@ -239,8 +239,9 @@ export const register: Register = (on, options) => {
       if (e.surface === 'terminal') {
         const { Raster } = $.ui.resolve(e)
         // As wide as the strip above it, so days line up.
-        // Raster takes at most 512 columns.
-        const columns = Math.max(14, Math.floor(Math.min(width, 511) / 7) * 7)
+        // Exactly the strip's width (both capped at Raster's widest), so the
+        // day boundaries stand in the same columns.
+        const columns = Math.min(width, RASTER_MAX)
         chart = (
           <Raster
             key="chart"
