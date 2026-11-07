@@ -17,13 +17,12 @@ use tokenradar_core::ipc::{
     Client, Hello, MAX_MESSAGE_BYTES, Op, PROTOCOL_VERSION, Request, StatusQuery, StatusReply,
     with_deadline,
 };
+use tokenradar_core::statusline::line::{self, Line, StatuslinePrefs, Style};
 use tokenradar_core::statusline::shell::Shell;
 use tokenradar_core::statusline::{
     StatuslinePayload, StatuslinePush, default_config_dir, path_in_dir, spool,
 };
 use tokenradar_i18n::Localizer;
-
-use crate::render::{self, Line, Style};
 
 /// Claude Code writes stdin at once; anything slower is not a statusline call.
 const STDIN_TIMEOUT: Duration = Duration::from_millis(200);
@@ -44,6 +43,8 @@ pub struct Deps<'a> {
     /// How long the chained command may take; [`CHAIN_TIMEOUT`] outside tests.
     pub chain_timeout: Duration,
     pub style: Style,
+    /// `[statusline]` from `config.toml`.
+    pub prefs: StatuslinePrefs,
 }
 
 /// The lines to print for `input` (Claude Code's stdin).
@@ -65,7 +66,7 @@ pub fn respond(input: Option<&[u8]>, deps: &Deps<'_>) -> String {
         )
     });
     let line = Line::from_sources(payload.as_ref(), reply.as_ref(), Timestamp::now());
-    let ours = render::render(deps.l10n, &line, deps.style);
+    let ours = line::render(deps.l10n, &line, &deps.prefs, deps.style);
     let Some((chained, position)) = chained else {
         return ours;
     };

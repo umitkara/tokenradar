@@ -24,6 +24,11 @@
 //! [advanced]
 //! log_level = "info"
 //!
+//! [statusline]          # see `statusline::line::StatuslinePrefs`
+//! segments = ["five_hour", "seven_day", "scoped", "context", "session_share", "cost"]
+//! layout = "single"      # single | double
+//! bar = true
+//!
 //! [[accounts]]
 //! provider = "claude"
 //! config_dir = 'C:\Users\Ada\.claude'
@@ -54,6 +59,7 @@ use tokenradar_i18n::Locale;
 use toml_edit::{ArrayOfTables, DocumentMut, Item, Table, value};
 
 use crate::notifier::NotifyPrefs;
+use crate::statusline::line::StatuslinePrefs;
 use crate::statusline::same_dir;
 
 /// Version of the consent text. Raising it asks every user again: a consent given for an
@@ -87,6 +93,9 @@ pub struct AppConfig {
     pub data: DataConfig,
     #[serde(deserialize_with = "lenient")]
     pub advanced: AdvancedConfig,
+    /// `[statusline]`: what the statusline shows. Not `[accounts.statusline]` (install state).
+    #[serde(deserialize_with = "lenient")]
+    pub statusline: StatuslinePrefs,
     pub accounts: Vec<AccountConfig>,
     /// Schema 1's single consent; applies to accounts that have none of their own.
     #[serde(rename = "api_consent")]
@@ -462,6 +471,11 @@ pub fn save_data(path: &Path, data: &DataConfig) -> Result<(), ConfigError> {
 /// Stores `[advanced]`.
 pub fn save_advanced(path: &Path, advanced: &AdvancedConfig) -> Result<(), ConfigError> {
     save_section(path, "advanced", advanced)
+}
+
+/// Stores `[statusline]` (normalized).
+pub fn save_statusline_prefs(path: &Path, prefs: &StatuslinePrefs) -> Result<(), ConfigError> {
+    save_section(path, "statusline", &prefs.clone().normalized())
 }
 
 fn save_section<T: Serialize>(path: &Path, name: &str, section: &T) -> Result<(), ConfigError> {

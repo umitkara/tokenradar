@@ -353,3 +353,35 @@ installed = false
     assert!(!path.exists());
     reset_keeping_statusline(&path).expect("missing is fine");
 }
+
+#[test]
+fn statusline_prefs_are_their_own_table_and_never_break_the_file() {
+    use crate::statusline::line::{Layout, SegmentKind, StatuslinePrefs};
+
+    // A malformed `[statusline]` is the default line; the account and its install state stay.
+    let cfg = AppConfig::parse(
+        "[statusline]\nbar = \"yes\"\n\n[[accounts]]\nprovider = \"claude\"\n\
+         config_dir = 'C:/a/.claude'\n[accounts.statusline]\ninstalled = true\n",
+    )
+    .expect("parse");
+    assert_eq!(cfg.statusline, StatuslinePrefs::default());
+    assert!(cfg.accounts[0].statusline.installed);
+
+    let dir = tempfile::tempdir().expect("tempdir");
+    let path = dir.path().join("config.toml");
+    std::fs::write(&path, "[statusline]\n# mine\nfuture_key = 1\n").expect("seed");
+    let prefs = StatuslinePrefs {
+        segments: vec![SegmentKind::Cost, SegmentKind::SevenDay, SegmentKind::Cost],
+        layout: Layout::Double,
+        bar: false,
+    };
+    save_statusline_prefs(&path, &prefs).expect("save");
+    let text = std::fs::read_to_string(&path).expect("read");
+    assert!(text.contains("# mine\nfuture_key = 1"), "{text}");
+    assert!(
+        text.contains(r#"segments = ["cost", "seven_day"]"#),
+        "{text}"
+    );
+    let cfg = AppConfig::load(&path).expect("load");
+    assert_eq!(cfg.statusline, prefs.normalized());
+}

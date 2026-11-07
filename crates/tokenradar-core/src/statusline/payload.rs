@@ -37,6 +37,10 @@ pub struct StatuslinePayload {
 pub struct ModelInfo {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
+    /// For the line only (`Opus 5.5`). Never serialized: the push and the spool stay as they
+    /// were before Step 12c.
+    #[serde(default, skip_serializing)]
+    pub display_name: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]

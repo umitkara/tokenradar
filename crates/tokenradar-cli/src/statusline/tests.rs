@@ -33,6 +33,7 @@ fn deps<'a>(l10n: &'a Localizer, pipe: &str, spool: &Path) -> Deps<'a> {
             color: false,
             width: None,
         },
+        prefs: StatuslinePrefs::default(),
     }
 }
 
@@ -54,7 +55,7 @@ fn without_the_app_the_reading_is_spooled_and_the_line_uses_stdin() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let l10n = Localizer::new(Locale::En, &[Domain::Cli]);
     let out = respond(Some(&input(42.0)), &deps(&l10n, &unique_pipe(), tmp.path()));
-    assert!(out.starts_with("◑ 5h 42% · 1h59m"), "{out}");
+    assert!(out.starts_with("5h 42% · 1h59m"), "{out}");
     assert_eq!(spooled_lines(tmp.path()), 1);
 }
 
@@ -151,7 +152,7 @@ fn the_previous_command_goes_before_or_after_our_line() {
     let lines: Vec<&str> = before.lines().collect();
     assert_eq!(lines.len(), 2, "{before}");
     assert_eq!(lines[0], "previous");
-    assert!(lines[1].starts_with("○ 5h 10%"), "{before}");
+    assert!(lines[1].starts_with("5h 10%"), "{before}");
     let after = respond(
         Some(&input(10.0)),
         &chained_deps(&l10n, tmp.path(), "echo previous", ChainPosition::After),
@@ -195,5 +196,5 @@ fn a_slow_previous_command_is_dropped_after_the_timeout() {
         started.elapsed()
     );
     assert_eq!(out.lines().count(), 1, "only our line: {out}");
-    assert!(out.starts_with("○ 5h 10%"), "{out}");
+    assert!(out.starts_with("5h 10%"), "{out}");
 }

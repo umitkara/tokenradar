@@ -4,10 +4,14 @@
 
 sl-label-five-hour = 5h
 sl-label-seven-day = 7d
-sl-window = { $label } { PCT($pct) }
+sl-percent = { PCT($pct) }
 sl-resets-in = { DUR($ms, "compact") }
 sl-eta = ▲{ DUR($ms, "compact") }
 sl-session-share = ≈{ PCT($pct) } this session
+# How full the context window is. `ctx` stays as the short form in every language.
+sl-context = ctx { PCT($pct) }
+# What the session would cost at API prices (`cost.total_cost_usd`); not a bill. Keep the `API` mark.
+sl-cost = API ${ NUM($usd, 2) }
 sl-no-limits = no limit data yet
 
 ## Tables

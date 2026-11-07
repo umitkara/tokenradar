@@ -4,10 +4,14 @@
 
 sl-label-five-hour = 5s
 sl-label-seven-day = 7g
-sl-window = { $label } { PCT($pct) }
+sl-percent = { PCT($pct) }
 sl-resets-in = { DUR($ms, "compact") }
 sl-eta = ▲{ DUR($ms, "compact") }
 sl-session-share = ≈{ PCT($pct) } bu oturum
+# Bağlam penceresinin doluluğu. `ctx` kısa formu her dilde aynı kalır.
+sl-context = ctx { PCT($pct) }
+# Oturumun API fiyatlarıyla maliyeti (`cost.total_cost_usd`); fatura değildir. `API` işareti kalmalı.
+sl-cost = API ${ NUM($usd, 2) }
 sl-no-limits = henüz limit verisi yok
 
 ## Tablolar

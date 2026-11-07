@@ -7,6 +7,7 @@
 //! ```
 
 pub mod install;
+pub mod line;
 pub mod payload;
 pub mod settings;
 pub mod shell;
