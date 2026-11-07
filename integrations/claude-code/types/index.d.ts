@@ -35,6 +35,20 @@ export type RadarLimit = {
   etaAt?: number
 }
 
+/** A running Claude Code session from `tokenradar status --json` (ADR-046: no title). */
+export type LiveSession = {
+  /** The session's name, else its project folder's name. */
+  label: string
+  /** This very session. */
+  own: boolean
+  /** `busy`, `idle`, `unknown`. */
+  status?: string
+  /** ≈ % of the 5-hour window (an estimate). */
+  share?: number
+  /** API-equivalent cost in the window, USD; 0 from the database. */
+  costUsd: number
+}
+
 /** The last answer of the TokenRadar CLI; `missing` when it could not be run or read. */
 export type Radar = {
   origin: 'app' | 'database' | 'missing'
@@ -44,7 +58,30 @@ export type Radar = {
   absent: string[]
   /** This session's ≈ share of the 5-hour window. */
   share?: number
+  sessions: LiveSession[]
   at: number
+}
+
+/** One limit's stored readings in its current window, from `tokenradar history --json`. */
+export type Series = {
+  /** A row id, as `RadarLimit.id`. */
+  id: string
+  start: number
+  resetsAt: number
+  /** `[at, percent]`, oldest first. */
+  points: [number, number][]
+}
+
+/** The last `history` answer; `series` is empty when the CLI could not give one. */
+export type History = { series: Series[]; at: number }
+
+/**
+ * The reset each window was last seen heading for, and the one-off band line for a
+ * window that just reset (`notice`, until hidden or an hour after the reset).
+ */
+export type ResetState = {
+  known: Record<string, number>
+  notice: { id: string; at: number } | null
 }
 
 /** The band is hidden up to `hidden`; a toast was raised up to `toasted`. Both reset at 0. */
@@ -56,6 +93,12 @@ declare module 'claude-code' {
       measure: Shaped<Measure | null>
       radar: Shaped<Radar | null>
       alerts: Shaped<AlertState>
+      history: Shaped<History | null>
+      /** The pane is open: the history is kept fresh while it is. */
+      pane: Shaped<boolean>
+      /** Claude Code's statusline runs TokenRadar's bridge; `null` before the first look. */
+      bridge: Shaped<boolean | null>
+      resets: Shaped<ResetState>
     }
   }
 }

@@ -4,7 +4,18 @@
 
 import type { SessionUsage } from 'claude-code'
 
-import type { AlertState, Level, Measure, Radar, RadarLimit, Window } from '../types'
+import type {
+  AlertState,
+  History,
+  Level,
+  LiveSession,
+  Measure,
+  Radar,
+  RadarLimit,
+  ResetState,
+  Series,
+  Window,
+} from '../types'
 import { dur, num, pct, t, type Lang } from './i18n'
 
 /** The tray's and the statusline's thresholds (ADR-042). */
@@ -12,6 +23,10 @@ export const WARN_AT = 75
 export const CRIT_AT = 90
 /** At most one CLI run per this many milliseconds (ADR-043). */
 export const FETCH_EVERY_MS = 30_000
+/** At most one `history` run per this many milliseconds, and only while the pane is open. */
+export const HISTORY_EVERY_MS = 5 * 60_000
+/** How long the band's "reset" line may stay after the reset. */
+export const RESET_NOTICE_MS = 60 * 60_000
 /** Lines the band shows at most. */
 export const BAND_LINES = 3
 /** Points of use ahead of the time line that the band warns about (ADR-044). */
@@ -24,7 +39,7 @@ export const PACE_AHEAD = 10
 export const PACE_QUIET = 100 / 7
 
 const HOUR_MS = 3_600_000
-const DAY_MS = 24 * HOUR_MS
+export const DAY_MS = 24 * HOUR_MS
 
 /** How long a window is, by row id; `null` when unknown. */
 export function windowLength(id: string): number | null {
@@ -139,6 +154,9 @@ export function parseStatus(stdout: string, sessionId: string, now: number): Rad
     lang: v.locale === 'tr' ? 'tr' : 'en',
     limits,
     absent,
+    sessions: Array.isArray(v.live_sessions)
+      ? v.live_sessions.filter(isObject).map(s => liveSession(s, sessionId))
+      : [],
     at: now,
   }
   const own = Array.isArray(v.live_sessions)
@@ -149,13 +167,80 @@ export function parseStatus(stdout: string, sessionId: string, now: number): Rad
   return radar
 }
 
+/** The last part of a path, either separator. */
+const baseName = (path: string) => path.split(/[\\/]/).filter(Boolean).pop() ?? path
+
+/**
+ * A live session by its name or project folder. Its `title` is left unread: Claude Code
+ * may write it from the conversation (ADR-046).
+ */
+function liveSession(s: Record<string, unknown>, sessionId: string): LiveSession {
+  const label =
+    typeof s.name === 'string' && s.name.trim() !== ''
+      ? s.name.trim()
+      : typeof s.project === 'string' && s.project !== ''
+        ? baseName(s.project)
+        : '—'
+  const out: LiveSession = {
+    label,
+    own: s.session_uuid === sessionId,
+    costUsd: optNumber(s.cost_usd) ?? 0,
+  }
+  if (typeof s.status === 'string') out.status = s.status
+  const share = optNumber(s.share_percent)
+  if (share !== undefined) out.share = share
+  return out
+}
+
 export const missingRadar = (now: number, lang: Lang = 'en'): Radar => ({
   origin: 'missing',
   lang,
   limits: [],
   absent: [],
+  sessions: [],
   at: now,
 })
+
+/** `tokenradar history --json` (schema 1); `null` when it is not that (ADR-046). */
+export function parseHistory(stdout: string, now: number): History | null {
+  let v: unknown
+  try {
+    v = JSON.parse(stdout)
+  } catch {
+    return null
+  }
+  if (!isObject(v) || v.schema !== 1 || !Array.isArray(v.series)) return null
+  const series: Series[] = []
+  for (const s of v.series) {
+    if (!isObject(s) || typeof s.kind !== 'string' || !Array.isArray(s.points)) continue
+    const start = optNumber(s.window_start)
+    const resetsAt = optNumber(s.resets_at)
+    if (start === undefined || resetsAt === undefined) continue
+    const points: [number, number][] = []
+    for (const p of s.points) {
+      const at = isObject(p) ? optNumber(p.at) : undefined
+      const percent = isObject(p) ? optNumber(p.percent) : undefined
+      if (at !== undefined && percent !== undefined) points.push([at, percent])
+    }
+    series.push({ id: radarId(s.kind, s.scope), start, resetsAt, points })
+  }
+  return { series, at: now }
+}
+
+/**
+ * Whether Claude Code's `settings.json` runs TokenRadar's statusline bridge. Only
+ * `statusLine.command` is looked at; nothing of the file is kept.
+ */
+export function bridgeInstalled(settingsText: string): boolean {
+  try {
+    const v: unknown = JSON.parse(settingsText)
+    if (!isObject(v) || !isObject(v.statusLine)) return false
+    const command = v.statusLine.command
+    return typeof command === 'string' && /tokenradar/i.test(command)
+  } catch {
+    return false
+  }
+}
 
 // --- Merge ---------------------------------------------------------------
 
@@ -275,6 +360,36 @@ export function stepAlerts(
 
 export const isBandShown = (state: AlertState, level: Level) => level > 0 && level > state.hidden
 
+/**
+ * Notes each window's reset; a window whose noted reset has passed raises the band's
+ * one-off "reset" line. A window first seen after its reset raises none: nothing was
+ * seen before it.
+ */
+export function stepResets(prev: ResetState, rows: readonly Row[], now: number): ResetState {
+  const known: Record<string, number> = {}
+  let notice = prev.notice
+  for (const [id, at] of Object.entries(prev.known)) {
+    if (at <= now) {
+      if (notice === null || at >= notice.at) notice = { id, at }
+    } else {
+      known[id] = at
+    }
+  }
+  for (const row of rows) {
+    if (row.resetsAt !== undefined && row.resetsAt > now) known[row.id] = row.resetsAt
+  }
+  if (notice !== null && now - notice.at > RESET_NOTICE_MS) notice = null
+  const same =
+    notice === prev.notice &&
+    Object.keys(known).length === Object.keys(prev.known).length &&
+    Object.entries(known).every(([id, at]) => prev.known[id] === at)
+  return same ? prev : { known, notice }
+}
+
+/** The reset line to show now, if any. */
+export const resetNotice = (state: ResetState, now: number) =>
+  state.notice !== null && now - state.notice.at <= RESET_NOTICE_MS ? state.notice : null
+
 /** The desktop app sends its own notification while it runs (ADR-043). */
 export const shouldToast = (r: Radar | null) => r?.origin !== 'app'
 
@@ -307,7 +422,7 @@ export function sourceName(lang: Lang, source: string): string {
   }
 }
 
-const value = (lang: Lang, row: Row) => `${row.estimated ? '≈' : ''}${pct(lang, row.percent)}`
+export const value = (lang: Lang, row: Row) => `${row.estimated ? '≈' : ''}${pct(lang, row.percent)}`
 
 export function bandLine(lang: Lang, a: Alert, now: number): string {
   const d = t(lang)
@@ -330,6 +445,29 @@ export function toastText(lang: Lang, a: Alert): string {
   return a.reason === 'projection'
     ? d.toastProjection(name)
     : d.toastUsed(name, value(lang, a.row))
+}
+
+/**
+ * The mod's own status entry, for a Claude Code whose statusline is not TokenRadar's
+ * bridge: the 5-hour and weekly windows with the time mark; `undefined` with neither.
+ */
+export function statusText(lang: Lang, rows: readonly Row[]): string | undefined {
+  const parts = rows
+    .filter(r => r.id === 'five_hour' || r.id === 'seven_day')
+    .map(r => {
+      const time = r.elapsed === undefined ? '' : ` ⏱${pct(lang, r.elapsed)}`
+      return `${limitName(lang, r.id)} ${value(lang, r)}${time}`
+    })
+  return parts.length === 0 ? undefined : `TokenRadar · ${parts.join(' · ')}`
+}
+
+/** `/radar`'s answer when the pane shows the rest: one line the model reads too. */
+export function summary(lang: Lang, rows: readonly Row[]): string {
+  const d = t(lang)
+  const parts = rows.map(
+    r => `${limitName(lang, r.id)} ${value(lang, r)} (${sourceName(lang, r.source)})`,
+  )
+  return parts.length === 0 ? `${d.paneOpened} ${d.noLimits}` : `${d.paneOpened} ${parts.join(' · ')}`
 }
 
 /** The `/radar` report: limits with sources, absent windows, session figures, data origin. */
@@ -400,7 +538,7 @@ export function report(
 // --- Pace (ADR-044) ------------------------------------------------------
 
 /** The weekly window's row with a time reading, else the 5-hour window's. */
-const paceRow = (rows: readonly Row[]) =>
+export const paceRow = (rows: readonly Row[]) =>
   rows.find(r => r.id === 'seven_day' && r.elapsed !== undefined) ??
   rows.find(r => r.id === 'five_hour' && r.elapsed !== undefined)
 

@@ -55,6 +55,20 @@ type Dict = {
   dataNone: string
   estimateNote: string
   commandDescription: string
+  paneOpened: string
+  detail: string
+  ok: string
+  resetDone: (name: string) => string
+  resetsIn: (dur: string) => string
+  timeStrip: (name: string) => string
+  now: string
+  chartAlt: (name: string, used: string, elapsed: string) => string
+  liveSessions: string
+  thisSession: string
+  costLater: string
+  contextBar: string
+  tokens: (n: string) => string
+  more: (n: number) => string
 }
 
 const EN: Dict = {
@@ -102,6 +116,21 @@ const EN: Dict = {
     'Data: Claude Code only. TokenRadar was not found, so projections, scoped limits and the session share are missing.',
   estimateNote: '≈ marks estimates, not measurements.',
   commandDescription: 'Show usage limits, projections and their sources (TokenRadar)',
+  paneOpened: 'TokenRadar pane opened.',
+  detail: 'Details',
+  ok: 'OK',
+  resetDone: name => `${name} limit reset`,
+  resetsIn: dur => `resets in ${dur}`,
+  timeStrip: name => `Time strip · ${name}`,
+  now: 'now',
+  chartAlt: (name, used, elapsed) =>
+    `${name} usage over the window against the time line: ${used} used, ${elapsed} of the time gone`,
+  liveSessions: 'Live sessions',
+  thisSession: 'this session',
+  costLater: 'Costs show while the TokenRadar app runs.',
+  contextBar: 'Context',
+  tokens: n => `${n} tokens`,
+  more: n => `+${n}`,
 }
 
 const TR: Dict = {
@@ -151,6 +180,21 @@ const TR: Dict = {
     'Veri: yalnızca Claude Code. TokenRadar bulunamadı; projeksiyon, model limitleri ve oturum payı yok.',
   estimateNote: '≈ işareti ölçümü değil tahmini gösterir.',
   commandDescription: 'Kullanım limitlerini, projeksiyonları ve kaynaklarını göster (TokenRadar)',
+  paneOpened: 'TokenRadar paneli açıldı.',
+  detail: 'Ayrıntı',
+  ok: 'Tamam',
+  resetDone: name => `${name} limit sıfırlandı`,
+  resetsIn: dur => `${dur} içinde sıfırlanır`,
+  timeStrip: name => `Zaman şeridi · ${name}`,
+  now: 'şimdi',
+  chartAlt: (name, used, elapsed) =>
+    `${name} kullanımın pencere boyunca zaman çizgisiyle karşılaştırması: kullanılan ${used}, geçen zaman ${elapsed}`,
+  liveSessions: 'Canlı oturumlar',
+  thisSession: 'bu oturum',
+  costLater: 'Maliyetler TokenRadar uygulaması açıkken görünür.',
+  contextBar: 'Bağlam',
+  tokens: n => `${n} token`,
+  more: n => `+${n}`,
 }
 
 export const t = (lang: Lang): Dict => (lang === 'tr' ? TR : EN)

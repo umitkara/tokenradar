@@ -1,7 +1,7 @@
 {
   "name": "tokenradar",
   "version": "0.1.0",
-  "description": "TokenRadar inside Claude Code: a band above the prompt near a limit, a toast when one is crossed, and /radar for the full picture",
+  "description": "TokenRadar inside Claude Code: a one-line band near a limit, a toast when one is crossed, and /radar for a pane with limits, the time strip, a usage chart and live sessions",
   "author": { "name": "Ümit Kara", "url": "https://github.com/umitkara" },
   "homepage": "https://github.com/umitkara/tokenradar",
   "license": "MIT",
