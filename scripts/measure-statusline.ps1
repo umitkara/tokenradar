@@ -40,6 +40,15 @@ Measure this tokenradar.exe instead of the profile's build, e.g. an older build 
 
 .EXAMPLE
 .\scripts\measure-statusline.ps1 -NoBuild -Cli D:\old\tokenradar.exe
+
+.PARAMETER Config
+A config.toml for the portable copy, e.g. a [statusline] table with more items.
+
+.PARAMETER Cwd
+The payload's cwd; a git repository makes a git_branch item read .git/HEAD. Default C:\Work\Alpha.
+
+.EXAMPLE
+.\scripts\measure-statusline.ps1 -NoBuild -Config .\detailed.toml -Cwd D:\src\repo
 #>
 [CmdletBinding()]
 param(
@@ -48,7 +57,9 @@ param(
     [ValidateSet('both', 'on', 'off')][string]$Mode = 'both',
     [ValidateSet('release-cli', 'release')][string]$Profile = 'release-cli',
     [switch]$NoBuild,
-    [string]$Cli
+    [string]$Cli,
+    [string]$Config,
+    [string]$Cwd = 'C:\Work\Alpha'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -72,6 +83,10 @@ New-Item -ItemType Directory -Force $bin, $project | Out-Null
 Copy-Item $cli $bin
 New-Item -ItemType File (Join-Path $bin 'portable') | Out-Null
 $exe = Join-Path $bin 'tokenradar.exe'
+if ($Config) {
+    New-Item -ItemType Directory -Force (Join-Path $bin 'data') | Out-Null
+    Copy-Item $Config (Join-Path $bin 'data\config.toml')
+}
 $spool = Join-Path $bin 'data\spool'
 
 function New-Payload([double]$percent) {
@@ -79,7 +94,7 @@ function New-Payload([double]$percent) {
     @{
         session_id      = '00000000-0000-4000-8000-000000000001'
         transcript_path = (Join-Path $project '00000000-0000-4000-8000-000000000001.jsonl')
-        cwd             = 'C:\Work\Alpha'
+        cwd             = $Cwd
         model           = @{ id = 'claude-opus-5-5'; display_name = 'Opus 5.5' }
         cost            = @{ total_cost_usd = 4.12 }
         context_window  = @{ used_percentage = 38 }
