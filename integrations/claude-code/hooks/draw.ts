@@ -73,9 +73,17 @@ export function bar(
 /**
  * The weekly time strip, both views at once: calendar days (names, `┊` at
  * midnight) over the use, the 24-hour periods (`│` at each reset hour, with
- * the time line's value below), "now" and the reset's day and hour.
+ * the time line's value below, on one row with "now") and the reset's day and hour.
  */
-export type Strip = { labels: string; cells: Seg[]; pointer: string; periods: string; reset: string }
+export type Strip = {
+  labels: string
+  cells: Seg[]
+  /** The row under the strip: period values, "now", period values. */
+  before: string
+  now: string
+  after: string
+  reset: string
+}
 
 const isWeekly = (id: string) => id === 'seven_day' || id.startsWith('scoped:')
 
@@ -128,20 +136,29 @@ export function strip(
     if (text.length <= room) put(label, text, from)
   })
 
-  // The 24-hour periods: a solid boundary (`│`) at each reset hour on the
-  // strip, and below it the time line's value there (k/7 of the window),
-  // centred, where it keeps a space from the previous one.
+  // The row under the strip: "now" first, then the 24-hour periods — a solid
+  // boundary (`│`) on the strip at each reset hour and, under it, the time
+  // line's value there (k/7 of the window), centred, wherever it keeps a
+  // space from "now" and from the previous value.
+  const col = clampInt((row.elapsed / 100) * w, 0, w - 1)
+  const word = t(lang).now
+  const right = col + 2 + word.length <= w
+  const nowText = right ? `▲ ${word}` : `${word} ▲`
+  const nowFrom = right ? col : Math.max(0, col - word.length - 1)
+  const nowEnd = nowFrom + nowText.length
   const periodCols: number[] = []
-  const period = Array<string>(w).fill(' ')
+  const below = Array<string>(w).fill(' ')
   let free = 0
   for (let k = 1; k < 7; k++) {
     const c = Math.round((k / 7) * w)
     periodCols.push(c)
     const text = pct(lang, Math.round((k / 7) * 100))
     const from = c - Math.floor(text.length / 2)
-    if (from >= free && from + text.length <= w) {
-      put(period, text, from)
-      free = from + text.length + 1
+    const end = from + text.length
+    const clear = end < nowFrom || from > nowEnd
+    if (from >= free && end <= w && clear) {
+      put(below, text, from)
+      free = end + 1
     }
   }
 
@@ -152,18 +169,12 @@ export function strip(
     else cells.push({ text: periodCols.includes(i) ? '│' : cols.includes(i) ? '┊' : '░', tone: 'track' })
   }
 
-  const col = clampInt((row.elapsed / 100) * w, 0, w - 1)
-  const word = t(lang).now
-  const pointer =
-    col + 2 + word.length <= w
-      ? `${' '.repeat(col)}▲ ${word}`
-      : `${' '.repeat(Math.max(0, col - word.length - 1))}${word} ▲`
-
   return {
     labels: label.join('').trimEnd(),
     cells: merge(cells),
-    pointer,
-    periods: period.join('').trimEnd(),
+    before: below.slice(0, nowFrom).join(''),
+    now: nowText,
+    after: below.slice(nowEnd).join('').trimEnd(),
     reset: clock(lang, row.resetsAt, tzOffsetMin),
   }
 }

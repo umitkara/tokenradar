@@ -129,14 +129,20 @@ export function paneTree(els: Els, p: PaneInput) {
         <Text bold>{d.timeStrip(limitName(lang, weekly.id), pct(lang, weekly.elapsed ?? 0))}</Text>
         <Text dimColor>{s.labels}</Text>
         <Text>{Runs(els, s.cells, surface)}</Text>
-        <Text>{s.pointer}</Text>
-        <Text dimColor>{s.periods}</Text>
+        <Text wrap="truncate-end">
+          <Text dimColor>{s.before}</Text>
+          <Text bold>{s.now}</Text>
+          <Text dimColor>{s.after}</Text>
+        </Text>
       </Box>,
     )
   }
   if (p.chart !== null) sections.push(p.chart)
   // The strip's legend under the chart, so it reads as the key to both.
-  if (s !== null) sections.push(<Text key="legend" dimColor>{d.stripLegend(s.reset)}</Text>)
+  if (s !== null) {
+    const key = p.chart === null ? '' : surface === 'terminal' ? d.chartKeyCells : d.chartKeySvg
+    sections.push(<Text key="legend" dimColor>{d.stripLegend(s.reset) + key}</Text>)
+  }
 
   const live = sessionsSection(els, lang, r, width, surface)
   if (live !== null) sections.push(live)
@@ -196,7 +202,8 @@ function sessionsSection(els: Els, lang: Lang, r: Radar | null, width: number, s
   const sorted = [...list].sort((a, b) => Number(b.own) - Number(a.own) || b.costUsd - a.costUsd)
   const byShare = list.some(x => x.share !== undefined)
   const total = list.reduce((sum, x) => sum + x.costUsd, 0)
-  const hasBars = byShare || total > 0
+  // A cost bar compares sessions: with one costed session it would only ever be full.
+  const hasBars = byShare || list.filter(x => x.costUsd > 0).length >= 2
   const names = sorted.map(x => (x.own ? `● ${d.thisSession}` : `  ${x.label}`))
   const nameW = Math.min(24, Math.max(...names.map(n => n.length)))
   const lines = sorted.slice(0, SESSIONS_SHOWN).map((x, i) => {

@@ -54,14 +54,17 @@ test('the weekly strip is calendar days cut at local midnight, the window at the
   expect(s!.labels).toBe('Çar Per     Cum     Cmt     Paz     Pzt     Sal     Çar')
   // `┊` at midnight, `│` every 24 hours from the reset (Thu 11:00 is cell 8).
   expect(text(s!.cells)).toBe(`${'█'.repeat(17)}${'░░░┊░░░│'.repeat(4)}░░░┊░░░`)
-  expect(s!.pointer).toBe(`${' '.repeat(25)}▲ şimdi`)
-  // The time line under each 24-hour boundary, centred.
-  expect(s!.periods).toBe(`${' '.repeat(7)}%14     %29     %43     %57     %71     %86`)
+  // One row under the strip: the time line under each 24-hour boundary,
+  // centred, and "now" at cell 25; %43 and %57 would touch it and give way.
+  expect(s!.before).toBe(`${' '.repeat(7)}%14     %29${' '.repeat(7)}`)
+  expect(s!.now).toBe('▲ şimdi')
+  expect(s!.after).toBe(`${' '.repeat(7)}%71     %86`)
   expect(s!.reset).toBe('Çar 11:00')
   // With room, the first day says the reset hour.
   expect(strip('tr', row, 'ok', 140, 180)!.labels.startsWith('Çar 11:00  Per')).toBe(true)
   // The pointer turns left near the end; too narrow a strip is left out.
-  expect(strip('en', weekly({ elapsed: 99 }), 'ok', 35, 0)!.pointer).toBe(`${' '.repeat(30)}now ▲`)
+  const end = strip('en', weekly({ elapsed: 99 }), 'ok', 35, 0)!
+  expect([end.before.length, end.now, end.after]).toEqual([30, 'now ▲', ''])
   expect(strip('en', weekly(), 'ok', 34, 0)).toBeNull()
   expect(strip('en', weekly({ id: 'five_hour' }), 'ok', 56, 0)).toBeNull()
 })

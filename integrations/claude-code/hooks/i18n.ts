@@ -62,6 +62,8 @@ type Dict = {
   resetsIn: (dur: string) => string
   timeStrip: (name: string, elapsed: string) => string
   stripLegend: (reset: string) => string
+  chartKeyCells: string
+  chartKeySvg: string
   now: string
   chartAlt: (name: string, used: string, elapsed: string) => string
   liveSessions: string
@@ -124,6 +126,8 @@ const EN: Dict = {
   resetsIn: dur => `resets in ${dur}`,
   timeStrip: (name, elapsed) => `Time strip · ${name} · ${elapsed} of the time gone`,
   stripLegend: reset => `Resets ${reset} · ┊ midnight · │ every 24 hours from the reset, time line below`,
+  chartKeyCells: ' · Chart: gray, time gone; color, use',
+  chartKeySvg: ' · Chart: dashed, the time line; filled, use',
   now: 'now',
   chartAlt: (name, used, elapsed) =>
     `${name} usage over the window against the time line: ${used} used, ${elapsed} of the time gone`,
@@ -189,6 +193,8 @@ const TR: Dict = {
   resetsIn: dur => `${dur} içinde sıfırlanır`,
   timeStrip: (name, elapsed) => `Zaman şeridi · ${name} · geçen zaman ${elapsed}`,
   stripLegend: reset => `Sıfırlanma ${reset} · ┊ gece yarısı · │ reset'ten itibaren her 24 saat, altında zaman çizgisi`,
+  chartKeyCells: ' · Grafik: gri geçen zaman, renkli kullanım',
+  chartKeySvg: ' · Grafik: kesikli çizgi zaman çizgisi, dolgu kullanım',
   now: 'şimdi',
   chartAlt: (name, used, elapsed) =>
     `${name} kullanımın pencere boyunca zaman çizgisiyle karşılaştırması: kullanılan ${used}, geçen zaman ${elapsed}`,
