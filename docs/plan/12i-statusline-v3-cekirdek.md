@@ -158,7 +158,12 @@ Kurallar:
 
 ## Görevler
 
-- [ ] `NO_COLOR` gözlemi (kullanıcıyla) ve sonucun kaydı.
+- [x] `NO_COLOR` gözlemi (kullanıcıyla, 2026-11-07). Sonuçlar:
+  - Gerçek Claude Code oturumunda (Windows Terminal, komut PowerShell 5.1 üzerinden) statusline komutunun ortamı: `NO_COLOR` yok, `FORCE_COLOR` yok, `TERM=xterm-256color`, `COLORTERM` yok, `COLUMNS` terminal genişliği.
+  - ANSI ön plan, arka plan, parlak renk ve soluk (2) kodlarının hepsi çizildi.
+  - Karar: `color = "auto"` varsayılan kalır.
+  - Yan gözlem: PowerShell 5.1 probu stdin'i UTF-8 BOM ile aktarınca kurulu v0.1.0 "henüz limit verisi yok" dedi. Prob yaklaşık 1 dakika kurulu kaldı; bu sürede okumalar büyük olasılıkla kayboldu.
+  - BOM'a dayanıklılık bu adımın kapsamında değil. Devir notuna aday olarak yazılacak.
 - [ ] Payload alanları ve S1 dokümanı; push/spool biçim testleri değişmeden geçer.
 - [ ] `StatuslinePrefs` öğe modeli, geriye uyum türetmesi, esnek okuma, temizlik, yazma.
 - [ ] Segment render'ları ve biçimleri; `git_branch` okuyucu.
