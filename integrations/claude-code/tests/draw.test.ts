@@ -52,10 +52,11 @@ test('the weekly strip is calendar days cut at local midnight, the window at the
   const s = strip('tr', row, 'ok', 56, 180)
   expect(s).not.toBeNull()
   expect(s!.labels).toBe('Çar Per     Cum     Cmt     Paz     Pzt     Sal     Çar')
-  expect(text(s!.cells)).toBe(`${'█'.repeat(17)}░░░┊${'░░░░░░░┊'.repeat(4)}░░░`)
+  // `┊` at midnight, `│` every 24 hours from the reset (Thu 11:00 is cell 8).
+  expect(text(s!.cells)).toBe(`${'█'.repeat(17)}${'░░░┊░░░│'.repeat(4)}░░░┊░░░`)
   expect(s!.pointer).toBe(`${' '.repeat(25)}▲ şimdi`)
-  // The 24-hour periods from the reset hour, between the midnights.
-  expect(s!.periods).toBe(`${' '.repeat(8)}╵%14    ╵%29    ╵%43    ╵%57    ╵%71    ╵%86`)
+  // The time line under each 24-hour boundary, centred.
+  expect(s!.periods).toBe(`${' '.repeat(7)}%14     %29     %43     %57     %71     %86`)
   expect(s!.reset).toBe('Çar 11:00')
   // With room, the first day says the reset hour.
   expect(strip('tr', row, 'ok', 140, 180)!.labels.startsWith('Çar 11:00  Per')).toBe(true)

@@ -72,8 +72,8 @@ export function bar(
 
 /**
  * The weekly time strip, both views at once: calendar days (names, `┊` at
- * midnight) over the use, "now", then the 24-hour periods (`╵` at each reset
- * hour with the time line's value) and the reset's day and hour.
+ * midnight) over the use, the 24-hour periods (`│` at each reset hour, with
+ * the time line's value below), "now" and the reset's day and hour.
  */
 export type Strip = { labels: string; cells: Seg[]; pointer: string; periods: string; reset: string }
 
@@ -128,20 +128,28 @@ export function strip(
     if (text.length <= room) put(label, text, from)
   })
 
-  // The 24-hour periods: a tick at each reset hour with the time line's value
-  // there (k/7 of the window), as long as it fits before the next tick.
+  // The 24-hour periods: a solid boundary (`│`) at each reset hour on the
+  // strip, and below it the time line's value there (k/7 of the window),
+  // centred, where it keeps a space from the previous one.
+  const periodCols: number[] = []
   const period = Array<string>(w).fill(' ')
+  let free = 0
   for (let k = 1; k < 7; k++) {
-    const from = Math.round((k / 7) * w)
-    const text = `╵${pct(lang, Math.round((k / 7) * 100))}`
-    if (from + text.length <= Math.min(w, Math.round(((k + 1) / 7) * w) - 1)) put(period, text, from)
+    const c = Math.round((k / 7) * w)
+    periodCols.push(c)
+    const text = pct(lang, Math.round((k / 7) * 100))
+    const from = c - Math.floor(text.length / 2)
+    if (from >= free && from + text.length <= w) {
+      put(period, text, from)
+      free = from + text.length + 1
+    }
   }
 
   const filled = clampInt(Math.round((row.percent / 100) * w), 0, w)
   const cells: Seg[] = []
   for (let i = 0; i < w; i++) {
     if (i < filled) cells.push({ text: row.estimated ? '▒' : '█', tone })
-    else cells.push({ text: cols.includes(i) ? '┊' : '░', tone: 'track' })
+    else cells.push({ text: periodCols.includes(i) ? '│' : cols.includes(i) ? '┊' : '░', tone: 'track' })
   }
 
   const col = clampInt((row.elapsed / 100) * w, 0, w - 1)
@@ -251,11 +259,17 @@ const RASTER_TONE: Record<'ok' | 'warn' | 'crit', number> = {
 }
 const RASTER_TRACK = 0x7c8186
 const DEFAULT_COLOR = 0x01000000
+/** Braille dot bits, left and right column, top to bottom. */
+const BRAILLE = [
+  [0x01, 0x02, 0x04, 0x40],
+  [0x08, 0x10, 0x20, 0x80],
+]
 const BLOCKS = [0x20, 0x2581, 0x2582, 0x2583, 0x2584, 0x2585, 0x2586, 0x2587, 0x2588]
 
 /**
  * The chart as Raster cells (terminal): the used share as a column chart of
- * eighth blocks, the time line as dots, day boundaries as dotted columns, in
+ * eighth blocks, the time line as a braille line (2 × 4 dots a cell, so it
+ * rises smoothly instead of in cell-high steps), day boundaries as dotted columns, in
  * `columns` × `rows` cells, base64 as `RasterProps.cells` takes them.
  */
 export function chartCells(
@@ -280,14 +294,20 @@ export function chartCells(
     const past = series.start + c * span <= now
     while (p < pts.length && pts[p]![0] <= Math.min(end, now)) used = pts[p++]![1]
     const eighths = past ? (Math.min(Math.max(used, 0), 100) / 100) * rows * 8 : 0
-    const time = (((c + 0.5) / columns) * rows * 8) | 0
+    // The time line's braille dots in this column: one per half cell, by row.
+    const dots = new Array<number>(rows).fill(0)
+    for (let s = 0; s < 2; s++) {
+      const up = Math.min(rows * 4 - 1, Math.floor(((2 * c + s + 0.5) / (2 * columns)) * rows * 4))
+      const down = rows * 4 - 1 - up
+      dots[down >> 2]! |= BRAILLE[s]![down & 3]!
+    }
     for (let r = 0; r < rows; r++) {
       const bottom = rows - 1 - r
       const n = Math.min(8, Math.max(0, Math.round(eighths - bottom * 8)))
       let glyph = BLOCKS[n]!
       let color = n > 0 ? fg : DEFAULT_COLOR
-      if (n === 0 && Math.floor(time / 8) === bottom) {
-        glyph = 0x00b7
+      if (n === 0 && dots[r]! > 0) {
+        glyph = 0x2800 + dots[r]!
         color = RASTER_TRACK
       } else if (n === 0 && cuts.includes(c)) {
         glyph = 0x250a

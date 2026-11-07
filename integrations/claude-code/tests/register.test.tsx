@@ -339,7 +339,7 @@ test('the pane draws cards, strip, chart, sessions and context on every surface'
     // The weekly strip: title, now pointer, 24-hour periods and the reset hour.
     expect(texts).toContain('Zaman şeridi · Haftalık · geçen zaman %70,2')
     expect(all).toContain('▲ şimdi')
-    expect(all).toContain('╵%14')
+    expect(all).toContain('     %14     %29')
     expect(all).toContain('sıfırlanma Pzt 17:00')
     // Live sessions by name or folder, never by title; this one first.
     expect(all).toContain('● bu oturum')

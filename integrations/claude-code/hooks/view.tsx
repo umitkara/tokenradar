@@ -213,7 +213,8 @@ function sessionsSection(els: Els, lang: Lang, r: Radar | null, width: number, s
       <Text wrap="truncate-end">
         <Text bold={x.own}>{name}</Text>
         {hasBars ? <Text> </Text> : null}
-        {hasBars ? Runs(els, bar(part, undefined, barW, tone, byShare), surface) : null}
+        {hasBars && part > 0 ? Runs(els, bar(part, undefined, barW, tone, byShare), surface) : null}
+        {hasBars && part <= 0 ? <Text>{' '.repeat(barW)}</Text> : null}
         <Text dimColor>{figures === '' ? '' : ` ${figures}`}</Text>
       </Text>
     )

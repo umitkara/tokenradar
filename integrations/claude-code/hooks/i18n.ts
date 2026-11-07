@@ -123,7 +123,7 @@ const EN: Dict = {
   resetDone: name => `${name} limit reset`,
   resetsIn: dur => `resets in ${dur}`,
   timeStrip: (name, elapsed) => `Time strip · ${name} · ${elapsed} of the time gone`,
-  stripLegend: reset => `┊ midnight · ╵ 24-hour period, time line there · resets ${reset}`,
+  stripLegend: reset => `┊ midnight · │ every 24 hours from the reset, time line below · resets ${reset}`,
   now: 'now',
   chartAlt: (name, used, elapsed) =>
     `${name} usage over the window against the time line: ${used} used, ${elapsed} of the time gone`,
@@ -188,7 +188,7 @@ const TR: Dict = {
   resetDone: name => `${name} limit sıfırlandı`,
   resetsIn: dur => `${dur} içinde sıfırlanır`,
   timeStrip: (name, elapsed) => `Zaman şeridi · ${name} · geçen zaman ${elapsed}`,
-  stripLegend: reset => `┊ gece yarısı · ╵ 24 saatlik dilim, oradaki zaman çizgisi · sıfırlanma ${reset}`,
+  stripLegend: reset => `┊ gece yarısı · │ reset'ten itibaren her 24 saat, altında zaman çizgisi · sıfırlanma ${reset}`,
   now: 'şimdi',
   chartAlt: (name, used, elapsed) =>
     `${name} kullanımın pencere boyunca zaman çizgisiyle karşılaştırması: kullanılan ${used}, geçen zaman ${elapsed}`,
