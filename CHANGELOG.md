@@ -10,6 +10,8 @@ All notable changes to TokenRadar are recorded here. The format follows
 
 - Statusline v2: an 8-cell bar on the limit windows, scoped weekly limits (e.g. Fable), context window, API-equivalent cost and the model. Choose the segments, their order, one or two lines and the bar in Settings or in `[statusline]` in `config.toml`, with a live preview.
 - Every value on the statusline keeps its source and age: app values older than 10 minutes are dimmed, and the app's estimates are never shown there.
+- Experimental Claude Code mod in `integrations/claude-code/`: a band above the prompt near a limit, a toast when one is crossed (only while the app is closed) and `/radar` for every limit with its source.
+- `tokenradar status --json` includes `locale` (`en` or `tr`), the language the CLI resolved.
 
 ### Changed
 

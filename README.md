@@ -71,6 +71,24 @@ layout = "double"   # single | double
 bar = true
 ```
 
+## Claude Code mod (experimental)
+
+`integrations/claude-code/` holds an optional mod for Claude Code's plugin hooks. It works alongside the statusline bridge and does not replace it: the bridge keeps feeding TokenRadar, and the mod shows and warns inside Claude Code.
+
+- **Band above the prompt.** It appears only when a limit reaches 75 % (90 % in red), or when TokenRadar projects that a window fills before it resets. **Hide** keeps it away until the level rises.
+- **Toast.** One per threshold crossing, and only while the desktop app is not running. When the app runs, it sends the notification itself.
+- **`/radar`.** Every limit with its source, reset time and projection, plus windows your account does not have, this session's share, the context window and the API-equivalent cost.
+
+The mod reads Claude Code's own limit figures and runs `tokenradar status --json` at most every 30 seconds for what only TokenRadar knows. Without the CLI it still works with Claude Code's figures and says so. It reads no conversation, makes no network request and never touches credentials. The API is early access and may change between Claude Code releases.
+
+Try it from a clone of this repository:
+
+```sh
+claude --plugin-dir integrations/claude-code
+```
+
+If `tokenradar` is not on your `PATH` (a portable install, for example), set the mod's **TokenRadar CLI** option in `/config` to the full path of `tokenradar.exe`. The mod speaks the language TokenRadar is set to; with a CLI older than 0.1.1 it speaks English.
+
 ## Privacy
 
 TokenRadar is local only. There is no account, no telemetry and no analytics.

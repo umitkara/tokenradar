@@ -1,0 +1,17 @@
+{
+  "name": "tokenradar",
+  "version": "0.1.0",
+  "description": "TokenRadar inside Claude Code: a band above the prompt near a limit, a toast when one is crossed, and /radar for the full picture",
+  "author": { "name": "Ümit Kara", "url": "https://github.com/umitkara" },
+  "homepage": "https://github.com/umitkara/tokenradar",
+  "license": "MIT",
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "cli": {
+      "type": "string",
+      "title": "TokenRadar CLI",
+      "description": "The tokenradar command the mod runs for projections, scoped limits and the session share. Leave it as tokenradar to use the one on PATH.",
+      "default": "tokenradar"
+    }
+  }
+}
