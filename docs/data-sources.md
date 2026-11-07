@@ -38,8 +38,13 @@ Claude Code, `settings.json` içindeki `statusLine.command` komutunu çalıştı
   "cwd": "D:\\Projects\\…", "workspace": { "current_dir": "…", "project_dir": "…", "repo": { "host": "github.com", "owner": "…", "name": "…" } },
   "model": { "id": "claude-opus-5-5", "display_name": "Opus 5.5" },
   "version": "2.1.310",
-  "cost": { "total_cost_usd": 4.12, "total_duration_ms": 1234567, "total_api_duration_ms": 345678 },
-  "context_window": { "used_percentage": 41, "context_window_size": 200000, "current_usage": { … } },
+  "cost": { "total_cost_usd": 4.12, "total_duration_ms": 1234567, "total_api_duration_ms": 345678,
+            "total_lines_added": 156, "total_lines_removed": 23 },
+  "context_window": { "used_percentage": 41, "context_window_size": 200000,
+                      "total_input_tokens": 123456, "total_output_tokens": 7890, "current_usage": { … } },
+  "vim": { "mode": "NORMAL" },                     // yalnızca vim modu açıkken
+  "agent": { "name": "reviewer" },                 // yalnızca --agent ile
+  "worktree": { "branch": "feature/x", … },        // yalnızca --worktree oturumlarında
   "fast_mode": false, "effort": { "level": "high" },
   "rate_limits": {                                 // YALNIZCA Pro/Max ve oturumdaki ilk API yanıtından sonra
     "five_hour": { "used_percentage": 23.5, "resets_at": 1738425600 },   // epoch saniye
@@ -63,6 +68,18 @@ Claude Code, `settings.json` içindeki `statusLine.command` komutunu çalıştı
 - Güvenli biçim: düz bölülü, tırnaksız yol (`D:/…/tokenradar.exe statusline`). Hem Git Bash hem PowerShell bunu aynen çalıştırır. **Gerçek bir Claude Code 2.1.311 oturumunda** bu biçimle kurulan komut her güncellemede çalıştı; uygulama kapalıyken okumalar spool'a, açıkken IPC'ye gitti.
 - Boşluk içeren yollar için önce 8.3 kısa yol, o da yoksa kabuğa göre tırnaklama kullanılır. Bu durum gerçek oturumda **test edilmedi**; geliştirme makinesinin yolunda boşluk yok.
 - Gerçek payload'da plandaki alt kümenin tamamı vardı (`rate_limits` dahil); CLI yalnızca bu alanları saklar.
+
+**Yalnızca satır için okunan alanlar (Adım 12i, ADR-049):**
+- `workspace.current_dir` / `project_dir`, `version`, `cost.total_duration_ms` / `total_api_duration_ms` / `total_lines_added` / `total_lines_removed`, `context_window.total_input_tokens` / `total_output_tokens` / `context_window_size`, `vim.mode`, `agent.name`, `worktree.branch`.
+- Hepsi resmî belgede var (2026-11-07). Hepsi metadata ya da sayaçtır; konuşma içeriği değildir.
+- `skip_serializing` ile işaretlidir: push ve spool satırının biçimi değişmez, uygulama bu alanları görmez.
+- Git dalı payload'da yoksa CLI, `cwd`'den yukarı doğru `.git/HEAD` dosyasını okur (en fazla 32 dizin, en fazla 4 KiB). Yalnızca satırda `git_branch` öğesi açıksa okunur; git süreci çalıştırılmaz.
+
+**Komutun ortamı ve renkler (gözlem, 2026-11-07, Adım 12i):**
+- Gerçek bir Claude Code oturumunda (Windows Terminal, komut PowerShell 5.1 üzerinden) komutun ortamında `NO_COLOR` ve `FORCE_COLOR` yoktu. `TERM=xterm-256color` idi, `COLORTERM` yoktu, `COLUMNS` terminal genişliğini taşıyordu.
+- ANSI ön plan (30–37, 90–97), arka plan (40–47, 100–107) ve soluk (2) kodlarının hepsi çizildi.
+- Bu yüzden `[statusline] color = "auto"` varsayılandır: `NO_COLOR` yalnızca kullanıcı kendisi verirse renkleri kapatır.
+- **Tuzak:** PowerShell 5.1 ile yazılmış bir ara komut stdin'i UTF-8 BOM ile aktarırsa, BOM'u tanımayan bir okuyucu JSON'u ayrıştıramaz. Kurulu v0.1.0 bu durumda "henüz limit verisi yok" dedi. TokenRadar'ın kendi kurulumu bu yoldan geçmez; zincirleme modunda önceki komut stdin'i doğrudan alır.
 
 ---
 

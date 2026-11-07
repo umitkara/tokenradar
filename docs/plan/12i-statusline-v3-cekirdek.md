@@ -2,7 +2,7 @@
 
 | Sürüm | Bağımlılık | Tahmini süre | Durum |
 |---|---|---|---|
-| v0.1.x | 12h | 1-2 oturum | 🟨 |
+| v0.1.x | 12h | 1-2 oturum | ✅ |
 
 ## Amaç
 
@@ -164,14 +164,14 @@ Kurallar:
   - Karar: `color = "auto"` varsayılan kalır.
   - Yan gözlem: PowerShell 5.1 probu stdin'i UTF-8 BOM ile aktarınca kurulu v0.1.0 "henüz limit verisi yok" dedi. Prob yaklaşık 1 dakika kurulu kaldı; bu sürede okumalar büyük olasılıkla kayboldu.
   - BOM'a dayanıklılık bu adımın kapsamında değil. Devir notuna aday olarak yazılacak.
-- [ ] Payload alanları ve S1 dokümanı; push/spool biçim testleri değişmeden geçer.
-- [ ] `StatuslinePrefs` öğe modeli, geriye uyum türetmesi, esnek okuma, temizlik, yazma.
-- [ ] Segment render'ları ve biçimleri; `git_branch` okuyucu.
-- [ ] Renkler, Powerline temaları, genelleştirilmiş `fit()`, `color` modu.
-- [ ] Şablonlar, `export_toml` ve `import_toml`.
-- [ ] IPC komutları, `Line::sample` varyantları, binding'ler.
-- [ ] Fluent (EN/TR), ADR-049, dokümanlar.
-- [ ] Performans ölçümü (`main`'e karşı A/B), `docs/perf/` kaydı.
+- [x] Payload alanları ve S1 dokümanı; push/spool biçim testleri değişmeden geçer.
+- [x] `StatuslinePrefs` öğe modeli, geriye uyum türetmesi, esnek okuma, temizlik, yazma.
+- [x] Segment render'ları ve biçimleri; `git_branch` okuyucu.
+- [x] Renkler, Powerline temaları, genelleştirilmiş `fit()`, `color` modu.
+- [x] Şablonlar, `export_toml` ve `import_toml`.
+- [x] IPC komutları, `Line::sample` varyantları, binding'ler.
+- [x] Fluent (EN/TR), ADR-049, dokümanlar.
+- [x] Performans ölçümü (`main`'e karşı A/B), `docs/perf/` kaydı.
 
 ## Teknik notlar ve tuzaklar
 
@@ -200,4 +200,53 @@ Kurallar:
 
 ## Devir notu
 
-_(Oturum sonunda doldurulur: yapılanlar · sapmalar · açık konular · sonraki adıma notlar)_
+**Tarih:** 2026-11-08 · **Karar:** ADR-049 · **Ölçüm:** `docs/perf/2026-11-08-statusline-v3.md`
+
+### Yapılanlar
+- **Core (`statusline/line/`):**
+  - `prefs.rs`: `SegmentKind` (22 tür), `Format`, `AnsiColor`, `Theme` ve `ColorMode` tanımları; `Item` ve `StatuslinePrefs` (esnek okuma, `normalized`, `write_toml`, `export_toml`, `import_toml`).
+  - `presets.rs`: beş şablon.
+  - `render.rs`: plain ve Powerline temaları, öğe başına biçim, etiket ve renk; çok satır ve satır başına `fit()`.
+- **Payload ve git:** `payload.rs` yeni alanları `skip_serializing` olarak alıyor. `statusline/git.rs`, `.git/HEAD` okuyucusu.
+- **Örnek veri:** `Line::sample_in(at, five_hour, SampleState)` dört durumu çiziyor; örnek veriye yeni segmentlerin değerleri eklendi.
+- **CLI:**
+  - `style_from_env(ColorMode)` renk modunu uyguluyor.
+  - Git dalını yalnızca `git_branch` öğesi açıksa ve payload'da dal yoksa okuyor.
+- **Uygulama:**
+  - `preview_statusline(prefs, state, width)` güncellendi.
+  - Yeni komutlar: `statusline_catalog`, `list_statusline_presets`, `export_statusline`, `import_statusline`. Binding'ler yeniden üretildi.
+  - 12c ayar kontrolleri (segment seç/sırala, düzen, bar, zaman işareti) öğe listesi üzerinde çalışıyor (`view.ts`: `toggleSegment`, `moveSegment`, `setDouble`, `setBar`, `setPace`).
+- **Fluent:** `cli.ftl` dosyasına yeni etiket ve sayı anahtarları eklendi; `sl-context` kaldırıldı, yerine `sl-label-context` geldi.
+- **Testler:** core 321, CLI 23 (biri yeni: git dalı yalnızca öğe açıksa okunuyor), app 61, frontend 104. 12c'nin render testleri çıktı metni değişmeden geçiyor.
+- **Ölçüm betiği:** `-Config` ve `-Cwd` parametreleri eklendi.
+
+### Sapmalar
+- **`settings.ftl` anahtarları 12j'ye kaldı.** Öğe, biçim, renk, tema ve şablon adları yalnızca düzenleyicide kullanılıyor ve bu adımda kullanılmadan eklenmiş olurlardı. `statusline_catalog`, varsayılan etiketleri `cli.ftl`'den yerelleştirilmiş olarak döndürüyor.
+- **`statusline_catalog` plana eklendi.** Ekleme paleti tür listesini, grupları, biçimleri, örnek çıktıyı ve "hesapta yok" bilgisini backend'den alsın diye eklendi; UI hesap yapmıyor.
+- **`color = "never"` eklendi.** Plan bunu yalnızca bir koşula bağlıyordu. Kullanıcının renkleri kendisi kapatabilmesi için gözlem sonucundan bağımsız olarak eklendi.
+- **Görsel kontrol portable CLI yerine core'u doğrudan çağıran geçici bir örnekle yapıldı.** Kurulu uygulama açıktı ve portable kopya da gerçek pipe'a konuşuyor. CLI bağlantısı testlerle, renkli çıktı conhost ekran görüntüleriyle kontrol edildi. Örnek dosya commit'lenmedi.
+- **Görsel kontrolde iki Powerline hatası bulundu ve düzeltildi:**
+  - Blok içindeki bar okunmuyordu: dolu ve boş hücreler aynı yazı rengini alıyordu. Bar artık Powerline'da çizilmiyor.
+  - Bayat değerler blokta ayırt edilmiyordu: SGR 2 siyah yazıda görünmüyor. Soluk yazı artık gri çiziliyor.
+- **Detailed şablonundaki cwd rengi değişti.** Mavi koyu terminalde okunmuyordu; parlak magenta yapıldı.
+
+### Açık konular
+- **Powerline'da `▲` projeksiyonu sarı rengini kaybediyor.** Blok rengi yalnızca 75/90 eşiklerine göre değişiyor, bu yüzden %72'de "erken dolacak" bilgisi yalnızca küçük bir işaret olarak kalıyor. Bloğu sarıya boyamak iki anlamı birbirine karıştırırdı. 12j'de ayrı bir uyarı bloğu gibi bir tasarım düşünülebilir. Powerline varsayılan değil.
+- **Stdin'de UTF-8 BOM'a dayanıklılık.** PowerShell 5.1 ile yazılmış bir ara komut BOM gönderirse ayrıştırma başarısız oluyor (S1). Adayı: `StatuslinePayload::parse` başta BOM'u atlasın. Küçük bir düzeltme, ayrı bir adımda yapılmalı.
+- **Font sorunları (conhost, Consolas):**
+  - Powerline glifleri kutu olarak görünüyor; U+E0B5 `★` olarak çiziliyor.
+  - `⏱` sonraki rakamın üstüne biniyor. Bu 12c'den beri var.
+  - 12j önizlemesi font notunu göstermeli.
+- **Ölçümde tek bir yüksek koşu** (p95 68,9 ms) tekrarlanmadı; perf kaydında anlatıldı.
+
+### 12j için notlar
+- **Önizleme:** `commands.previewStatusline(prefs, state, width)`. Span alanları:
+  - `paint`: `plain` / `dim` / `ok` / `warn` / `crit`.
+  - `fg` / `bg`: `AnsiColor` adları (`bright_cyan` gibi) ya da `null`.
+  - `item`: öğe listesindeki indeks. Powerline geçiş glifleri, ayraçlar ve boşluklar için `null`.
+  - Terminal paleti 16 `AnsiColor`'ı `--term-*` değişkenlerine eşlemeli; `paint` yalnızca `fg` boşken kullanılır.
+- **Katalog:** `commands.statuslineCatalog()` her tür için şunları döndürür: `group`, `formats`, `default_format`, `labeled`, `default_label`, `colored`, `sample` (renksiz tek öğe çıktısı), `absent`.
+- **İçe aktarma:** `commands.importStatusline(text)`, `{ prefs, ignored }` ya da TOML hata mesajı döndürür. `ignored` girdileri anahtar adı ya da `items.kind = x` biçimindedir.
+- **Kayıt:** `set_statusline_prefs` normalize eder. Değer öğeleri tekilleştirilir; görünür değer öğesi kalmazsa varsayılana dönülür. UI son görünür öğeyi gizletmemeli.
+- **Geçici kodun yerine geçecekler:** `view.ts` içindeki 12c köprü yardımcıları (`SEGMENTS`, `segmentRows`, `toggleSegment`, `moveSegment`, `setDouble`, `setBar`, `setPace`) ve `StatuslineLook.svelte`, 12j düzenleyicisi gelince kaldırılmalı ya da yerine yenisi konmalı.
+- **Kurulu sürüm:** Kurulu v0.1.0 yeni anahtarları bilmiyor ama `segments` / `layout` / `bar` / `pace` okumaya devam ediyor; yeni bir sürüm çıkana kadar kullanıcı eski satırı görür.

@@ -62,15 +62,30 @@ The line itself looks like this on an account without a 5-hour window:
 7d ███│█░░░░ 41% ⏱43% · 3d4h │ Fable 22% │ ctx 38% │ ≈2.1% this session │ API $4.12
 ```
 
-`│` on the bar and `⏱43%` mark how much of the window's time has passed, so you can see whether your use runs ahead of the clock. `API $4.12` is what the session would cost at API prices, not your bill. Pick the segments, their order, one or two lines, the bar and the time mark in Settings → Data sources → Statusline bridge, or in `config.toml`:
+`│` on the bar and `⏱43%` mark how much of the window's time has passed, so you can see whether your use runs ahead of the clock. `API $4.12` is what the session would cost at API prices, not your bill.
+
+The line is a list of items you arrange in `config.toml` (a settings page for it is on the way). Besides the limits there are session items (context, cost, model, tokens, durations, lines changed, vim mode, agent, version, session id), project items (folder, project folder, git branch, read from `.git/HEAD` without running git) and layout items (line break, separator, custom text). Each item can have its own format, label and color; on limits the color is the one below 75 %, and the warning and critical colors always win.
 
 ```toml
 [statusline]
-segments = ["five_hour", "seven_day", "scoped", "context", "session_share", "cost", "model"]
-layout = "double"   # single | double
-bar = true
-pace = true        # the time mark
+theme = "plain"     # plain | powerline | powerline_round (needs a Powerline font)
+separator = "│"
+color = "auto"      # auto (honours NO_COLOR) | always | never
+
+[[statusline.items]]
+kind = "seven_day"
+format = "percent"  # bar | percent
+color = "bright_cyan"
+
+[[statusline.items]]
+kind = "line_break"
+
+[[statusline.items]]
+kind = "git_branch"
+color = "green"
 ```
+
+Without `items`, the 12c keys still work: `segments`, `layout = "single" | "double"`, `bar` and `pace`.
 
 ## Claude Code mod (experimental)
 

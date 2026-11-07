@@ -664,7 +664,7 @@
   - **Görünüm:** Tray ve panelde haftalık limit iki halkanın bandını dolduran tek, kalın bir halka olur. Boş iç halka "bilinmiyor" demektir, "yok" değil.
 
 ### ADR-042 — Statusline v2: segment modeli core'da, `[statusline]` tablosu, sabit renk eşikleri
-**Durum:** Kabul (2026-11-07, Adım 12c, kullanıcı kararlarıyla)
+**Durum:** Kabul (2026-11-07, Adım 12c, kullanıcı kararlarıyla). `[statusline]` tablosu, iki satır düzeni ve küçülme sırası maddeleri ADR-049 ile genişledi.
 - **Bağlam:**
   - Statusline satırı v1'de CLI'nin `render.rs` dosyasında sabit bir düzendi: pasta glifi, 5 saatlik ve haftalık pencere, oturum payı.
   - Adım 12c dört şey istedi: bar ve renk, ek bilgi (context, scoped limit, maliyet, model), segment seçimi ve tazelik kuralları.
@@ -852,3 +852,33 @@
   - Mevcut panele açılır bir bölüm: kullanıcı ikinci bir görünümü seçti.
   - Ayrı bir rapor penceresi: ikinci bir WebView'in soğuk açılışını öder ve Adım 15'in ana penceresiyle çakışırdı.
   - Görünüm tercihini WebView'in `localStorage`'ında tutmak: ayarlar `config.toml`'da toplanıyor; WebView verisi silinince tercih de kaybolurdu.
+
+### ADR-049 — Statusline v3: öğe modeli, biçim ve renk, Powerline, şablonlar
+**Durum:** Kabul (2026-11-08, Adım 12i, kullanıcı kararlarıyla). ADR-042'yi genişletir.
+- **Bağlam:**
+  - Kullanıcı, statusline'ın `tylergraydev/claude-code-tool-manager` içindeki "Status Line Builder" kadar ayrıntılı özelleştirilebilmesini istedi: segment başına biçim, etiket ve renk; serbest düzen; daha fazla segment; Powerline teması.
+  - Referans proje segment listesinden bir Python script üretip `~/.claude/statusline.py`'ye yazıyor ve bir topluluk galerisi sunuyor.
+  - Renk özelleştirmesinin anlamlı olup olmadığı, Claude Code'un komuta `NO_COLOR` verip vermediğine bağlıydı (12c'nin açık konusu).
+- **Karar:**
+  - **Öğe modeli:** `[statusline]` bir öğe listesi taşır (`[[statusline.items]]`: `kind`, `enabled`, `format`, `label`, `color`, `reset`, `pace`, `text`). 22 tür vardır; düzen öğeleri (`separator`, `line_break`, `custom_text`) birden çok kez kullanılabilir, değer öğeleri bir kez. Liste en fazla 48 öğedir.
+  - **Geriye uyum:** `items` yoksa öğeler 12c'nin `segments`, `layout`, `bar` ve `pace` alanlarından türetilir; `double` düzen, limitlerden sonra bir `line_break` olur. 12c'nin render testleri değişmeden geçer. Kaydederken bu dört anahtar öğelerden türetilip yazılmaya devam eder; böylece eski bir CLI da anlamlı bir satır çizer.
+  - **Esnek okuma (ADR-042 kuralı):** Bilinmeyen tür, biçim ya da renk atlanır veya varsayılana döner; yanlış tipteki değer yok sayılır. Okuma hiçbir zaman başarısız olmaz.
+  - **Temizlik:** `label` (16), `text` (32) ve `separator` (3 karakter) içindeki kontrol karakterleri (C0, ESC, C1) atılır. Kullanıcı metni ANSI kodu enjekte edemez.
+  - **Renk kuralı (kullanıcı kararı):** Limit ve context öğelerinde kullanıcı yalnızca "ok" rengini seçer. Uyarı (75) ve kritik (90) renkleri, soluk çizilen tahmin ve bayat değerler her zaman kazanır. Palet 16 ANSI rengidir; 256 renk ya da hex yoktur.
+  - **Powerline:** `powerline` (U+E0B0) ve `powerline_round` (U+E0B4) temaları arka plan bloklarıyla çizer. Limit bloğu uyarıda sarıya, kritikte kırmızıya döner. Aynı renkteki iki blok ince glifle birleşir. Blok içinde bar çizilmez, çünkü dolu ve boş hücreler aynı yazı rengini alır. Soluk yazı, SGR 2 siyah yazıda görünmediği için gri çizilir. Renk kapalıyken plain temaya düşülür.
+  - **Renk modu:** `color = "auto"` varsayılandır ve `NO_COLOR`'a uyar; `always` ve `never` de vardır. Gözleme göre Claude Code komuta `NO_COLOR` vermiyor ve ANSI kodlarını çiziyor (`docs/data-sources.md` S1).
+  - **Git dalı (kullanıcı kararı):** Yalnızca dal adı gösterilir. Önce payload'daki `worktree.branch` kullanılır; yoksa `.git/HEAD` doğrudan okunur (worktree'de `gitdir:` izlenir, detached HEAD'de 7 karakterlik SHA). Git süreci çalıştırılmaz. Dosya yalnızca öğe açıksa okunur.
+  - **Galeri yok (ADR-013, kullanıcı kararı):** Yerleşik beş şablon (`default`, `minimal`, `detailed`, `two_line`, `powerline`) ve `[statusline]` TOML metniyle dışa ve içe aktarma. İçe aktarma kaydetmez; yok sayılan anahtarları ve türleri listeler.
+  - **Script üretilmez:** Render core'da kalır (ADR-042). Python bağımlılığı yoktur ve `settings.json`'a ek yazma gerekmez.
+  - **`API` işareti kaldırılamaz:** Maliyetin etiketi değiştirilebilir, ama `API` işareti kalır (ADR-042: değer fatura değil).
+  - **IPC:** `preview_statusline(prefs, state, width)` örnek değerleri dört durumda (`normal`, `warn`, `crit`, `stale`) ve istenen genişlikte çizer. Span'ler fg/bg ve kaynak öğe indeksini taşır. `statusline_catalog`, `list_statusline_presets`, `export_statusline` ve `import_statusline` yeni komutlardır.
+- **Bedel:**
+  - CLI 63,5 KiB büyüdü (2,24 → 2,30 MiB, bütçe 3 MB). Gecikme ölçülebilir biçimde değişmedi; Detailed şablonu ve `.git/HEAD` okuması dahil (`docs/perf/2026-11-08-statusline-v3.md`).
+  - Powerline glifleri Nerd/Powerline fontu ister; Consolas gibi fontlarda kutu görünür.
+  - Powerline bloğunda projeksiyon işareti `▲` sarı rengini kaybeder; blok rengi yalnızca 75/90 eşiklerine göre değişir. İşaret görünür kalır.
+  - `config.toml`'daki `[statusline]` tablosu uzadı; öğeler yalnızca varsayılandan farklı alanlarıyla yazılır.
+- **Alternatifler:**
+  - Referans gibi Python script üretmek: Python bağımlılığı, ikinci bir render kodu ve her değişiklikte dosya yazma demekti.
+  - Topluluk galerisi: ağ allowlist'ini (ADR-013) genişletirdi.
+  - `git status` ile kirli/temiz bilgisi: her çağrıda süreç başlatmak p95 bütçesini zorlardı.
+  - 256 renk veya hex: terminal temasından bağımsız renkler, açık ve koyu temada okunabilirliği garanti etmez.

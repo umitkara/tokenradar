@@ -195,6 +195,13 @@ Başlığın altında iki eşit düğmeli bir segment kontrolü: `Özet | Ayrın
 | Time gone | Geçen zaman | "Geçen zaman %54 · zaman çizgisinin 10 puan önünde"; tam sayı |
 | Limit reset (mod band) | Limit sıfırlandı | "✓ Haftalık limit sıfırlandı", bir kez |
 | (statusline cost) | `API $4,12` | `API` işareti, değerin fatura olmadığını söyler; çıkarılmaz |
+| Item (statusline) | Öğe | Satırın bir parçası: limit, oturum, proje ya da düzen öğesi (ADR-049) |
+| Format / Label / Color | Biçim / Etiket / Renk | Öğe ayarları; limitlerde renk yalnızca normal durumun rengidir |
+| Line break / Separator / Custom text | Satır sonu / Ayraç / Özel metin | Düzen öğeleri |
+| Theme: Plain / Powerline / Rounded | Tema: Düz / Powerline / Yuvarlak | |
+| Preset | Şablon | Varsayılan, Sade, Ayrıntılı, İki satır, Powerline |
+| Export / Import | Dışa aktar / İçe aktar | `[statusline]` TOML metni; içe aktarma kaydetmeden önizler |
+| (statusline labels) | `in` / `out` / `time` → `girdi` / `çıktı` / `süre` | Token ve süre öğelerinin varsayılan etiketleri; `ctx`, `api`, `git` her dilde aynı |
 
 **Türkçe yazım kuralları:**
 - Yüzde işareti sayıdan önce yazılır: `%72`.

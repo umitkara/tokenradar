@@ -51,7 +51,7 @@ Doğrulanmış Ultra hesaplarında 5 saatlik pencere kalktı (ADR-041). Bu adım
 | 12f | [Görsel mod: panel, görsel bant ve diğer görsel yüzeyler](12f-gorsel-mod.md) | 12e | ✅ |
 | 12g | [Claude Code mod'unu kurma ve kaldırma](12g-mod-kurulumu.md) | 12f | ✅ |
 | 12h | [Tray panelinde ikinci görünüm: Ayrıntı](12h-panel-ayrinti.md) | 12f | ✅ (2026-11-07, ADR-048) |
-| 12i | [Statusline v3 çekirdeği: öğe modeli, biçimler, renkler, Powerline, yeni segmentler](12i-statusline-v3-cekirdek.md) | 12h | 🟨 |
+| 12i | [Statusline v3 çekirdeği: öğe modeli, biçimler, renkler, Powerline, yeni segmentler](12i-statusline-v3-cekirdek.md) | 12h | ✅ (2026-11-08, ADR-049) |
 | 12j | [Statusline düzenleyicisi: ayrı ayarlar sayfası ve UX iyileştirmesi](12j-statusline-duzenleyici.md) | 12i | ⬜ |
 
 ### v0.2 — Analitik ve Atıf
