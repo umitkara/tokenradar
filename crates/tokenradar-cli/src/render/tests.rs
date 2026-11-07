@@ -157,3 +157,58 @@ fn the_measurement_wins_and_the_app_adds_projection_and_share() {
     );
     assert_eq!(line.seven_day, None);
 }
+
+#[test]
+fn a_missing_window_never_falls_back_to_an_estimate_or_an_absent_window() {
+    use tokenradar_core::ipc::{AbsentLimit, StatusReply};
+
+    const NO_FIVE_HOUR: &str = include_str!("../../../../testdata/statusline/no-five-hour.json");
+    let now = Timestamp::from_millis(1_794_000_000_000);
+    let payload = StatuslinePayload::parse(NO_FIVE_HOUR.as_bytes()).expect("payload");
+    let session = |percent: f64, estimated: bool| LimitInfo {
+        kind: "session".into(),
+        scope: None,
+        percent,
+        resets_at: None,
+        source: if estimated { "estimate" } else { "statusline" }.into(),
+        estimated,
+        observed_at: now,
+        freshness: "fresh".into(),
+        eta_100_at: None,
+        will_hit_before_reset: false,
+        projection_confidence: None,
+    };
+
+    // The app's estimated 0 % after a reset is not shown.
+    let mut reply = StatusReply::empty(now);
+    reply.limits = vec![session(0.0, true)];
+    let line = Line::from_sources(Some(&payload), Some(&reply), now);
+    assert_eq!(line.five_hour, None);
+    assert_eq!(plain(Locale::En, &line, None), "◔ 7d 37.4% · 3d10h");
+
+    // The account has no 5-hour window: no segment, whatever the app still holds.
+    reply.limits = vec![session(12.0, false)];
+    reply.absent = vec![AbsentLimit {
+        kind: "session".into(),
+        scope: None,
+    }];
+    let line = Line::from_sources(Some(&payload), Some(&reply), now);
+    assert_eq!(line.five_hour, None);
+
+    // A measurement from the app (another session's reading) still fills the gap.
+    reply.absent.clear();
+    let line = Line::from_sources(Some(&payload), Some(&reply), now);
+    assert_eq!(line.five_hour.map(|w| w.percent), Some(12.0));
+
+    // The payload's own reading wins over "absent": the window came back.
+    reply.absent = vec![AbsentLimit {
+        kind: "session".into(),
+        scope: None,
+    }];
+    let back = StatuslinePayload::parse(
+        br#"{"rate_limits":{"five_hour":{"used_percentage":4,"resets_at":1794010000}}}"#,
+    )
+    .expect("payload");
+    let line = Line::from_sources(Some(&back), Some(&reply), now);
+    assert_eq!(line.five_hour.map(|w| w.percent), Some(4.0));
+}

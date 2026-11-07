@@ -43,6 +43,7 @@ data-from-app = Live data from the TokenRadar app.
 data-from-db = The TokenRadar app is not running; showing the last stored values.
 data-none = No TokenRadar data yet. Start the app once so it can index your sessions.
 no-limits = No limit readings yet.
+limit-absent = { $name }: not on this account.
 no-live-sessions = No running Claude Code sessions.
 updated-ago = updated { DUR($ms) } ago
 estimate-note = ≈ marks estimates, not measurements.

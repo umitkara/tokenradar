@@ -4,11 +4,12 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
-use tokenradar_core::domain::Timestamp;
+use tokenradar_core::domain::{LimitRef, Timestamp};
 use tokenradar_core::ipc::{
-    AccountInfo, Client, Hello, LimitInfo, Op, Origin, PROTOCOL_VERSION, Request, SessionInfo,
-    StatusQuery, StatusReply, with_deadline,
+    AbsentLimit, AccountInfo, Client, Hello, LimitInfo, Op, Origin, PROTOCOL_VERSION, Request,
+    SessionInfo, StatusQuery, StatusReply, with_deadline,
 };
+use tokenradar_core::limits::presence;
 use tokenradar_core::live_sessions::running_sessions;
 use tokenradar_core::statusline::default_config_dir;
 use tokenradar_core::store::ReadOnlyStore;
@@ -74,12 +75,21 @@ fn offline(ctx: &Context, now: Timestamp) -> StatusReply {
             plan: account.spec.plan.clone(),
             tier: account.spec.tier.clone(),
         });
+        // The app's decision about limits this account does not have (ADR-041).
+        let absent = store
+            .kv_get(&presence::kv_key(account.id))
+            .ok()
+            .flatten()
+            .map(|v| presence::decode(&v))
+            .unwrap_or_default();
         status.limits = store
             .latest_snapshots(account.id)
             .unwrap_or_default()
             .iter()
+            .filter(|o| !absent.contains(&LimitRef::of(o)))
             .map(|o| LimitInfo::from_stored(o, now))
             .collect();
+        status.absent = absent.iter().map(AbsentLimit::from_ref).collect();
     }
     let mut dirs: Vec<PathBuf> = ctx
         .config
@@ -136,6 +146,10 @@ fn human(l: &Localizer, s: &StatusReply, report: Report, now: Timestamp) -> Stri
         } else {
             line(limits_table(l, &s.limits, now));
         }
+        for a in &s.absent {
+            let name = limit_name(l, &a.kind, a.scope.as_deref());
+            line(l.fmt("limit-absent", &[("name", Arg::Str(&name))]));
+        }
     }
     if report == Report::Status {
         line(String::new());
@@ -171,13 +185,13 @@ fn ms(ms: i64) -> Arg<'static> {
 
 const NONE: &str = "—";
 
-fn limit_name(l: &Localizer, x: &LimitInfo) -> String {
-    match x.kind.as_str() {
+fn limit_name(l: &Localizer, kind: &str, scope: Option<&str>) -> String {
+    match kind {
         "session" => l.msg("limit-session"),
         "weekly_all" => l.msg("limit-weekly-all"),
         "weekly_scoped" => l.fmt(
             "limit-weekly-scoped",
-            &[("scope", Arg::Str(x.scope.as_deref().unwrap_or(NONE)))],
+            &[("scope", Arg::Str(scope.unwrap_or(NONE)))],
         ),
         other => l.fmt("limit-other", &[("kind", Arg::Str(other))]),
     }
@@ -229,7 +243,7 @@ fn limits_table(l: &Localizer, limits: &[LimitInfo], now: Timestamp) -> String {
                 _ => NONE.to_owned(),
             };
             vec![
-                limit_name(l, x),
+                limit_name(l, &x.kind, x.scope.as_deref()),
                 pct(l, x.percent, x.estimated),
                 resets,
                 source_name(l, &x.source),
@@ -401,6 +415,44 @@ Limit     Used  Resets in  Source      At this rate
 Weekly  ≈34.5%          —  estimate    —
 ≈ marks estimates, not measurements.";
         assert_eq!(out, expected, "\n{out}");
+    }
+
+    #[test]
+    fn an_absent_window_is_named_not_shown() {
+        let now = Timestamp::from_millis(1_793_059_200_000);
+        let mut s = reply(now);
+        s.limits.remove(0);
+        s.absent = vec![AbsentLimit {
+            kind: "session".into(),
+            scope: None,
+        }];
+        let tr = human(
+            &Localizer::new(Locale::Tr, &[Domain::Cli]),
+            &s,
+            Report::Limits,
+            now,
+        );
+        assert!(
+            !tr.contains("%72"),
+            "
+{tr}"
+        );
+        assert!(
+            tr.contains("5 saatlik: bu hesapta yok."),
+            "
+{tr}"
+        );
+        let en = human(
+            &Localizer::new(Locale::En, &[Domain::Cli]),
+            &s,
+            Report::Limits,
+            now,
+        );
+        assert!(
+            en.contains("5-hour: not on this account."),
+            "
+{en}"
+        );
     }
 
     #[test]

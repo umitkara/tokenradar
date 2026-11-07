@@ -43,6 +43,7 @@ data-from-app = TokenRadar uygulamasından canlı veri.
 data-from-db = TokenRadar uygulaması çalışmıyor; son kaydedilen değerler gösteriliyor.
 data-none = Henüz TokenRadar verisi yok. Oturumların indekslenmesi için uygulamayı bir kez başlatın.
 no-limits = Henüz limit verisi yok.
+limit-absent = { $name }: bu hesapta yok.
 no-live-sessions = Çalışan Claude Code oturumu yok.
 updated-ago = { DUR($ms) } önce güncellendi
 estimate-note = ≈ işareti ölçümü değil tahmini gösterir.

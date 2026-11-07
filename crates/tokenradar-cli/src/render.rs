@@ -2,7 +2,9 @@
 //!
 //! The payload Claude Code just sent is the freshest measurement, so its percentages and reset
 //! times win. The app adds what only it knows: the projection (`▲`) and the session's share.
-//! Windows the payload lacks fall back to the app's values.
+//! A window the payload lacks falls back to the app's value only if that is a measurement: the
+//! app's estimates are not shown here, and a window the account does not have (ADR-041) gets
+//! no segment at all.
 
 use tokenradar_core::domain::Timestamp;
 use tokenradar_core::ipc::{LimitInfo, StatusReply};
@@ -58,15 +60,18 @@ impl Line {
         now: Timestamp,
     ) -> Self {
         let app = |kind: &str| reply.and_then(|r| r.limits.iter().find(|l| l.kind == kind));
+        let absent = |kind: &str| reply.is_some_and(|r| r.is_absent(kind));
         Self {
             five_hour: window(
                 payload.and_then(StatuslinePayload::five_hour),
                 app("session"),
+                absent("session"),
                 now,
             ),
             seven_day: window(
                 payload.and_then(StatuslinePayload::seven_day),
                 app("weekly_all"),
+                absent("weekly_all"),
                 now,
             ),
             session_share: reply
@@ -83,8 +88,14 @@ fn until(at: Option<Timestamp>, now: Timestamp) -> Option<i64> {
 fn window(
     measured: Option<&RateWindow>,
     app: Option<&LimitInfo>,
+    absent: bool,
     now: Timestamp,
 ) -> Option<Window> {
+    let measured = measured.filter(|m| m.percent().is_some());
+    // The payload's own reading wins even over "absent": the app flips back on this push.
+    if measured.is_none() && absent {
+        return None;
+    }
     let eta = app
         .filter(|a| a.will_hit_before_reset)
         .and_then(|a| until(a.eta_100_at, now))
@@ -97,7 +108,7 @@ fn window(
             estimated: false,
         }
     } else {
-        let a = app?;
+        let a = app.filter(|a| !a.estimated)?;
         Window {
             percent: a.percent,
             resets_in: until(a.resets_at, now),
