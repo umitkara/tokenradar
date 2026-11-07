@@ -353,6 +353,7 @@ S2 yalnızca **açık onay** varsa kullanılır.
   4. Daemon yoksa veri `spool/statusline-YYYYMMDD.jsonl` dosyasına eklenir (günlük en fazla 5 MB). Uygulama açıldığında spool dosyaları içe aktarılır. Böylece **uygulama kapalıyken bile % geçmişi kaybolmaz**.
   5. Zincirleme modu (`--chain`): Kullanıcının önceki statusline komutu aynı stdin ile çalıştırılır ve çıktısı bizim segmentimizle birleştirilir. Zaman aşımı 300 ms'dir.
   6. Yüzdeler ve reset süreleri stdin'deki payload'dan, projeksiyon ve oturum payı uygulamadan gelir (ADR-029).
+  7. **Satır (v2, ADR-042):** Model ve render `tokenradar_core::statusline::line` içindedir; ayarlar penceresinin önizlemesi de aynı kodu kullanır. Segmentler `five_hour`, `seven_day`, `scoped`, `context`, `session_share`, `cost` ve `model`'dir. Hangilerinin, hangi sırayla ve tek mi iki satırda görüneceği `config.toml`'daki `[statusline]` tablosundan gelir. Her değer kaynağını ve gözlem zamanını taşır. Uygulamadan gelen ve 10 dakikadan eski değer soluk gösterilir. Uygulamanın tahminleri statusline'da gösterilmez.
 - **Diğer komutlar:**
   - `tokenradar status [--json]`, `limits`, `sessions`: Uygulama çalışmıyorsa SQLite'tan salt-okunur okunur.
   - `doctor`: Anonim bir tanılama paketi üretir.

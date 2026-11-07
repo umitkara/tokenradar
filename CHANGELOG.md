@@ -6,6 +6,15 @@ All notable changes to TokenRadar are recorded here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Statusline v2: an 8-cell bar on the limit windows, scoped weekly limits (e.g. Fable), context window, API-equivalent cost and the model. Choose the segments, their order, one or two lines and the bar in Settings or in `[statusline]` in `config.toml`, with a live preview.
+- Every value on the statusline keeps its source and age: app values older than 10 minutes are dimmed, and the app's estimates are never shown there.
+
+### Changed
+
+- The statusline drops the pie glyph; the bar takes its place. Without color (`NO_COLOR`) or in a narrow terminal the bar is left out.
+
 ## [0.1.0] - 2026-10-30
 
 The first public release: Claude Code's usage limits in the Windows tray.

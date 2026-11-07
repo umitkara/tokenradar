@@ -662,3 +662,31 @@
   - **Yok olan limitin track'i silinir.** Böylece tahmin, reset, projeksiyon ve bildirim tek noktadan kapanır; geçmiş `limit_snapshots` tablosunda kalır.
   - **IPC:** `StatusReply`/`LimitsReply`'a `#[serde(default)]` ile `absent` eklendi. `PROTOCOL_VERSION` ve `--json` şeması 1'de kaldı (geriye ve ileriye uyumlu ekleme).
   - **Görünüm:** Tray ve panelde haftalık limit iki halkanın bandını dolduran tek, kalın bir halka olur. Boş iç halka "bilinmiyor" demektir, "yok" değil.
+
+### ADR-042 — Statusline v2: segment modeli core'da, `[statusline]` tablosu, sabit renk eşikleri
+**Durum:** Kabul (2026-11-07, Adım 12c, kullanıcı kararlarıyla)
+- **Bağlam:**
+  - Statusline satırı v1'de CLI'nin `render.rs` dosyasında sabit bir düzendi: pasta glifi, 5 saatlik ve haftalık pencere, oturum payı.
+  - Adım 12c dört şey istedi: bar ve renk, ek bilgi (context, scoped limit, maliyet, model), segment seçimi ve tazelik kuralları.
+  - Ayarlar penceresi canlı önizleme göstermeli, ama UI'da hesap yapılmamalı.
+- **Karar:**
+  - **Satır modeli ve render core'a taşındı** (`tokenradar_core::statusline::line`). CLI satırı Claude Code için, ayarlar penceresi örnek değerlerle önizleme için aynı kodla çizer. Render, boyalı span listesi üretir (`Paint`: `plain`, `dim`, `ok`, `warn`, `crit`). CLI bunu ANSI'ye, UI tema renklerine çevirir.
+  - **Her değer kaynağını ve gözlem zamanını taşır.** Uygulamadan gelen değer `FRESH_MS`'den (10 dk) eskiyse soluk gösterilir. Payload değeri her zaman kazanır (v1 kuralı). Uygulamanın tahminleri statusline'da gösterilmez; payload'daki geçmiş reset `≈ 0 %` olur.
+  - **`[statusline]` tablosu:** `segments`, `layout` (`single` / `double`) ve `bar` alanlarından oluşur. Okuma hiçbir zaman başarısız olmaz: bilinmeyen segment adı atlanır, boş liste varsayılana döner, bozuk tablo varsayılanları kullanır. Bu tablo, kurulum durumunu tutan `[accounts.statusline]`'dan ayrıdır.
+  - **Varsayılan segmentler:** `five_hour`, `seven_day`, `scoped`, `context`, `session_share`, `cost`. Hesapta olmayan pencere (ADR-041) satıra girmez.
+  - **İki satır düzeni:** 1. satırda limitler, 2. satırda oturum bilgisi yer alır. Her satırda kullanıcının sırası korunur.
+  - **Dar terminalde küçülme sırası:** önce oturum segmentleri (sondan), sonra bar, projeksiyon ve reset sayaçları, en son limit segmentleri (sondan; ilki her zaman kalır). `NO_COLOR` altında bar gösterilmez.
+  - **Maliyet etiketi `API $4.12` biçimindedir.** `cost.total_cost_usd` fatura değil, API karşılığı maliyettir.
+  - **Oturum payı değeri yoksa gizlenir.** Pay bugün yalnızca 5 saatlik pencereye göre hesaplanıyor. Haftalık pencereye göre pay Adım 14'ün atıf motoruyla gelecek; segment o zaman kendiliğinden görünür.
+  - **`model.display_name` yalnızca satır için okunur** ve `skip_serializing` ile işaretlenir. Push ve spool satırının biçimi değişmez.
+- **Plandan sapma — renk eşikleri:**
+  - Plan "eşikler ayarlardan gelir" diyordu. Uygulamada renk eşiği diye bir ayar yok; ayarlardaki eşikler bildirim eşikleri.
+  - Kullanıcı kararıyla statusline, tray ve panelle aynı sabit eşikleri kullanır: `WARN_AT` = 75, `CRIT_AT` = 90.
+  - Ayarlanabilir renk eşikleri gerekirse ileride üç yüzey için birlikte ve ayrı bir adımda eklenir.
+- **Bedel:**
+  - Core, CLI'ye özgü bir görünüm kodu taşıyor. Fluent anahtarları yine `cli.ftl` içinde; uygulama önizleme için `Domain::Cli`'yi yüklüyor.
+  - CLI 18 KiB büyüdü. Gecikme değişmedi (`docs/perf/2026-11-07-statusline-v2.md`).
+- **Alternatifler:**
+  - Önizlemeyi UI'da TypeScript ile çizmek: kuralı iki yerde tutmak ve "UI'da hesap yok" kuralını bozmak demekti.
+  - Önizleme için CLI'yi alt süreç olarak çalıştırmak: daha yavaş olur, gerçek pipe'a push gönderme riski taşır.
+  - Yalnızca `[statusline]` tablosunu ayrı ayrıştırmak: gereksiz, çünkü CLI config'i zaten okuyor.

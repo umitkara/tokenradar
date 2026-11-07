@@ -174,6 +174,8 @@ Küçük bir rozet: `canlı` (S1), `API` (S2) veya `tahmini`. Rozetin tooltip'i 
 | Calibration | Kalibrasyon | |
 | Live / API / Estimated | Canlı / API / Tahmini | Kaynak rozetleri |
 | API-equivalent cost | API karşılığı maliyet | İkincil metrik |
+| Context window | Bağlam penceresi | Statusline'da kısa form her dilde "ctx" |
+| (statusline cost) | `API $4,12` | `API` işareti, değerin fatura olmadığını söyler; çıkarılmaz |
 
 **Türkçe yazım kuralları:**
 - Yüzde işareti sayıdan önce yazılır: `%72`.

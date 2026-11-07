@@ -56,6 +56,21 @@ The command shows the change to `~/.claude/settings.json`, asks before writing, 
 
 The bridge is the most accurate source: the numbers come straight from Anthropic, at no extra request. TokenRadar falls back to the usage API (if you allowed it) and then to an estimate from your local logs.
 
+The line itself looks like this on an account without a 5-hour window:
+
+```
+7d ████░░░░ 41% · 3d4h │ Fable 22% │ ctx 38% │ ≈2.1% this session │ API $4.12
+```
+
+`API $4.12` is what the session would cost at API prices, not your bill. Pick the segments, their order, one or two lines and the bar in Settings → Data sources → Statusline bridge, or in `config.toml`:
+
+```toml
+[statusline]
+segments = ["five_hour", "seven_day", "scoped", "context", "session_share", "cost", "model"]
+layout = "double"   # single | double
+bar = true
+```
+
 ## Privacy
 
 TokenRadar is local only. There is no account, no telemetry and no analytics.
