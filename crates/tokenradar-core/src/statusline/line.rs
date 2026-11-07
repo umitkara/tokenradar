@@ -14,7 +14,7 @@
 //! The CLI renders the line for Claude Code; the settings window renders a sample of it as a
 //! preview, through the same code.
 
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::{Deserialize, Serialize};
 use specta::Type;
 
 use super::payload::{RateWindow, StatuslinePayload};
@@ -22,163 +22,17 @@ use crate::domain::{Scope, Source, Timestamp};
 use crate::ipc::{LimitInfo, StatusReply};
 use crate::limits::{FRESH_MS, SESSION_WINDOW_MS, WEEK_MS};
 
+mod prefs;
+mod presets;
 mod render;
 
-pub use render::{Paint, Span, Style, render, spans, to_ansi};
-
-/// One part of the line. The names are the `segments` values in `config.toml`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Type)]
-#[serde(rename_all = "snake_case")]
-pub enum SegmentKind {
-    FiveHour,
-    SevenDay,
-    /// Weekly limits of one model or surface, e.g. Fable's.
-    Scoped,
-    Context,
-    SessionShare,
-    Cost,
-    Model,
-}
-
-impl SegmentKind {
-    pub const ALL: [Self; 7] = [
-        Self::FiveHour,
-        Self::SevenDay,
-        Self::Scoped,
-        Self::Context,
-        Self::SessionShare,
-        Self::Cost,
-        Self::Model,
-    ];
-
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::FiveHour => "five_hour",
-            Self::SevenDay => "seven_day",
-            Self::Scoped => "scoped",
-            Self::Context => "context",
-            Self::SessionShare => "session_share",
-            Self::Cost => "cost",
-            Self::Model => "model",
-        }
-    }
-
-    pub fn parse(s: &str) -> Option<Self> {
-        Self::ALL.into_iter().find(|k| k.as_str() == s)
-    }
-
-    /// A limit window. Limits go on the first line of the double layout and are dropped last
-    /// when the terminal is narrow.
-    pub const fn is_limit(self) -> bool {
-        matches!(self, Self::FiveHour | Self::SevenDay | Self::Scoped)
-    }
-}
-
-/// One line, or limits on the first and the session on the second.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, Type)]
-#[serde(rename_all = "snake_case")]
-pub enum Layout {
-    #[default]
-    Single,
-    Double,
-}
-
-impl Layout {
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::Single => "single",
-            Self::Double => "double",
-        }
-    }
-}
-
-/// The default segments. `five_hour` shows only on accounts that have the window.
-pub const DEFAULT_SEGMENTS: [SegmentKind; 6] = [
-    SegmentKind::FiveHour,
-    SegmentKind::SevenDay,
-    SegmentKind::Scoped,
-    SegmentKind::Context,
-    SegmentKind::SessionShare,
-    SegmentKind::Cost,
-];
-
-/// `[statusline]` in `config.toml`: what the line shows.
-///
-/// ```toml
-/// [statusline]
-/// segments = ["five_hour", "seven_day", "scoped", "context", "session_share", "cost"]
-/// layout = "single"   # single | double
-/// bar = true
-/// pace = true
-/// ```
-///
-/// Reading never fails: unknown segment names are skipped, an unknown layout is `single`, and
-/// a list left empty (or holding only unknown names) is the default.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Type)]
-pub struct StatuslinePrefs {
-    pub segments: Vec<SegmentKind>,
-    pub layout: Layout,
-    /// The 8-cell bar on the 5-hour and weekly windows. Dropped without color and when narrow.
-    pub bar: bool,
-    /// How much of the window's time has passed: a `│` mark on the bar and `⏱43%` after the
-    /// value (ADR-044). Added in 0.1.1; absent from older files, so it defaults to on.
-    pub pace: bool,
-}
-
-impl Default for StatuslinePrefs {
-    fn default() -> Self {
-        Self {
-            segments: DEFAULT_SEGMENTS.to_vec(),
-            layout: Layout::Single,
-            bar: true,
-            pace: true,
-        }
-    }
-}
-
-impl StatuslinePrefs {
-    /// Without duplicates; an empty list becomes the default.
-    #[must_use]
-    pub fn normalized(mut self) -> Self {
-        let mut seen = Vec::with_capacity(self.segments.len());
-        self.segments.retain(|k| {
-            let new = !seen.contains(k);
-            seen.push(*k);
-            new
-        });
-        if self.segments.is_empty() {
-            self.segments = DEFAULT_SEGMENTS.to_vec();
-        }
-        self
-    }
-}
-
-impl<'de> Deserialize<'de> for StatuslinePrefs {
-    fn deserialize<D: Deserializer<'de>>(de: D) -> Result<Self, D::Error> {
-        #[derive(Default, Deserialize)]
-        #[serde(default)]
-        struct Raw {
-            segments: Option<Vec<String>>,
-            layout: Option<String>,
-            bar: Option<bool>,
-            pace: Option<bool>,
-        }
-        let raw = Raw::deserialize(de)?;
-        let default = Self::default();
-        Ok(Self {
-            segments: raw.segments.map_or(default.segments, |names| {
-                names.iter().filter_map(|n| SegmentKind::parse(n)).collect()
-            }),
-            layout: match raw.layout.as_deref() {
-                Some("double") => Layout::Double,
-                _ => Layout::Single,
-            },
-            bar: raw.bar.unwrap_or(default.bar),
-            pace: raw.pace.unwrap_or(default.pace),
-        }
-        .normalized())
-    }
-}
+pub use prefs::{
+    AnsiColor, ColorMode, DEFAULT_SEGMENTS, DEFAULT_SEPARATOR, Format, Group, Imported, Item,
+    Layout, MAX_ITEMS, MAX_LABEL, MAX_SEPARATOR, MAX_TEXT, SegmentKind, StatuslinePrefs, Theme,
+    clean,
+};
+pub use presets::Preset;
+pub use render::{Paint, Span, Style, default_label, render, spans, to_ansi};
 
 /// A value with where it came from and when.
 #[derive(Debug, Clone, PartialEq)]
@@ -242,6 +96,47 @@ pub struct Line {
     /// `cost.total_cost_usd`: what the session would cost at API prices, not a bill.
     pub cost: Option<Reading<f64>>,
     pub model: Option<Reading<String>>,
+    /// The rest of the payload's metadata, for the items added in Step 12i. All of it comes
+    /// from the payload Claude Code just sent, so it is always current.
+    pub facts: Facts,
+}
+
+/// Session and project metadata from the payload.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Facts {
+    /// `model.id`; [`Line::model`] holds the display name when there is one.
+    pub model_id: Option<String>,
+    /// Tokens in the context window now, and its size.
+    pub tokens_in: Option<u64>,
+    pub tokens_out: Option<u64>,
+    pub context_size: Option<u64>,
+    pub duration_ms: Option<u64>,
+    pub api_duration_ms: Option<u64>,
+    /// Lines added and removed.
+    pub lines: Option<(u64, u64)>,
+    pub vim_mode: Option<String>,
+    pub version: Option<String>,
+    pub agent_name: Option<String>,
+    pub session_id: Option<String>,
+    pub cwd: Option<String>,
+    pub project_dir: Option<String>,
+    /// The worktree branch from the payload, else filled by the caller (reading `.git` is
+    /// I/O); see [`super::git::branch`].
+    pub git_branch: Option<String>,
+    /// The home folder, for paths shown with `~`.
+    pub home: Option<String>,
+}
+
+/// The state the settings preview draws its sample in.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "snake_case")]
+pub enum SampleState {
+    #[default]
+    Normal,
+    Warn,
+    Crit,
+    /// The app's values are older than [`FRESH_MS`].
+    Stale,
 }
 
 impl Line {
@@ -256,6 +151,7 @@ impl Line {
             session_share: None,
             cost: None,
             model: None,
+            facts: Facts::default(),
         }
     }
 
@@ -316,6 +212,7 @@ impl Line {
                 .map(|name| name.trim())
                 .filter(|name| !name.is_empty())
                 .map(|name| Reading::now(name.to_owned(), Source::Statusline, now)),
+            facts: payload.map(facts).unwrap_or_default(),
         }
     }
 
@@ -327,7 +224,22 @@ impl Line {
     /// A sample for the settings preview: every segment filled with typical values. The
     /// 5-hour window is left out when `five_hour` is false (an account without it).
     pub fn sample(at: Timestamp, five_hour: bool) -> Self {
+        Self::sample_in(at, five_hour, SampleState::Normal)
+    }
+
+    /// [`Line::sample`] in a given state: past the warning or the critical threshold, or
+    /// with the app's values gone stale.
+    pub fn sample_in(at: Timestamp, five_hour: bool, state: SampleState) -> Self {
         const MIN: i64 = 60_000;
+        let (five, seven, context) = match state {
+            SampleState::Normal | SampleState::Stale => (72.0, 41.0, 38.0),
+            SampleState::Warn => (84.0, 78.0, 81.0),
+            SampleState::Crit => (96.0, 93.0, 92.0),
+        };
+        let app_at = match state {
+            SampleState::Stale => Timestamp::from_millis(at.as_millis() - 15 * MIN),
+            _ => at,
+        };
         let w = |percent: f64, resets_in: i64, length: i64| Window {
             percent,
             resets_in: Some(resets_in),
@@ -340,21 +252,92 @@ impl Line {
             at,
             five_hour: five_hour.then(|| Window {
                 eta: Some(38 * MIN),
-                ..w(72.0, 108 * MIN, SESSION_WINDOW_MS)
+                ..w(five, 108 * MIN, SESSION_WINDOW_MS)
             }),
-            seven_day: Some(w(41.0, (3 * 24 + 4) * 60 * MIN, WEEK_MS)),
+            seven_day: Some(Window {
+                // Stale: the payload had no weekly reading, the app's API value stands in.
+                source: if state == SampleState::Stale {
+                    Source::Api
+                } else {
+                    Source::Statusline
+                },
+                observed_at: app_at,
+                ..w(seven, (3 * 24 + 4) * 60 * MIN, WEEK_MS)
+            }),
             scoped: vec![ScopedWindow {
                 label: "Fable".into(),
                 window: Window {
                     source: Source::Api,
+                    observed_at: app_at,
                     ..w(22.0, (3 * 24 + 4) * 60 * MIN, WEEK_MS)
                 },
             }],
-            context: Some(Reading::now(38.0, Source::Statusline, at)),
-            session_share: Some(Reading::now(2.1, Source::Estimate, at)),
+            context: Some(Reading::now(context, Source::Statusline, at)),
+            session_share: Some(Reading {
+                value: 2.1,
+                source: Source::Estimate,
+                observed_at: app_at,
+            }),
             cost: Some(Reading::now(4.12, Source::Statusline, at)),
             model: Some(Reading::now("Opus 5.5".into(), Source::Statusline, at)),
+            facts: Facts {
+                model_id: Some("claude-opus-5-5".into()),
+                tokens_in: Some(76_000),
+                tokens_out: Some(1_200),
+                context_size: Some(200_000),
+                duration_ms: Some(1_234_567),
+                api_duration_ms: Some(345_678),
+                lines: Some((156, 23)),
+                vim_mode: Some("NORMAL".into()),
+                version: Some("2.1.310".into()),
+                agent_name: Some("reviewer".into()),
+                session_id: Some("a813d09f-4c1e-4b7a-9d2f-6e5b0c3a1f88".into()),
+                cwd: Some("/home/ada/projects/alpha/src".into()),
+                project_dir: Some("/home/ada/projects/alpha".into()),
+                git_branch: Some("main".into()),
+                home: Some("/home/ada".into()),
+            },
         }
+    }
+}
+
+/// The payload's metadata for [`Facts`]; numbers that are not usable counts are left out.
+fn facts(p: &StatuslinePayload) -> Facts {
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    let count = |v: Option<f64>| v.filter(|v| v.is_finite() && *v >= 0.0).map(|v| v as u64);
+    let text = |v: Option<&String>| Some(clean(v?.trim(), 256)).filter(|s| !s.is_empty());
+    let cost = p.cost.as_ref();
+    let ctx = p.context_window.as_ref();
+    let workspace = p.workspace.as_ref();
+    Facts {
+        model_id: text(p.model.as_ref().and_then(|m| m.id.as_ref())),
+        tokens_in: count(ctx.and_then(|c| c.total_input_tokens)),
+        tokens_out: count(ctx.and_then(|c| c.total_output_tokens)),
+        context_size: count(ctx.and_then(|c| c.context_window_size)).filter(|n| *n > 0),
+        duration_ms: count(cost.and_then(|c| c.total_duration_ms)),
+        api_duration_ms: count(cost.and_then(|c| c.total_api_duration_ms)),
+        lines: match (
+            count(cost.and_then(|c| c.total_lines_added)),
+            count(cost.and_then(|c| c.total_lines_removed)),
+        ) {
+            (None, None) => None,
+            (added, removed) => Some((added.unwrap_or(0), removed.unwrap_or(0))),
+        },
+        vim_mode: text(p.vim.as_ref().and_then(|v| v.mode.as_ref())),
+        version: text(p.version.as_ref()),
+        agent_name: text(p.agent.as_ref().and_then(|a| a.name.as_ref())),
+        session_id: text(p.session_id.as_ref()),
+        cwd: text(
+            workspace
+                .and_then(|w| w.current_dir.as_ref())
+                .or(p.cwd.as_ref()),
+        ),
+        project_dir: text(workspace.and_then(|w| w.project_dir.as_ref())),
+        git_branch: text(p.worktree.as_ref().and_then(|w| w.branch.as_ref())),
+        home: std::env::var("USERPROFILE")
+            .or_else(|_| std::env::var("HOME"))
+            .ok()
+            .filter(|h| !h.is_empty()),
     }
 }
 

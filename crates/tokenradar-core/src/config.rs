@@ -502,9 +502,14 @@ pub fn save_advanced(path: &Path, advanced: &AdvancedConfig) -> Result<(), Confi
     save_section(path, "advanced", advanced)
 }
 
-/// Stores `[statusline]` (normalized).
+/// Stores `[statusline]` (normalized): the items, and the 12c keys for older builds. Keys this
+/// build does not know are kept.
 pub fn save_statusline_prefs(path: &Path, prefs: &StatuslinePrefs) -> Result<(), ConfigError> {
-    save_section(path, "statusline", &prefs.clone().normalized())
+    let prefs = prefs.clone().normalized();
+    edit(path, |doc| {
+        prefs.write_toml(table_mut(doc.as_table_mut(), "statusline"), true);
+        Ok(())
+    })
 }
 
 fn save_section<T: Serialize>(path: &Path, name: &str, section: &T) -> Result<(), ConfigError> {

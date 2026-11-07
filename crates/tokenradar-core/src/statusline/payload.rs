@@ -31,6 +31,43 @@ pub struct StatuslinePayload {
     pub rate_limits: Option<RateLimits>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub version: Option<String>,
+    /// The fields below are for the line only (Step 12i) and are never serialized: the push
+    /// and the spool stay as they were. All are metadata; no conversation content is read.
+    #[serde(default, skip_serializing)]
+    pub workspace: Option<WorkspaceInfo>,
+    #[serde(default, skip_serializing)]
+    pub vim: Option<VimInfo>,
+    #[serde(default, skip_serializing)]
+    pub agent: Option<AgentInfo>,
+    #[serde(default, skip_serializing)]
+    pub worktree: Option<WorktreeInfo>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+pub struct WorkspaceInfo {
+    #[serde(default)]
+    pub current_dir: Option<String>,
+    #[serde(default)]
+    pub project_dir: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+pub struct VimInfo {
+    #[serde(default)]
+    pub mode: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+pub struct AgentInfo {
+    #[serde(default)]
+    pub name: Option<String>,
+}
+
+/// Present only while the session is in a Claude Code worktree session.
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+pub struct WorktreeInfo {
+    #[serde(default)]
+    pub branch: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -47,12 +84,28 @@ pub struct ModelInfo {
 pub struct CostInfo {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub total_cost_usd: Option<f64>,
+    /// For the line only, never serialized (Step 12i).
+    #[serde(default, skip_serializing)]
+    pub total_duration_ms: Option<f64>,
+    #[serde(default, skip_serializing)]
+    pub total_api_duration_ms: Option<f64>,
+    #[serde(default, skip_serializing)]
+    pub total_lines_added: Option<f64>,
+    #[serde(default, skip_serializing)]
+    pub total_lines_removed: Option<f64>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct ContextInfo {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub used_percentage: Option<f64>,
+    /// For the line only, never serialized (Step 12i): tokens in the context window now.
+    #[serde(default, skip_serializing)]
+    pub total_input_tokens: Option<f64>,
+    #[serde(default, skip_serializing)]
+    pub total_output_tokens: Option<f64>,
+    #[serde(default, skip_serializing)]
+    pub context_window_size: Option<f64>,
 }
 
 /// Each window can be missing on its own: Claude Code drops a window once its `resets_at` passed.

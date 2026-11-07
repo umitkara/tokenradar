@@ -36,20 +36,12 @@ fn with_five_hour() -> Line {
 }
 
 fn prefs(segments: &[SegmentKind], layout: Layout, bar: bool) -> StatuslinePrefs {
-    StatuslinePrefs {
-        segments: segments.to_vec(),
-        layout,
-        bar,
-        pace: false,
-    }
+    StatuslinePrefs::legacy(segments, layout, bar, false)
 }
 
 /// The default segments without the time mark: the 12c line, which most tests pin.
 fn classic() -> StatuslinePrefs {
-    StatuslinePrefs {
-        pace: false,
-        ..StatuslinePrefs::default()
-    }
+    prefs(&DEFAULT_SEGMENTS, Layout::Single, true)
 }
 
 fn draw(locale: Locale, line: &Line, prefs: &StatuslinePrefs, width: Option<usize>) -> String {
@@ -109,11 +101,9 @@ fn segments_and_order_follow_the_prefs() {
 
 #[test]
 fn the_double_layout_puts_limits_first_and_the_session_second() {
-    let mut p = StatuslinePrefs {
-        layout: Layout::Double,
-        ..classic()
-    };
-    p.segments.push(SegmentKind::Model);
+    let mut segments = DEFAULT_SEGMENTS.to_vec();
+    segments.push(SegmentKind::Model);
+    let p = prefs(&segments, Layout::Double, true);
     assert_eq!(
         draw(Locale::En, &weekly_only(), &p, None),
         "7d ████░░░░ 41% · 3d4h │ Fable 22%\nctx 38% │ ≈2.1% this session │ API $4.12 │ Opus 5.5"
@@ -438,19 +428,23 @@ fn prefs_read_leniently() {
     );
     assert_eq!(
         p,
-        StatuslinePrefs {
-            pace: true,
-            ..prefs(&[Cost, SevenDay, Context], Layout::Double, false)
-        }
+        StatuslinePrefs::legacy(&[Cost, SevenDay, Context], Layout::Double, false, true)
     );
-    assert!(!read("pace = false").pace);
+    let no_pace = read("pace = false");
+    assert!(
+        no_pace
+            .items
+            .iter()
+            .filter(|i| i.kind.is_limit() && i.kind != SegmentKind::Scoped)
+            .all(|i| !i.pace)
+    );
     // Unknown layout, an empty list or only unknown names: the defaults.
     let p = read(
         r#"segments = ["rainbow"]
                     layout = "triple""#,
     );
     assert_eq!(p, StatuslinePrefs::default());
-    assert_eq!(read("segments = []").segments, DEFAULT_SEGMENTS.to_vec());
+    assert_eq!(read("segments = []"), StatuslinePrefs::default());
 }
 
 #[test]
@@ -470,10 +464,7 @@ fn the_time_mark_sits_between_cells_and_the_text_follows_the_value() {
     assert_eq!(render::mark_at(44.0), 4);
     assert_eq!(render::mark_at(100.0), 8);
 
-    let p = StatuslinePrefs {
-        segments: vec![SegmentKind::SevenDay],
-        ..StatuslinePrefs::default()
-    };
+    let p = StatuslinePrefs::legacy(&[SegmentKind::SevenDay], Layout::Single, true, true);
     let mut line = weekly_only();
     // 41 % used, 43 % of the week gone: the mark stands in the empty part.
     line.seven_day = Some(Window {
@@ -498,20 +489,14 @@ fn the_time_mark_sits_between_cells_and_the_text_follows_the_value() {
         "7d ██│████░░ 72% ⏱20% · 3d"
     );
     // Off in the prefs: neither the mark nor the text.
-    let off = StatuslinePrefs {
-        pace: false,
-        ..p.clone()
-    };
+    let off = StatuslinePrefs::legacy(&[SegmentKind::SevenDay], Layout::Single, true, false);
     assert_eq!(draw(Locale::En, &line, &off, None), "7d ██████░░ 72% · 3d");
 }
 
 #[test]
 fn without_color_the_elapsed_text_stays_and_narrow_drops_it_after_the_bar() {
     let l = Localizer::new(Locale::En, &[Domain::Cli]);
-    let p = StatuslinePrefs {
-        segments: vec![SegmentKind::SevenDay],
-        ..StatuslinePrefs::default()
-    };
+    let p = StatuslinePrefs::legacy(&[SegmentKind::SevenDay], Layout::Single, true, true);
     let mut line = weekly_only();
     line.seven_day = Some(Window {
         elapsed: Some(43.0),
@@ -542,3 +527,5 @@ fn the_payload_window_gets_its_elapsed_time() {
     assert!(expected.is_some());
     assert_eq!(w.elapsed, expected);
 }
+
+mod v3;

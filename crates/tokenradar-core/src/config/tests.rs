@@ -370,17 +370,17 @@ fn statusline_prefs_are_their_own_table_and_never_break_the_file() {
     let dir = tempfile::tempdir().expect("tempdir");
     let path = dir.path().join("config.toml");
     std::fs::write(&path, "[statusline]\n# mine\nfuture_key = 1\n").expect("seed");
-    let prefs = StatuslinePrefs {
-        segments: vec![SegmentKind::Cost, SegmentKind::SevenDay, SegmentKind::Cost],
-        layout: Layout::Double,
-        bar: false,
-        pace: false,
-    };
+    let prefs = StatuslinePrefs::legacy(
+        &[SegmentKind::Cost, SegmentKind::SevenDay, SegmentKind::Cost],
+        Layout::Double,
+        false,
+        false,
+    );
     save_statusline_prefs(&path, &prefs).expect("save");
     let text = std::fs::read_to_string(&path).expect("read");
     assert!(text.contains("# mine\nfuture_key = 1"), "{text}");
     assert!(
-        text.contains(r#"segments = ["cost", "seven_day"]"#),
+        text.contains(r#"segments = ["seven_day", "cost"]"#),
         "{text}"
     );
     let cfg = AppConfig::load(&path).expect("load");

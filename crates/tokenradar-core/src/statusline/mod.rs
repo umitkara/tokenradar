@@ -7,6 +7,7 @@
 //! ```
 
 pub mod claude_mod;
+pub mod git;
 pub mod install;
 pub mod line;
 pub mod payload;

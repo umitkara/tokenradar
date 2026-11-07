@@ -11,9 +11,22 @@ sl-eta = ▲{ DUR($ms, "compact") }
 sl-elapsed = ⏱{ PCT($pct) }
 sl-session-share = ≈{ PCT($pct) } bu oturum
 # Bağlam penceresinin doluluğu. `ctx` kısa formu her dilde aynı kalır.
-sl-context = ctx { PCT($pct) }
+sl-label-context = ctx
 # Oturumun API fiyatlarıyla maliyeti (`cost.total_cost_usd`); fatura değildir. `API` işareti kalmalı.
 sl-cost = API ${ NUM($usd, 2) }
+sl-cost-precise = API ${ NUM($usd, 4) }
+# Bağlam penceresindeki token'lar: girdi (önbellek dahil) ve son çıktı.
+sl-label-tokens-in = girdi
+sl-label-tokens-out = çıktı
+# Oturum süresi ve API'yi bekleyerek geçen süre.
+sl-label-duration = süre
+sl-label-api-duration = api
+sl-label-git = git
+sl-duration = { DUR($ms, "compact") }
+# Sayılar. `k` ve `M` kısa formları her dilde aynı kalır.
+sl-number = { NUM($n, 0) }
+sl-thousands = { NUM($n, $d) }k
+sl-millions = { NUM($n, $d) }M
 sl-no-limits = henüz limit verisi yok
 
 ## Tablolar

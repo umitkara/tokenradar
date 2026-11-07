@@ -11,9 +11,22 @@ sl-eta = ▲{ DUR($ms, "compact") }
 sl-elapsed = ⏱{ PCT($pct) }
 sl-session-share = ≈{ PCT($pct) } this session
 # How full the context window is. `ctx` stays as the short form in every language.
-sl-context = ctx { PCT($pct) }
+sl-label-context = ctx
 # What the session would cost at API prices (`cost.total_cost_usd`); not a bill. Keep the `API` mark.
 sl-cost = API ${ NUM($usd, 2) }
+sl-cost-precise = API ${ NUM($usd, 4) }
+# Tokens in the context window now: input (with cache) and the last output.
+sl-label-tokens-in = in
+sl-label-tokens-out = out
+# Session time, and the time spent waiting for the API.
+sl-label-duration = time
+sl-label-api-duration = api
+sl-label-git = git
+sl-duration = { DUR($ms, "compact") }
+# Counts. `k` and `M` stay as the short forms in every language.
+sl-number = { NUM($n, 0) }
+sl-thousands = { NUM($n, $d) }k
+sl-millions = { NUM($n, $d) }M
 sl-no-limits = no limit data yet
 
 ## Tables
