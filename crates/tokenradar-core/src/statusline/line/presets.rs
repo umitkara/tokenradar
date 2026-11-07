@@ -63,7 +63,7 @@ impl Preset {
                     Item::new(K::Cost),
                     Item::new(K::LineBreak),
                     Item::new(K::Model).with_color(AnsiColor::BrightBlue),
-                    Item::new(K::Cwd).with_color(AnsiColor::Blue),
+                    Item::new(K::Cwd).with_color(AnsiColor::BrightMagenta),
                     Item::new(K::GitBranch).with_color(AnsiColor::Green),
                     Item::new(K::LinesChanged),
                     Item::new(K::Duration),

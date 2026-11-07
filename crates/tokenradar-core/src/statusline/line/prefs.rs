@@ -416,6 +416,19 @@ impl AnsiColor {
             Self::Black | Self::Red | Self::Blue | Self::Magenta => Self::BrightWhite,
         }
     }
+
+    /// Dim text on a block of this color. SGR dim does not show on black text, so estimates
+    /// and stale values get a grey instead, where the block leaves room for one.
+    #[must_use]
+    pub const fn muted(self) -> Self {
+        match self.contrast() {
+            Self::BrightWhite => Self::White,
+            _ => match self {
+                Self::Gray | Self::White => Self::Black,
+                _ => Self::Gray,
+            },
+        }
+    }
 }
 
 impl Theme {

@@ -233,6 +233,17 @@ fn powerline_draws_blocks_and_falls_back_without_color() {
         },
     );
     assert_eq!(plain, "7d 41% ⏱54.8% · 3d4h │ API $4.12 │ Opus 5.5");
+    // A bar would be drawn in the block's text color, full and empty cells alike: left out.
+    let barred = StatuslinePrefs {
+        theme: Theme::Powerline,
+        ..with(vec![
+            Item::new(SegmentKind::SevenDay).with_format(Format::Bar),
+            Item::new(SegmentKind::Context).with_format(Format::Bar),
+        ])
+    };
+    let out = ansi(&line, &barred);
+    assert!(!out.contains('█') && !out.contains('░'), "{out:?}");
+    assert!(strip(&out).contains("41%"), "{out:?}");
     // Two blocks of one color are joined by the thin glyph.
     let same = StatuslinePrefs {
         theme: Theme::PowerlineRound,
@@ -466,4 +477,14 @@ fn payload_metadata_reaches_the_facts() {
     ] {
         assert!(!json.contains(field), "{field} in {json}");
     }
+}
+
+#[test]
+fn stale_values_stay_grey_inside_powerline_blocks() {
+    // SGR dim does not show on black text: the block draws it in grey instead.
+    let stale = Line::sample_in(Timestamp::now(), true, SampleState::Stale);
+    let out = ansi(&stale, &Preset::Powerline.prefs());
+    assert!(out.contains("\x1b[2;90;46m41%\x1b[0m"), "{out:?}");
+    assert_eq!(AnsiColor::Blue.muted(), AnsiColor::White);
+    assert_eq!(AnsiColor::Gray.muted(), AnsiColor::Black);
 }

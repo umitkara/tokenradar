@@ -15,7 +15,8 @@
 //! Colors (ADR-049): an item's own color replaces the automatic one, but on limits and the
 //! context window only below the warning threshold: the warning and critical colors, and the
 //! dim drawing of estimates and stale values, always win. Without color the Powerline themes
-//! fall back to the plain one and the bar is left out.
+//! fall back to the plain one and the bar is left out. The Powerline blocks leave the bar out
+//! too: drawn in the block's text color, its full and empty cells look alike.
 
 use serde::Serialize;
 use specta::Type;
@@ -112,6 +113,11 @@ struct Ctx<'a> {
 impl Ctx<'_> {
     fn kind(&self, i: usize) -> SegmentKind {
         self.items[i].kind
+    }
+
+    /// Whether bars are drawn: only in color, and only on the plain theme.
+    fn bars(&self) -> bool {
+        self.color && self.theme == Theme::Plain
     }
 }
 
@@ -284,13 +290,13 @@ fn compose_blocks(ctx: &Ctx<'_>, idx: &[usize], d: Detail, full: char, thin: cha
         }
         out.push(block(" ", Paint::Plain, fg, bg, Some(tag(i))));
         for s in spans {
-            // The block's color carries the severity; inside it only dim stays.
-            let paint = if s.paint == Paint::Dim {
-                Paint::Dim
+            // The block's color carries the severity; inside it only dim stays, in a grey
+            // that shows (ADR-049: estimates and stale values stay told apart).
+            if s.paint == Paint::Dim {
+                out.push(block(&s.text, Paint::Dim, bg.muted(), bg, Some(tag(i))));
             } else {
-                Paint::Plain
-            };
-            out.push(block(&s.text, paint, fg, bg, Some(tag(i))));
+                out.push(block(&s.text, Paint::Plain, fg, bg, Some(tag(i))));
+            }
         }
         out.push(block(" ", Paint::Plain, fg, bg, Some(tag(i))));
         prev = Some(bg);
@@ -404,7 +410,7 @@ fn piece(ctx: &Ctx<'_>, i: usize, d: Detail) -> Option<Vec<Span>> {
                 _ => line.seven_day.as_ref(),
             }?;
             let d = Detail {
-                bar: d.bar && ctx.color && item.format == Some(Format::Bar),
+                bar: d.bar && ctx.bars() && item.format == Some(Format::Bar),
                 pace: d.pace && item.pace,
                 eta: d.eta,
                 resets: d.resets && item.reset,
@@ -432,7 +438,7 @@ fn piece(ctx: &Ctx<'_>, i: usize, d: Detail) -> Option<Vec<Span>> {
             let label = lbl();
             let pct = l.fmt("sl-percent", &[("pct", Arg::Num(r.value))]);
             Some(match item.format {
-                Some(Format::Bar) if d.bar && ctx.color => {
+                Some(Format::Bar) if d.bar && ctx.bars() => {
                     let mut out = Vec::new();
                     if !label.is_empty() {
                         out.push(span(format!("{label} "), paint));
