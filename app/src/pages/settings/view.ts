@@ -5,6 +5,7 @@ import type { Args } from "../../lib/i18n/fluent";
 import type {
   ApiConsentView,
   PickError,
+  SegmentKind,
   SettingsSection,
   StatuslineError,
   UpdateView,
@@ -213,4 +214,66 @@ export function updateUi(u: UpdateView, now: number): UpdateUi {
     download: u.available !== null && !u.can_install,
     busy,
   };
+}
+
+/** Every statusline segment, in the default order (the core's `SegmentKind::ALL`). */
+export const SEGMENTS = [
+  "five_hour",
+  "seven_day",
+  "scoped",
+  "context",
+  "session_share",
+  "cost",
+  "model",
+] as const satisfies readonly SegmentKind[];
+
+// Fails to compile when the core adds a segment this list lacks.
+type MissingSegment = Exclude<SegmentKind, (typeof SEGMENTS)[number]>;
+export const SEGMENTS_COMPLETE: [MissingSegment] extends [never] ? true : never = true;
+
+/** The Fluent key naming a segment in the picker. */
+export function segmentLabelKey(kind: SegmentKind): string {
+  return `statusline-segment-${kind.replaceAll("_", "-")}`;
+}
+
+export interface SegmentRow {
+  kind: SegmentKind;
+  enabled: boolean;
+  /** Position among the enabled segments; `null` when off. */
+  index: number | null;
+}
+
+/** The rows of the segment picker: the enabled ones in their order, then the rest. */
+export function segmentRows(enabled: readonly SegmentKind[]): SegmentRow[] {
+  const on = enabled.map((kind, index) => ({ kind, enabled: true, index }));
+  const off = SEGMENTS.filter((k) => !enabled.includes(k)).map((kind) => ({
+    kind,
+    enabled: false,
+    index: null,
+  }));
+  return [...on, ...off];
+}
+
+/** `enabled` with `kind` switched on (appended) or off. The last one cannot be switched off. */
+export function toggleSegment(
+  enabled: readonly SegmentKind[],
+  kind: SegmentKind,
+  on: boolean,
+): SegmentKind[] {
+  if (on) return enabled.includes(kind) ? [...enabled] : [...enabled, kind];
+  const next = enabled.filter((k) => k !== kind);
+  return next.length === 0 ? [...enabled] : next;
+}
+
+/** `enabled` with the segment at `index` moved one place up (`-1`) or down (`1`). */
+export function moveSegment(
+  enabled: readonly SegmentKind[],
+  index: number,
+  by: -1 | 1,
+): SegmentKind[] {
+  const to = index + by;
+  const next = [...enabled];
+  if (index < 0 || index >= next.length || to < 0 || to >= next.length) return next;
+  [next[index], next[to]] = [next[to] as SegmentKind, next[index] as SegmentKind];
+  return next;
 }

@@ -105,6 +105,28 @@ statusline-error-changed-meanwhile = settings.json changed while this was open. 
 statusline-error-stale-plan = These changes are out of date. Nothing was written; review them again.
 statusline-error-io = The file could not be written. Nothing was changed.
 
+## Data sources: statusline appearance
+
+statusline-look = Appearance
+statusline-look-hint = What the line in Claude Code shows. Changes apply from its next update.
+statusline-preview = Preview with sample values
+statusline-segments = Segments, in order
+statusline-segment-five-hour = 5-hour window
+statusline-segment-seven-day = Weekly limit
+statusline-segment-scoped = Model limits (e.g. Fable)
+statusline-segment-context = Context window
+statusline-segment-session-share = This session's share
+statusline-segment-cost = API-equivalent cost
+statusline-segment-model = Model
+statusline-segment-absent = not on this account
+statusline-move-up = Move up
+statusline-move-down = Move down
+statusline-layout = Layout
+statusline-layout-single = One line
+statusline-layout-double = Two lines: limits, then session
+statusline-bar = Progress bar
+statusline-bar-hint = Left out when the terminal has no color or is too narrow.
+
 ## Data sources: usage API
 
 api-title = Usage API

@@ -5,11 +5,16 @@ import {
   apiStatus,
   consentAge,
   MAX_THRESHOLDS,
+  moveSegment,
   optionsWith,
   parseThreshold,
   removeThreshold,
+  SEGMENTS,
+  segmentLabelKey,
+  segmentRows,
   sizeMessage,
   targetFor,
+  toggleSegment,
   updateUi,
 } from "./view";
 
@@ -169,5 +174,30 @@ describe("updateUi", () => {
     );
     expect(ui.install).toBe(true);
     expect(ui.lines).toContainEqual({ key: "about-update-install-failed" });
+  });
+});
+
+describe("statusline segments", () => {
+  it("lists the enabled segments in order, then the rest", () => {
+    const rows = segmentRows(["cost", "seven_day"]);
+    expect(rows.slice(0, 3)).toEqual([
+      { kind: "cost", enabled: true, index: 0 },
+      { kind: "seven_day", enabled: true, index: 1 },
+      { kind: "five_hour", enabled: false, index: null },
+    ]);
+    expect(rows.map((r) => r.kind).sort()).toEqual([...SEGMENTS].sort());
+    expect(segmentLabelKey("session_share")).toBe("statusline-segment-session-share");
+  });
+
+  it("appends a switched-on segment and keeps the last one on", () => {
+    expect(toggleSegment(["cost"], "model", true)).toEqual(["cost", "model"]);
+    expect(toggleSegment(["cost", "model"], "cost", false)).toEqual(["model"]);
+    expect(toggleSegment(["cost"], "cost", false)).toEqual(["cost"]);
+  });
+
+  it("moves a segment within bounds", () => {
+    expect(moveSegment(["a", "b", "c"] as never, 1, -1)).toEqual(["b", "a", "c"]);
+    expect(moveSegment(["a", "b"] as never, 1, 1)).toEqual(["a", "b"]);
+    expect(moveSegment(["a", "b"] as never, 0, -1)).toEqual(["a", "b"]);
   });
 });

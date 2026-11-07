@@ -18,6 +18,9 @@ export const commands = {
 	setDataPrefs: (data: DataConfig) => typedError<PrefsView, string>(__TAURI_INVOKE("set_data_prefs", { data })),
 	setLogLevel: (level: LogLevel) => typedError<PrefsView, string>(__TAURI_INVOKE("set_log_level", { level })),
 	setPanelWarmTtl: (seconds: number) => typedError<PrefsView, string>(__TAURI_INVOKE("set_panel_warm_ttl", { seconds })),
+	setStatuslinePrefs: (prefs: StatuslinePrefs) => typedError<PrefsView, string>(__TAURI_INVOKE("set_statusline_prefs", { prefs })),
+	/**  The statusline drawn with `prefs` on sample values, as painted spans per line. */
+	previewStatusline: (prefs: StatuslinePrefs) => __TAURI_INVOKE<StatuslinePreview>("preview_statusline", { prefs }),
 	/**
 	 *  Whether the app starts with Windows. The OS entry is the truth, not `config.toml`: the
 	 *  user can also turn it off in Task Manager.
@@ -290,6 +293,9 @@ export type IndexState = {
 	drift: SchemaDriftView | null,
 };
 
+/**  One line, or limits on the first and the session on the second. */
+export type Layout = "single" | "double";
+
 /**  Signals for the notifier (Step 11), which applies its own rules, hysteresis and quiet hours. */
 export type LimitEvent = 
 /**  A limit rose past one of [`THRESHOLDS`] within one window. */
@@ -398,6 +404,11 @@ export type OsFlavor =
 /**  No usable backdrop: opaque surfaces (design-language.md §4). */
 "win10";
 
+/**  How a span is drawn. The CLI maps it to ANSI codes; the settings preview to theme colors. */
+export type Paint = "plain" | 
+/**  Separators, estimates and stale values. */
+"dim" | "ok" | "warn" | "crit";
+
 /**  Sent to the panel each time it appears: it moves the focus inside and replays its entrance. */
 export type PanelShown = null;
 
@@ -447,6 +458,8 @@ export type PrefsView = {
 	log_level: LogLevel,
 	/**  How long a hidden panel stays ready, in seconds (`0`: destroyed at once). */
 	panel_warm_ttl_s: number,
+	/**  What `tokenradar statusline` shows (`[statusline]`). */
+	statusline: StatuslinePrefs,
 };
 
 export type Projection = {
@@ -494,6 +507,11 @@ export type SchemaDriftView = {
 
 /**  What a scoped limit applies to. Stored as `model:<name>` or `surface:<name>`. */
 export type Scope = ({ model: string }) & { surface?: never } | ({ surface: string }) & { model?: never };
+
+/**  One part of the line. The names are the `segments` values in `config.toml`. */
+export type SegmentKind = "five_hour" | "seven_day" | 
+/**  Weekly limits of one model or surface, e.g. Fable's. */
+"scoped" | "context" | "session_share" | "cost" | "model";
 
 /**  Row id in `sessions`. */
 export type SessionId = number;
@@ -555,6 +573,11 @@ export type Source = "statusline" | "api" |
 /**  Derived locally; never persisted to `limit_snapshots`. */
 "estimate" | "codex_log";
 
+export type Span = {
+	text: string,
+	paint: Paint,
+};
+
 export type StatuslineAction = "install" | 
 /**  Install without keeping the previous command. */
 "install_no_chain" | "uninstall";
@@ -578,6 +601,34 @@ chained_command: string | null;
 chained_mangled: boolean; 
 /**  Uninstall: the previous value comes back. */
 restores_previous: boolean } | { outcome: "already_installed" } | { outcome: "not_installed" };
+
+/**
+ *  `[statusline]` in `config.toml`: what the line shows.
+ * 
+ *  ```toml
+ *  [statusline]
+ *  segments = ["five_hour", "seven_day", "scoped", "context", "session_share", "cost"]
+ *  layout = "single"   # single | double
+ *  bar = true
+ *  ```
+ * 
+ *  Reading never fails: unknown segment names are skipped, an unknown layout is `single`, and
+ *  a list left empty (or holding only unknown names) is the default.
+ */
+export type StatuslinePrefs = {
+	segments: SegmentKind[],
+	layout: Layout,
+	/**  The 8-cell bar on the 5-hour and weekly windows. Dropped without color and when narrow. */
+	bar: boolean,
+};
+
+/**  The statusline preview in the settings window. */
+export type StatuslinePreview = {
+	/**  Painted spans per output line. */
+	lines: Span[][],
+	/**  Segments the account is known not to have (ADR-041): left out of the line. */
+	absent: SegmentKind[],
+};
 
 export type StatuslineState = {
 	/**  `None`: never seen, the bridge is probably not installed. */

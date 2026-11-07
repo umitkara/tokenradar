@@ -13,8 +13,11 @@ use tokenradar_core::config::{DataConfig, LocalePref, LogLevel, ThemePref};
 use tokenradar_core::events::CoreEvent;
 use tokenradar_core::limits::PanelSnapshot;
 use tokenradar_core::notifier::{self, NotifyPrefs};
+use tokenradar_core::statusline::line::StatuslinePrefs;
 
-use crate::prefs::{self, Prefs, PrefsChanged, PrefsView, SettingsChanged, SettingsView};
+use crate::prefs::{
+    self, Prefs, PrefsChanged, PrefsView, SettingsChanged, SettingsView, StatuslinePreview,
+};
 use crate::privacy::{self, AboutView, Link, StorageView};
 use crate::settings::{self, SettingsSection, SettingsSectionRequested};
 use crate::sources::{
@@ -51,6 +54,8 @@ pub fn builder() -> Builder<tauri::Wry> {
             set_data_prefs,
             set_log_level,
             set_panel_warm_ttl,
+            set_statusline_prefs,
+            preview_statusline,
             get_autostart,
             set_autostart,
             send_test_notification,
@@ -190,6 +195,19 @@ async fn set_log_level(app: AppHandle, level: LogLevel) -> Result<PrefsView, Str
 #[specta::specta]
 async fn set_panel_warm_ttl(app: AppHandle, seconds: u32) -> Result<PrefsView, String> {
     prefs::set_panel_warm_ttl(&app, seconds)
+}
+
+#[tauri::command]
+#[specta::specta]
+async fn set_statusline_prefs(app: AppHandle, prefs: StatuslinePrefs) -> Result<PrefsView, String> {
+    prefs::set_statusline(&app, prefs)
+}
+
+/// The statusline drawn with `prefs` on sample values, as painted spans per line.
+#[tauri::command]
+#[specta::specta]
+async fn preview_statusline(app: AppHandle, prefs: StatuslinePrefs) -> StatuslinePreview {
+    prefs::statusline_preview(&app, &prefs)
 }
 
 /// Whether the app starts with Windows. The OS entry is the truth, not `config.toml`: the

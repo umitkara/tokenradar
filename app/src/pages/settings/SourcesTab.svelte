@@ -10,6 +10,7 @@ import { commands } from "../../lib/ipc/bindings";
 import { clock } from "../../lib/time/clock.svelte";
 import ApiConsent from "./ApiConsent.svelte";
 import StatuslineDialog from "./StatuslineDialog.svelte";
+import StatuslineLook from "./StatuslineLook.svelte";
 import { loadSources, store } from "./state.svelte";
 import { pickErrorKey } from "./view";
 
@@ -163,6 +164,7 @@ async function dialogDone(result: { backup: string | null } | null) {
         {/if}
       </div>
     {/if}
+    <StatuslineLook {onerror} />
   </Card>
 </section>
 

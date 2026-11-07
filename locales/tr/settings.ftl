@@ -96,6 +96,28 @@ statusline-error-changed-meanwhile = Bu pencere açıkken settings.json değişt
 statusline-error-stale-plan = Bu değişiklikler artık güncel değil. Hiçbir şey yazılmadı; yeniden gözden geçirin.
 statusline-error-io = Dosya yazılamadı. Hiçbir şey değişmedi.
 
+## Veri kaynakları: statusline görünümü
+
+statusline-look = Görünüm
+statusline-look-hint = Claude Code'daki satırda ne görüneceği. Değişiklikler bir sonraki güncellemede uygulanır.
+statusline-preview = Örnek değerlerle önizleme
+statusline-segments = Segmentler, sırasıyla
+statusline-segment-five-hour = 5 saatlik pencere
+statusline-segment-seven-day = Haftalık limit
+statusline-segment-scoped = Model limitleri (ör. Fable)
+statusline-segment-context = Bağlam penceresi
+statusline-segment-session-share = Bu oturumun payı
+statusline-segment-cost = API karşılığı maliyet
+statusline-segment-model = Model
+statusline-segment-absent = bu hesapta yok
+statusline-move-up = Yukarı taşı
+statusline-move-down = Aşağı taşı
+statusline-layout = Düzen
+statusline-layout-single = Tek satır
+statusline-layout-double = İki satır: limitler, sonra oturum
+statusline-bar = İlerleme çubuğu
+statusline-bar-hint = Terminal renk desteklemiyorsa veya çok darsa gösterilmez.
+
 ## Veri kaynakları: usage API
 
 api-title = Usage API

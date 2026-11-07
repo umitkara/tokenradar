@@ -14,8 +14,10 @@ use tauri_specta::Event;
 use tokenradar_core::config::{
     self, AdvancedConfig, AppConfig, DataConfig, LocalePref, LogLevel, ThemePref,
 };
+use tokenradar_core::domain::{LimitKind, Timestamp, WindowPresence};
 use tokenradar_core::notifier::NotifyPrefs;
 use tokenradar_core::paths::Paths;
+use tokenradar_core::statusline::line::{self, Line, SegmentKind, Span, StatuslinePrefs, Style};
 use tokenradar_i18n::{HourCycle, Locale};
 
 use crate::tray::system::{self, LocalClock, SystemClock};
@@ -114,6 +116,8 @@ pub struct PrefsView {
     pub log_level: LogLevel,
     /// How long a hidden panel stays ready, in seconds (`0`: destroyed at once).
     pub panel_warm_ttl_s: u32,
+    /// What `tokenradar statusline` shows (`[statusline]`).
+    pub statusline: StatuslinePrefs,
 }
 
 /// Sent to every open window when [`PrefsView`] changed.
@@ -143,6 +147,7 @@ impl Stored {
                 data: c.data.clone().normalized(),
                 log_level: c.advanced.log_level,
                 panel_warm_ttl_s: c.general.panel_warm_ttl_s(),
+                statusline: c.statusline.clone().normalized(),
             },
         }
     }
@@ -303,6 +308,46 @@ pub fn set_panel_warm_ttl(app: &AppHandle, seconds: u32) -> Result<PrefsView, St
     let seconds = seconds.min(config::MAX_PANEL_WARM_TTL_S);
     with_config(|path| config::save_panel_warm_ttl(path, seconds))?;
     Ok(changed(app, |p| p.panel_warm_ttl_s = seconds))
+}
+
+/// Stores `[statusline]`; the CLI reads it on its next call.
+pub fn set_statusline(app: &AppHandle, prefs: StatuslinePrefs) -> Result<PrefsView, String> {
+    let prefs = prefs.normalized();
+    with_config(|path| config::save_statusline_prefs(path, &prefs))?;
+    Ok(changed(app, |p| p.statusline = prefs))
+}
+
+/// The statusline preview in the settings window.
+#[derive(Debug, Clone, Serialize, Type)]
+pub struct StatuslinePreview {
+    /// Painted spans per output line.
+    pub lines: Vec<Vec<Span>>,
+    /// Segments the account is known not to have (ADR-041): left out of the line.
+    pub absent: Vec<SegmentKind>,
+}
+
+/// The statusline as `prefs` would draw it, on sample values, in the UI language. The 5-hour
+/// window is left out when the account is known not to have it (ADR-041).
+pub fn statusline_preview(app: &AppHandle, prefs: &StatuslinePrefs) -> StatuslinePreview {
+    let five_hour = crate::core_bridge::panel_snapshot(app)
+        .is_none_or(|s| s.presence(&LimitKind::Session, None) != WindowPresence::Absent);
+    let l10n = tokenradar_i18n::Localizer::new(
+        app.state::<Prefs>().locale(),
+        &[tokenradar_i18n::Domain::Cli],
+    );
+    let sample = Line::sample(Timestamp::now(), five_hour);
+    let style = Style {
+        color: true,
+        width: None,
+    };
+    StatuslinePreview {
+        lines: line::spans(&l10n, &sample, &prefs.clone().normalized(), style),
+        absent: if five_hour {
+            Vec::new()
+        } else {
+            vec![SegmentKind::FiveHour]
+        },
+    }
 }
 
 /// Applies `f`, then tells every open window.
