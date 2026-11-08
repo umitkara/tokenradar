@@ -96,8 +96,14 @@ function New-Payload([double]$percent) {
         transcript_path = (Join-Path $project '00000000-0000-4000-8000-000000000001.jsonl')
         cwd             = $Cwd
         model           = @{ id = 'claude-opus-5-5'; display_name = 'Opus 5.5' }
-        cost            = @{ total_cost_usd = 4.12 }
-        context_window  = @{ used_percentage = 38 }
+        session_name    = 'synthetic sample'
+        output_style    = @{ name = 'default' }
+        cost            = @{ total_cost_usd = 4.12; total_duration_ms = 1234567 }
+        context_window  = @{
+            used_percentage = 38; context_window_size = 200000
+            # Step 12m: the cache ratio and the tokens left.
+            current_usage   = @{ input_tokens = 8500; cache_creation_input_tokens = 5000; cache_read_input_tokens = 62500 }
+        }
         rate_limits     = @{
             five_hour = @{ used_percentage = $percent; resets_at = $now + 7200 }
             seven_day = @{ used_percentage = 41.2; resets_at = $now + 3 * 86400 }
