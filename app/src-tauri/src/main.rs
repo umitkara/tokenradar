@@ -18,6 +18,7 @@ mod settings;
 mod sources;
 #[cfg(any(debug_assertions, feature = "spike"))]
 mod spike;
+mod terminal_font;
 mod tray;
 mod tray_pin;
 mod updater;
@@ -63,6 +64,7 @@ fn main() {
             bridge.mount_events(app);
             prefs::init(app.handle());
             sources::init(app.handle());
+            terminal_font::init(app.handle());
             notify::init(app.handle());
             updater::init(app.handle());
             // Fake limits replace the core entirely, so tray measurements never touch real data.

@@ -26,6 +26,7 @@ use tokenradar_core::statusline::install::{
 use tokenradar_core::statusline::same_dir;
 use tokenradar_core::statusline::shell::{Shell, exe_for_command};
 use tokenradar_core::store::{AccountStats, ReadOnlyStore};
+use tokenradar_core::terminal_font::terminals::FontPlan;
 
 use crate::core_bridge;
 
@@ -192,10 +193,11 @@ pub enum StatuslineError {
     },
 }
 
-/// A plan shown to the user: the statusline's or the mod's.
-enum Shown {
+/// A plan shown to the user: the statusline's, the mod's or a terminal font's (Step 12o).
+pub(crate) enum Shown {
     Statusline(Plan),
     Mod(ModPlan),
+    Font(FontPlan),
 }
 
 /// The plan last shown to the user. Managed by Tauri.
@@ -207,14 +209,14 @@ pub struct Pending {
 
 impl Pending {
     /// Keeps `plan` as the one shown; returns its token.
-    fn show(&self, plan: Shown) -> u32 {
+    pub(crate) fn show(&self, plan: Shown) -> u32 {
         let token = self.next.fetch_add(1, Ordering::Relaxed).wrapping_add(1);
         *self.plan.lock().unwrap_or_else(PoisonError::into_inner) = Some((token, plan));
         token
     }
 
     /// The plan with `token`, taken; a stale token leaves the shown plan in place.
-    fn take(&self, token: u32) -> Option<Shown> {
+    pub(crate) fn take(&self, token: u32) -> Option<Shown> {
         let mut slot = self.plan.lock().unwrap_or_else(PoisonError::into_inner);
         match slot.take() {
             Some((t, plan)) if t == token => Some(plan),
@@ -493,7 +495,7 @@ fn install_error(e: InstallError) -> StatuslineError {
     }
 }
 
-fn diff_lines(diff: &str) -> Vec<DiffLine> {
+pub(crate) fn diff_lines(diff: &str) -> Vec<DiffLine> {
     diff.lines()
         .map(|line| {
             let kind = if line.starts_with("+++") || line.starts_with("---") {

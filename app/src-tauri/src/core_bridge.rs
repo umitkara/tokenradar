@@ -146,6 +146,11 @@ fn open() -> Result<CoreHandle, Box<dyn std::error::Error>> {
     Ok(CoreRuntime::start(&config)?)
 }
 
+/// The core's status, or `None` while it is not running (starting or failed).
+pub fn core_status(app: &AppHandle) -> Option<CoreStatus> {
+    status(&app.try_state::<CoreState>()?.0)
+}
+
 /// The panel's view model, or `None` while the core is not running (starting or failed).
 pub fn panel_snapshot(app: &AppHandle) -> Option<PanelSnapshot> {
     #[cfg(any(debug_assertions, feature = "spike"))]

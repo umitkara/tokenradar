@@ -14,6 +14,8 @@ use tokenradar_core::events::CoreEvent;
 use tokenradar_core::limits::{PanelDetail, PanelSnapshot};
 use tokenradar_core::notifier::{self, NotifyPrefs};
 use tokenradar_core::statusline::line::{Imported, SampleState, StatuslinePrefs};
+use tokenradar_core::terminal_font::TargetId;
+use tokenradar_core::terminal_font::terminals::FontChange;
 
 use crate::prefs::{
     self, Prefs, PrefsChanged, PrefsView, SettingsChanged, SettingsView, StatuslineKind,
@@ -25,6 +27,7 @@ use crate::sources::{
     self, ClaudeModAction, ClaudeModPlanView, DataSourcesView, PickError, StatuslineAction,
     StatuslineError, StatuslinePlanView,
 };
+use crate::terminal_font::{self, FontError, FontPlanView, TerminalFontView};
 use crate::tray_pin::{self, TrayPinState};
 use crate::updater::{self, UpdateChanged, UpdateView};
 use crate::{core_bridge, notify, onboarding, panel, tray};
@@ -74,6 +77,11 @@ pub fn builder() -> Builder<tauri::Wry> {
             discard_statusline_plan,
             plan_claude_mod,
             apply_claude_mod,
+            get_terminal_font,
+            install_nerd_font,
+            cancel_nerd_font,
+            plan_terminal_font,
+            apply_terminal_font,
             set_api_consent,
             pick_claude_dir,
             reset_claude_dir,
@@ -105,6 +113,7 @@ pub fn builder() -> Builder<tauri::Wry> {
             MuteChanged,
             SettingsSectionRequested,
             UpdateChanged,
+            terminal_font::FontInstallProgress,
             panel::PanelShown
         ])
         // Ids, timestamps and money are `i64` but stay far below 2^53 (Step 03).
@@ -362,6 +371,47 @@ async fn plan_claude_mod(
 #[specta::specta]
 async fn apply_claude_mod(app: AppHandle, token: u32) -> Result<Option<String>, StatuslineError> {
     blocking(move || sources::apply_mod(&app, token)).await
+}
+
+/// The terminal font card (Step 12o): installed Nerd Font, terminals seen, terminal settings.
+#[tauri::command]
+#[specta::specta]
+async fn get_terminal_font(app: AppHandle) -> TerminalFontView {
+    blocking(move || terminal_font::view(&app)).await
+}
+
+/// Downloads and installs the pinned Nerd Font; the user agreed in the window first.
+/// Progress arrives as `FontInstallProgress` events.
+#[tauri::command]
+#[specta::specta]
+async fn install_nerd_font(app: AppHandle) -> Result<TerminalFontView, FontError> {
+    blocking(move || terminal_font::install(&app)).await
+}
+
+#[tauri::command]
+#[specta::specta]
+async fn cancel_nerd_font(app: AppHandle) {
+    terminal_font::cancel(&app);
+}
+
+/// Plans selecting the installed Nerd Font in one terminal, or undoing TokenRadar's last
+/// change there; nothing is written until `apply_terminal_font` gets the returned token.
+/// `discard_statusline_plan` forgets it.
+#[tauri::command]
+#[specta::specta]
+async fn plan_terminal_font(
+    app: AppHandle,
+    target: TargetId,
+    change: FontChange,
+) -> Result<FontPlanView, FontError> {
+    blocking(move || terminal_font::plan(&app, target, change)).await
+}
+
+/// Applies the font plan the user confirmed; returns the backup's path.
+#[tauri::command]
+#[specta::specta]
+async fn apply_terminal_font(app: AppHandle, token: u32) -> Result<String, FontError> {
+    blocking(move || terminal_font::apply(&app, token)).await
 }
 
 /// The user's explicit yes (or withdrawal) for the usage API, stamped with the text version.

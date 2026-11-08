@@ -63,6 +63,22 @@ export const commands = {
 	planClaudeMod: (action: ClaudeModAction) => typedError<ClaudeModPlanView, StatuslineError>(__TAURI_INVOKE("plan_claude_mod", { action })),
 	/**  Applies the mod plan the user confirmed; returns the backup's path. */
 	applyClaudeMod: (token: number) => typedError<string | null, StatuslineError>(__TAURI_INVOKE("apply_claude_mod", { token })),
+	/**  The terminal font card (Step 12o): installed Nerd Font, terminals seen, terminal settings. */
+	getTerminalFont: () => __TAURI_INVOKE<TerminalFontView>("get_terminal_font"),
+	/**
+	 *  Downloads and installs the pinned Nerd Font; the user agreed in the window first.
+	 *  Progress arrives as `FontInstallProgress` events.
+	 */
+	installNerdFont: () => typedError<TerminalFontView, FontError>(__TAURI_INVOKE("install_nerd_font")),
+	cancelNerdFont: () => __TAURI_INVOKE<void>("cancel_nerd_font"),
+	/**
+	 *  Plans selecting the installed Nerd Font in one terminal, or undoing TokenRadar's last
+	 *  change there; nothing is written until `apply_terminal_font` gets the returned token.
+	 *  `discard_statusline_plan` forgets it.
+	 */
+	planTerminalFont: (target: TargetId, change: FontChange) => typedError<FontPlanView, FontError>(__TAURI_INVOKE("plan_terminal_font", { target, change })),
+	/**  Applies the font plan the user confirmed; returns the backup's path. */
+	applyTerminalFont: (token: number) => typedError<string, FontError>(__TAURI_INVOKE("apply_terminal_font", { token })),
 	/**  The user's explicit yes (or withdrawal) for the usage API, stamped with the text version. */
 	setApiConsent: (granted: boolean) => typedError<DataSourcesView, string>(__TAURI_INVOKE("set_api_consent", { granted })),
 	/**  Folder picker for the Claude Code directory; `false` when cancelled. */
@@ -108,6 +124,7 @@ export const commands = {
 /** Events */
 export const events = {
 	coreEventEmitted: makeEvent<CoreEventEmitted, CoreEventEmitted>("core-event-emitted"),
+	fontInstallProgress: makeEvent<FontInstallProgress, FontInstallProgress>("font-install-progress"),
 	muteChanged: makeEvent<MuteChanged, MuteChanged>("mute-changed"),
 	panelShown: makeEvent<PanelShown, PanelShown>("panel-shown"),
 	prefsChanged: makeEvent<PrefsChanged, PrefsChanged>("prefs-changed"),
@@ -346,6 +363,42 @@ export type FocusView = {
 	points: ChartPoint[],
 };
 
+/**  What a plan does. */
+export type FontChange = "select" | "undo";
+
+/**  Why installing or selecting the font failed; the window words it. */
+export type FontError = 
+/**  Another download is running. */
+{ error: "busy" } | { error: "cancelled" } | { error: "connect" } | { error: "timeout" } | { error: "status"; code: number } | { error: "request" } | 
+/**  The download did not match the pinned checksum; nothing was written. */
+{ error: "checksum" } | { error: "archive" } | { error: "unsupported" } | 
+/**  No Nerd Font is installed to select. */
+{ error: "no_font" } | { error: "invalid_settings" } | 
+/**  Windows Terminal's old format: `profiles` is a list. */
+{ error: "legacy_settings" } | { error: "changed_meanwhile" } | { error: "stale_plan" } | { error: "io"; message: string };
+
+/**  Download progress, sent to the settings window. */
+export type FontInstallProgress = {
+	done: number,
+	total: number,
+};
+
+/**  What the download button fetches, shown before the user agrees. */
+export type FontOffer = {
+	family: string,
+	version: string,
+	size_bytes: number,
+	license: string,
+	url: string,
+};
+
+/**  A planned change to one terminal's settings, shown before anything is written. */
+export type FontPlanView = { outcome: "ready"; 
+/**  Pass back to `apply_terminal_font`; only this plan can be applied. */
+token: number; settings_path: string; family: string; diff: DiffLine[] } | 
+/**  The font is already selected, or there is nothing to undo. */
+{ outcome: "unchanged" };
+
 /**  How an item shows its value. Each kind accepts some of these; see [`SegmentKind::formats`]. */
 export type Format = 
 /**  The 8-cell bar and the percentage. */
@@ -538,6 +591,21 @@ export type MicroUsd = number;
 export type MuteChanged = {
 	muted: boolean,
 };
+
+/**  The best Nerd Font installed. */
+export type NerdFontView = {
+	family: string,
+	tier: NerdTier,
+	/**  Icons take one terminal cell, as the statusline counts them. */
+	mono: boolean,
+};
+
+/**  How much of Nerd Fonts a font covers. */
+export type NerdTier = "none" | 
+/**  Icons, but not the progress glyphs of 3.4 (Microsoft's own "Cascadia Code NF", say). */
+"old" | 
+/**  Nerd Fonts 3.4 or later. */
+"full";
 
 /**  Something to show the user, already localized. */
 export type Notice = {
@@ -931,6 +999,51 @@ export type StorageView = {
 	logs_bytes: number,
 	portable: boolean,
 };
+
+/**  A settings file TokenRadar can write a font into. */
+export type TargetId = "windows_terminal" | "windows_terminal_preview" | 
+/**  The zip or Scoop install of Windows Terminal. */
+"windows_terminal_unpackaged" | "vscode" | "vscode_insiders";
+
+/**  Why a settings file cannot be used. */
+export type TargetProblem = "unreadable" | 
+/**  Not JSON (with comments) even after the comments are skipped. */
+"invalid" | 
+/**  Windows Terminal's old format: `profiles` is a list, so there is no `defaults`. */
+"legacy";
+
+/**  One settings file, read only. */
+export type TargetState = {
+	id: TargetId,
+	path: string,
+	problem: TargetProblem | null,
+	/**  The font in effect: the first installed family of the list (or the first one). */
+	font: string | null,
+	/**  `false`: no font is set and the terminal's default applies. */
+	written: boolean,
+	tier: NerdTier,
+	/**  Windows Terminal profiles that set their own font, so `defaults` does not reach them. */
+	overrides: number,
+	/**  A TokenRadar backup holds a different font for this key. */
+	can_undo: boolean,
+};
+
+export type TerminalFontView = {
+	font: NerdFontView | null,
+	/**  Terminals the statusline was called from since the app started. */
+	terminals: TerminalKind[],
+	last_terminal: TerminalKind | null,
+	/**  The terminal settings files on this machine. */
+	targets: TargetState[],
+	offer: FontOffer,
+	/**  Installing is implemented for this platform. */
+	can_install: boolean,
+	/**  A download is running. */
+	installing: boolean,
+};
+
+/**  The terminal a statusline call came from, told apart by its environment. */
+export type TerminalKind = "windows_terminal" | "vscode" | "other";
 
 export type Theme = "plain" | 
 /**  Colored blocks joined by U+E0B0; needs a Nerd Font. */

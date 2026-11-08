@@ -15,14 +15,18 @@ import {
   type Item,
   type SegmentKind,
   type StatuslinePrefs,
+  type TerminalFontView,
 } from "../../lib/ipc/bindings";
+import { inTauri } from "../../lib/ipc/runtime";
 import { store } from "./state.svelte";
 import AddPalette from "./statusline/AddPalette.svelte";
 import { StatuslineEditor } from "./statusline/editor.svelte";
+import { previewFont } from "./statusline/font";
 import ImportDialog from "./statusline/ImportDialog.svelte";
 import ItemEditor from "./statusline/ItemEditor.svelte";
 import ItemList from "./statusline/ItemList.svelte";
 import PresetDialog from "./statusline/PresetDialog.svelte";
+import TerminalFontDialog from "./statusline/TerminalFontDialog.svelte";
 import TermPreview from "./statusline/TermPreview.svelte";
 import {
   addLine,
@@ -61,6 +65,9 @@ const editor = new StatuslineEditor();
 let palette = $state<AddPalette>();
 let presetDialog = $state<PresetDialog>();
 let importDialog = $state<ImportDialog>();
+let fontDialog = $state<TerminalFontDialog>();
+/** The terminal font state (Step 12o); `null` until loaded. */
+let fontView = $state<TerminalFontView | null>(null);
 let copied = $state<string | null>(null);
 /** The card the palette adds to. */
 let paletteLine = $state(0);
@@ -81,6 +88,9 @@ const widths = $derived(
 const margins = $derived(
   MARGINS.map((v) => ({ value: v, label: t("statusline-columns", { n: v }) })),
 );
+const nerdFont = $derived(fontView?.font ?? null);
+/** The preview draws with the installed Nerd Font, as the terminal will. */
+const termFont = $derived(previewFont(nerdFont));
 /** Whether the alignment note is worth showing: some line has a flexible space. */
 const flexed = $derived(items.some((i) => i.kind === "flex" && i.enabled));
 
@@ -110,6 +120,7 @@ $effect(() => {
 });
 
 onMount(() => {
+  if (inTauri()) void commands.getTerminalFont().then((v) => (fontView = v));
   const hidden = () => {
     if (document.visibilityState === "hidden") void editor.flush();
   };
@@ -245,6 +256,7 @@ function keydown(e: KeyboardEvent) {
           onchange={(color) => set({ color })}
         />
         <span class="spacer"></span>
+        <Button onclick={() => fontDialog?.open()}>{t("font-open")}</Button>
         <Button onclick={() => presetDialog?.open("preset")}>{t("statusline-presets")}</Button>
         <Button onclick={exportLine}>{t("statusline-export")}</Button>
         <Button onclick={() => importDialog?.open()}>{t("statusline-import")}</Button>
@@ -253,7 +265,11 @@ function keydown(e: KeyboardEvent) {
   </header>
 
   {#if draft}
-    <section class="preview" aria-label={t("statusline-preview")}>
+    <section
+      class="preview"
+      aria-label={t("statusline-preview")}
+      style:--font-term={termFont ?? undefined}
+    >
       <div class="preview-bar">
         <Segmented
           label={t("statusline-state")}
@@ -289,8 +305,13 @@ function keydown(e: KeyboardEvent) {
         onhover={(i) => (editor.hovered = i)}
       />
       {#if flexed}<p class="caption">{t("statusline-align-note")}</p>{/if}
-      {#if draft.theme !== "plain"}
-        <p class="caption">{t("statusline-font-note")}</p>
+      {#if nerdFont}
+        <p class="caption">{t("font-preview-with", { family: nerdFont.family })}</p>
+      {:else if fontView && draft.theme !== "plain"}
+        <p class="note">
+          {t("statusline-font-note")}
+          <button type="button" class="link" onclick={() => fontDialog?.open()}>{t("font-open")}</button>
+        </p>
       {/if}
     </section>
 
@@ -342,6 +363,7 @@ function keydown(e: KeyboardEvent) {
     />
     <PresetDialog bind:this={presetDialog} presets={editor.presets} onapply={replace} />
     <ImportDialog bind:this={importDialog} onapply={replace} />
+    <TerminalFontDialog bind:this={fontDialog} onchange={(v) => (fontView = v)} />
   {/if}
 </div>
 

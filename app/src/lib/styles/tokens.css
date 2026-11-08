@@ -78,10 +78,11 @@
   --term-bright-magenta: #b4009e;
   --term-bright-cyan: #61d6d6;
   --term-bright-white: #f2f2f2;
-  /* Cascadia ships with Windows 11; the PL and Nerd Font builds add the Powerline glyphs. */
+  /* Cascadia ships with Windows 11; the PL and Nerd Font builds add the Powerline glyphs. The
+     settings' preview puts the installed Nerd Font first (Step 12o). */
   --font-term:
-    "CaskaydiaCove Nerd Font Mono", "Cascadia Mono PL", "Cascadia Code PL", "Cascadia Mono",
-    Consolas, monospace;
+    "CaskaydiaMono Nerd Font Mono", "CaskaydiaMono NFM", "CaskaydiaCove Nerd Font Mono",
+    "Cascadia Mono PL", "Cascadia Code PL", "Cascadia Mono", Consolas, monospace;
 
   /* Motion (ADR-019: only on change, at most 600 ms). Windows' decelerate curve. */
   --dur-fast: 120ms;
