@@ -4,8 +4,9 @@
 use serde::{Deserialize, Serialize};
 use specta::Type;
 
+use super::prefs::with_separators;
 use super::{
-    AnsiColor, ColorMode, DEFAULT_SEGMENTS, DEFAULT_SEPARATOR, Format, Item, Layout,
+    AnsiColor, ColorMode, DEFAULT_SEGMENTS, DEFAULT_SEPARATOR, Format, Item, Layout, PREFS_VERSION,
     SegmentKind as K, StatuslinePrefs, Theme,
 };
 
@@ -21,24 +22,30 @@ pub enum Preset {
     /// The 12c double layout: limits first, the session second.
     TwoLine,
     Powerline,
+    /// The limits at the left, the model, folder and branch at the right (ADR-051).
+    Split,
 }
 
 impl Preset {
-    pub const ALL: [Self; 5] = [
+    pub const ALL: [Self; 6] = [
         Self::Default,
         Self::Minimal,
         Self::Detailed,
         Self::TwoLine,
         Self::Powerline,
+        Self::Split,
     ];
 
     pub fn prefs(self) -> StatuslinePrefs {
+        // The items are listed without separators; one goes between every two values.
         let with = |items: Vec<Item>, theme: Theme| {
             StatuslinePrefs {
-                items,
+                version: PREFS_VERSION,
+                items: with_separators(items, DEFAULT_SEPARATOR),
                 theme,
                 separator: DEFAULT_SEPARATOR.to_owned(),
                 color: ColorMode::Auto,
+                margin: 0,
             }
             .normalized()
         };
@@ -80,6 +87,18 @@ impl Preset {
                     Item::new(K::Model),
                 ],
                 Theme::Powerline,
+            ),
+            Self::Split => with(
+                vec![
+                    Item::new(K::FiveHour),
+                    Item::new(K::SevenDay),
+                    Item::new(K::Scoped),
+                    Item::new(K::Flex),
+                    Item::new(K::Model).with_color(AnsiColor::BrightBlue),
+                    Item::new(K::Cwd).with_color(AnsiColor::BrightMagenta),
+                    Item::new(K::GitBranch).with_color(AnsiColor::Green),
+                ],
+                Theme::Plain,
             ),
         }
     }

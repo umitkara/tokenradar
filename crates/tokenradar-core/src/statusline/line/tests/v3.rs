@@ -1,11 +1,13 @@
 //! Step 12i: items, formats, labels, colors, themes and the stored table.
 
 use super::*;
+use crate::statusline::line::prefs::with_separators;
 use crate::statusline::line::{AnsiColor, ColorMode, Format, Item, Preset, SampleState, Theme};
 
+/// A 12i list: the separators go where 12i drew them by itself (ADR-051).
 fn with(items: Vec<Item>) -> StatuslinePrefs {
     StatuslinePrefs {
-        items,
+        items: with_separators(items, DEFAULT_SEPARATOR),
         ..StatuslinePrefs::default()
     }
     .normalized()
@@ -137,16 +139,29 @@ fn texts_and_separators_sit_between_values_with_spaces() {
         draw(Locale::En, &with_five_hour(), &p, None),
         "★ ctx 38% › API $4.12 │ Opus 5.5"
     );
-    // An empty separator: values are joined by a space.
-    let mut bare = p.clone();
-    bare.separator = String::new();
+    // A 12i table with an empty separator: values were joined by a space, and still are.
+    let bare = StatuslinePrefs {
+        items: with_separators(
+            vec![
+                Item::new(SegmentKind::CustomText).with_text("★"),
+                Item::new(SegmentKind::Context),
+                Item::new(SegmentKind::Separator).with_text("›"),
+                Item::new(SegmentKind::Cost),
+                Item::new(SegmentKind::Model),
+            ],
+            "",
+        ),
+        separator: String::new(),
+        ..StatuslinePrefs::default()
+    }
+    .normalized();
     assert_eq!(
         draw(Locale::En, &with_five_hour(), &bare, None),
         "★ ctx 38% › API $4.12 Opus 5.5"
     );
     // A narrow terminal drops the value together with the separator before it.
     assert_eq!(
-        draw(Locale::En, &with_five_hour(), &p, Some(20)),
+        draw(Locale::En, &with_five_hour(), &p, cols(20)),
         "★ ctx 38%"
     );
 }
@@ -276,7 +291,7 @@ fn spans_know_their_item() {
         },
     );
     let tags: Vec<Option<u16>> = lines[0].iter().map(|s| s.item).collect();
-    assert_eq!(tags, vec![Some(0), None, Some(1)]);
+    assert_eq!(tags, vec![Some(0), None, Some(1), None, Some(2)]);
 }
 
 #[test]
@@ -349,8 +364,8 @@ fn the_stored_table_round_trips_and_older_builds_get_the_12c_keys() {
     }
     let mut p = Preset::Detailed.prefs();
     p.color = ColorMode::Always;
-    p.items[1].label = "wk".into();
-    p.items[1].pace = false;
+    p.items[2].label = "wk".into();
+    p.items[2].pace = false;
     let text = stored(&p, true);
     assert!(
         text.contains("segments = [\"five_hour\", \"seven_day\""),
@@ -368,7 +383,8 @@ fn the_stored_table_round_trips_and_older_builds_get_the_12c_keys() {
          \"cost\", \"model\"]\nlayout = \"double\"",
     )
     .expect("toml");
-    assert_eq!(legacy.items.len(), 8);
+    // Seven values, the line break and a separator between neighbouring values (ADR-051).
+    assert_eq!(legacy.items.len(), 13);
 }
 
 #[test]
@@ -391,10 +407,18 @@ fn wrong_types_in_items_fall_back_instead_of_failing() {
     assert_eq!(p.theme, Theme::Plain);
     assert_eq!(p.color, ColorMode::Auto);
     let kinds: Vec<SegmentKind> = p.items.iter().map(|i| i.kind).collect();
-    assert_eq!(kinds, vec![SegmentKind::Cost, SegmentKind::SevenDay]);
+    // Without `version` the separator 12i drew goes in as an item.
+    assert_eq!(
+        kinds,
+        vec![
+            SegmentKind::Cost,
+            SegmentKind::Separator,
+            SegmentKind::SevenDay
+        ]
+    );
     assert!(p.items[0].enabled && p.items[0].color.is_none());
-    assert_eq!(p.items[1].format, Some(Format::Bar));
-    assert!(p.items[1].pace);
+    assert_eq!(p.items[2].format, Some(Format::Bar));
+    assert!(p.items[2].pace);
 }
 
 #[test]

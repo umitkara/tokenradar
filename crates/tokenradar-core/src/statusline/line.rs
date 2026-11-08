@@ -28,11 +28,13 @@ mod render;
 
 pub use prefs::{
     AnsiColor, ColorMode, DEFAULT_SEGMENTS, DEFAULT_SEPARATOR, Format, Group, Imported, Item,
-    Layout, MAX_ITEMS, MAX_LABEL, MAX_SEPARATOR, MAX_TEXT, SegmentKind, StatuslinePrefs, Theme,
-    clean,
+    Layout, MAX_ITEMS, MAX_LABEL, MAX_MARGIN, MAX_SEPARATOR, MAX_SPACE, MAX_TEXT, PREFS_VERSION,
+    SegmentKind, StatuslinePrefs, Theme, clean,
 };
 pub use presets::Preset;
-pub use render::{Paint, Span, Style, default_label, render, spans, to_ansi};
+pub use render::{
+    CLAUDE_CODE_RESERVED, Paint, Span, Style, default_label, display_width, render, spans, to_ansi,
+};
 
 /// A value with where it came from and when.
 #[derive(Debug, Clone, PartialEq)]

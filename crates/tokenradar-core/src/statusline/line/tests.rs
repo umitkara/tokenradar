@@ -44,6 +44,12 @@ fn classic() -> StatuslinePrefs {
     prefs(&DEFAULT_SEGMENTS, Layout::Single, true)
 }
 
+/// A terminal on which the line may take `n` columns: Claude Code keeps four more free.
+#[allow(clippy::unnecessary_wraps)] // the width `draw` takes
+fn cols(n: usize) -> Option<usize> {
+    Some(n + CLAUDE_CODE_RESERVED)
+}
+
 fn draw(locale: Locale, line: &Line, prefs: &StatuslinePrefs, width: Option<usize>) -> String {
     let l = Localizer::new(locale, &[Domain::Cli]);
     // Color on for the bar, then the escapes stripped to compare text.
@@ -125,30 +131,30 @@ fn a_narrow_terminal_drops_session_segments_then_detail_then_limits() {
     let p = classic();
     let line = with_five_hour();
     let full = draw(Locale::En, &line, &p, None);
-    let width = full.chars().count();
-    assert_eq!(draw(Locale::En, &line, &p, Some(width)), full);
+    let width = display_width(&full);
+    assert_eq!(draw(Locale::En, &line, &p, cols(width)), full);
     // Session segments go first, from the end.
     assert_eq!(
-        draw(Locale::En, &line, &p, Some(width - 1)),
+        draw(Locale::En, &line, &p, cols(width - 1)),
         "5h ██████░░ 72% · 1h48m ▲38m │ 7d ████░░░░ 41% · 3d4h │ Fable 22% │ ctx 38% │ \
          ≈2.1% this session"
     );
     assert_eq!(
-        draw(Locale::En, &line, &p, Some(70)),
+        draw(Locale::En, &line, &p, cols(70)),
         "5h ██████░░ 72% · 1h48m ▲38m │ 7d ████░░░░ 41% · 3d4h │ Fable 22%"
     );
     // Then the bar, the projection and the countdowns.
     assert_eq!(
-        draw(Locale::En, &line, &p, Some(50)),
+        draw(Locale::En, &line, &p, cols(50)),
         "5h 72% · 1h48m ▲38m │ 7d 41% · 3d4h │ Fable 22%"
     );
     assert_eq!(
-        draw(Locale::En, &line, &p, Some(30)),
+        draw(Locale::En, &line, &p, cols(30)),
         "5h 72% │ 7d 41% │ Fable 22%"
     );
     // Then limits from the end; the first always stays.
-    assert_eq!(draw(Locale::Tr, &line, &p, Some(16)), "5s %72 │ 7g %41");
-    assert_eq!(draw(Locale::Tr, &line, &p, Some(3)), "5s %72");
+    assert_eq!(draw(Locale::Tr, &line, &p, cols(16)), "5s %72 │ 7g %41");
+    assert_eq!(draw(Locale::Tr, &line, &p, cols(3)), "5s %72");
 }
 
 #[test]
@@ -189,7 +195,8 @@ fn colors_follow_the_thresholds() {
     assert!(out.contains("\x1b[2m░░░░\x1b[0m"), "{out:?}");
     assert!(out.contains("\x1b[33m▲38m\x1b[0m"), "{out:?}");
     assert!(out.contains("\x1b[33mctx 80%\x1b[0m"), "{out:?}");
-    assert!(out.contains("\x1b[2m │ \x1b[0m"), "{out:?}");
+    // The separator is an item: dim, the spaces around it plain (ADR-051).
+    assert!(out.contains(" \x1b[2m│\x1b[0m "), "{out:?}");
     // A full bar has no empty part, and no empty escape pair is written for it.
     assert!(!out.contains("\x1b[2m\x1b[0m"), "{out:?}");
 }
@@ -513,9 +520,9 @@ fn without_color_the_elapsed_text_stays_and_narrow_drops_it_after_the_bar() {
     );
     assert_eq!(plain, "7d 41% ⏱43% · 3d4h");
     // Narrow: the bar goes first, then the elapsed time, then the countdown.
-    assert_eq!(draw(Locale::En, &line, &p, Some(18)), "7d 41% ⏱43% · 3d4h");
-    assert_eq!(draw(Locale::En, &line, &p, Some(17)), "7d 41% · 3d4h");
-    assert_eq!(draw(Locale::En, &line, &p, Some(8)), "7d 41%");
+    assert_eq!(draw(Locale::En, &line, &p, cols(18)), "7d 41% ⏱43% · 3d4h");
+    assert_eq!(draw(Locale::En, &line, &p, cols(17)), "7d 41% · 3d4h");
+    assert_eq!(draw(Locale::En, &line, &p, cols(8)), "7d 41%");
 }
 
 #[test]
@@ -528,4 +535,5 @@ fn the_payload_window_gets_its_elapsed_time() {
     assert_eq!(w.elapsed, expected);
 }
 
+mod layout;
 mod v3;

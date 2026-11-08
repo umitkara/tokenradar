@@ -1,10 +1,13 @@
-//! `[statusline]` in `config.toml` (Step 12i, ADR-049): the items of the line, in order.
+//! `[statusline]` in `config.toml` (Step 12i, ADR-049; layout Step 12k, ADR-051): the items of
+//! the line, in order.
 //!
 //! ```toml
 //! [statusline]
+//! version = 2            # 2: separators are items
 //! theme = "plain"        # plain | powerline | powerline_round
-//! separator = "│"        # between two values in the plain theme; "" is a space
+//! separator = "│"        # the glyph of new separators; older builds draw it between values
 //! color = "auto"         # auto (follows NO_COLOR) | always | never
+//! margin = 0             # columns kept free at the right, 0–8
 //!
 //! [[statusline.items]]
 //! kind = "seven_day"
@@ -12,13 +15,25 @@
 //! color = "cyan"         # limits: the color below the warning threshold only
 //!
 //! [[statusline.items]]
+//! kind = "separator"
+//!
+//! [[statusline.items]]
+//! kind = "flex"          # the rest goes to the right
+//!
+//! [[statusline.items]]
+//! kind = "space"
+//! width = 2              # 1–8
+//!
+//! [[statusline.items]]
 //! kind = "line_break"
 //! ```
 //!
 //! Files written before 0.1.1 have `segments`, `layout`, `bar` and `pace` instead; the items
 //! are derived from them, and those keys are still written so an older build draws a sensible
-//! line. Reading never fails: an unknown kind is skipped, an unknown format or color falls
-//! back to the default, and a list with nothing to show is the default line.
+//! line. A table without `version` gets a separator item between every two neighbouring values,
+//! where the older builds drew one by themselves. Reading never fails: an unknown kind is
+//! skipped, an unknown format or color falls back to the default, and a list with nothing to
+//! show is the default line.
 
 use std::collections::BTreeSet;
 
@@ -56,6 +71,11 @@ pub enum SegmentKind {
     LineBreak,
     /// A fixed text of the user's choice.
     CustomText,
+    /// `width` blank columns.
+    Space,
+    /// Takes the columns the line leaves free: what follows goes to the right, or between two
+    /// of them to the middle (ADR-051).
+    Flex,
 }
 
 /// Where an item belongs: the add-item palette groups by it, and a narrow terminal drops
@@ -147,12 +167,19 @@ pub enum ColorMode {
 pub const MAX_LABEL: usize = 16;
 pub const MAX_TEXT: usize = 32;
 pub const MAX_SEPARATOR: usize = 3;
-/// More items than this are dropped from the end.
-pub const MAX_ITEMS: usize = 48;
+/// More items than this are dropped from the end. Separators are items (ADR-051), so a line
+/// has about twice as many as values.
+pub const MAX_ITEMS: usize = 64;
+/// The widest `space` item, and the largest right margin, in columns.
+pub const MAX_SPACE: u8 = 8;
+pub const MAX_MARGIN: u8 = 8;
+/// The `version` of the stored table: 2 has the separators as items (ADR-051). A table without
+/// it (or with 1) gets them inserted where the older builds drew them by themselves.
+pub const PREFS_VERSION: u8 = 2;
 pub const DEFAULT_SEPARATOR: &str = "│";
 
 impl SegmentKind {
-    pub const ALL: [Self; 22] = [
+    pub const ALL: [Self; 24] = [
         Self::FiveHour,
         Self::SevenDay,
         Self::Scoped,
@@ -175,6 +202,8 @@ impl SegmentKind {
         Self::Separator,
         Self::LineBreak,
         Self::CustomText,
+        Self::Space,
+        Self::Flex,
     ];
 
     pub const fn as_str(self) -> &'static str {
@@ -201,6 +230,8 @@ impl SegmentKind {
             Self::Separator => "separator",
             Self::LineBreak => "line_break",
             Self::CustomText => "custom_text",
+            Self::Space => "space",
+            Self::Flex => "flex",
         }
     }
 
@@ -215,7 +246,15 @@ impl SegmentKind {
 
     /// An item that only arranges the line and shows no value.
     pub const fn is_layout(self) -> bool {
-        matches!(self, Self::Separator | Self::LineBreak | Self::CustomText)
+        matches!(
+            self,
+            Self::Separator | Self::LineBreak | Self::CustomText | Self::Space | Self::Flex
+        )
+    }
+
+    /// Blank columns: drawn without the joining space beside them (ADR-051).
+    pub const fn is_blank(self) -> bool {
+        matches!(self, Self::Space | Self::Flex)
     }
 
     /// The kinds of the 12c line, the only ones an older build knows.
@@ -236,7 +275,9 @@ impl SegmentKind {
         match self {
             Self::FiveHour | Self::SevenDay | Self::Scoped => Group::Limit,
             Self::Cwd | Self::ProjectDir | Self::GitBranch => Group::Project,
-            Self::Separator | Self::LineBreak | Self::CustomText => Group::Layout,
+            Self::Separator | Self::LineBreak | Self::CustomText | Self::Space | Self::Flex => {
+                Group::Layout
+            }
             _ => Group::Session,
         }
     }
@@ -268,7 +309,7 @@ impl SegmentKind {
 
     /// Whether the item can carry a color of the user's.
     pub const fn colored(self) -> bool {
-        !matches!(self, Self::LineBreak)
+        !matches!(self, Self::LineBreak | Self::Space | Self::Flex)
     }
 
     /// The block color in the Powerline themes when the user picked none.
@@ -491,6 +532,8 @@ pub struct Item {
     pub pace: bool,
     /// `custom_text`: the text. `separator`: the glyph.
     pub text: String,
+    /// `space`: the columns, 1–[`MAX_SPACE`]. 1 on every other kind.
+    pub width: u8,
 }
 
 impl Item {
@@ -507,6 +550,7 @@ impl Item {
                 SegmentKind::Separator => DEFAULT_SEPARATOR.to_owned(),
                 _ => String::new(),
             },
+            width: 1,
         }
     }
 
@@ -559,7 +603,29 @@ impl Item {
             self.reset = true;
             self.pace = true;
         }
+        self.width = match self.kind {
+            SegmentKind::Space => self.width.clamp(1, MAX_SPACE),
+            _ => 1,
+        };
         self
+    }
+
+    /// A separator with `glyph`. A blank glyph is a space as wide as the gap the older builds
+    /// drew for it: one column for an empty one, the glyph and a space on each side otherwise.
+    pub fn separator(glyph: &str) -> Self {
+        let glyph = clean(glyph, MAX_SEPARATOR);
+        if glyph.trim().is_empty() {
+            let mut space = Self::new(SegmentKind::Space);
+            let gap = if glyph.is_empty() {
+                1
+            } else {
+                glyph.chars().count() + 2
+            };
+            space.width = u8::try_from(gap).unwrap_or(MAX_SPACE);
+            space
+        } else {
+            Self::new(SegmentKind::Separator).with_text(&glyph)
+        }
     }
 }
 
@@ -593,11 +659,37 @@ pub enum Layout {
 /// What the line shows.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Type)]
 pub struct StatuslinePrefs {
+    /// Always [`PREFS_VERSION`] once read: what tells a migrated list from an older one.
+    pub version: u8,
     pub items: Vec<Item>,
     pub theme: Theme,
-    /// Between two values in the plain theme; empty: a space.
+    /// The glyph of separators added from now on; older builds draw it between two values.
     pub separator: String,
     pub color: ColorMode,
+    /// Columns kept free at the right, past the ones Claude Code keeps (ADR-051).
+    pub margin: u8,
+}
+
+/// Version 1 drew a separator between two values next to each other by itself; version 2 draws
+/// only separator items. One between every two neighbouring values keeps the line as it was:
+/// a separator next to a value that is not drawn is left out (ADR-051).
+/// A value listed twice is dropped first, as [`StatuslinePrefs::normalized`] would.
+pub(crate) fn with_separators(items: Vec<Item>, glyph: &str) -> Vec<Item> {
+    let mut seen = BTreeSet::new();
+    let mut out: Vec<Item> = Vec::with_capacity(items.len() * 2);
+    for item in items {
+        if !item.kind.is_layout() && !seen.insert(item.kind.as_str()) {
+            continue;
+        }
+        if out
+            .last()
+            .is_some_and(|prev| !prev.kind.is_layout() && !item.kind.is_layout())
+        {
+            out.push(Item::separator(glyph));
+        }
+        out.push(item);
+    }
+    out
 }
 
 impl Default for StatuslinePrefs {
@@ -610,6 +702,22 @@ impl StatuslinePrefs {
     /// The items a 12c `[statusline]` table stands for. The double layout puts the limits on
     /// the first line and the rest on the second, each in the user's order.
     pub fn legacy(segments: &[SegmentKind], layout: Layout, bar: bool, pace: bool) -> Self {
+        Self {
+            version: PREFS_VERSION,
+            items: with_separators(
+                Self::legacy_items(segments, layout, bar, pace),
+                DEFAULT_SEPARATOR,
+            ),
+            theme: Theme::Plain,
+            separator: DEFAULT_SEPARATOR.to_owned(),
+            color: ColorMode::Auto,
+            margin: 0,
+        }
+        .normalized()
+    }
+
+    /// The items of a 12c table, without separators (version 1).
+    fn legacy_items(segments: &[SegmentKind], layout: Layout, bar: bool, pace: bool) -> Vec<Item> {
         let item = |kind: SegmentKind| {
             let mut item = Item::new(kind);
             if matches!(kind, SegmentKind::FiveHour | SegmentKind::SevenDay) {
@@ -620,7 +728,7 @@ impl StatuslinePrefs {
         };
         let segments: Vec<SegmentKind> =
             segments.iter().copied().filter(|k| k.is_legacy()).collect();
-        let items = match layout {
+        match layout {
             Layout::Single => segments.into_iter().map(item).collect(),
             Layout::Double => {
                 let (limits, session): (Vec<_>, Vec<_>) =
@@ -630,14 +738,7 @@ impl StatuslinePrefs {
                 items.extend(session.into_iter().map(item));
                 items
             }
-        };
-        Self {
-            items,
-            theme: Theme::Plain,
-            separator: DEFAULT_SEPARATOR.to_owned(),
-            color: ColorMode::Auto,
         }
-        .normalized()
     }
 
     /// Each value item at most once (the first wins), at most [`MAX_ITEMS`], every item
@@ -656,6 +757,8 @@ impl StatuslinePrefs {
             self.items = Self::default().items;
         }
         self.separator = clean(&self.separator, MAX_SEPARATOR);
+        self.version = PREFS_VERSION;
+        self.margin = self.margin.min(MAX_MARGIN);
         self
     }
 
@@ -670,9 +773,11 @@ impl StatuslinePrefs {
     /// `table` are left as they are.
     pub fn write_toml(&self, table: &mut toml_edit::Table, legacy: bool) {
         use toml_edit::{Array, ArrayOfTables, Item as TomlItem, Table, value};
+        table["version"] = value(i64::from(PREFS_VERSION));
         table["theme"] = value(self.theme.as_str());
         table["separator"] = value(self.separator.as_str());
         table["color"] = value(self.color.as_str());
+        table["margin"] = value(i64::from(self.margin));
         if legacy {
             let windows: Vec<&Item> = self
                 .items
@@ -723,6 +828,9 @@ impl StatuslinePrefs {
             if i.text != default_text {
                 t["text"] = value(i.text.as_str());
             }
+            if i.kind == SegmentKind::Space && i.width != 1 {
+                t["width"] = value(i64::from(i.width));
+            }
             items.push(t);
         }
         table["items"] = TomlItem::ArrayOfTables(items);
@@ -764,7 +872,9 @@ impl StatuslinePrefs {
     }
 }
 
-const KNOWN_KEYS: [&str; 8] = [
+const KNOWN_KEYS: [&str; 10] = [
+    "version",
+    "margin",
     "items",
     "theme",
     "separator",
@@ -804,7 +914,13 @@ fn lax<T>(v: Option<Lax<T>>) -> Option<T> {
     v.and_then(Lax::ok)
 }
 
+/// A TOML integer cut to `0..=max`.
+fn small(n: i64, max: u8) -> u8 {
+    u8::try_from(n.clamp(0, i64::from(max))).unwrap_or(max)
+}
+
 impl<'de> Deserialize<'de> for StatuslinePrefs {
+    #[allow(clippy::too_many_lines)] // one line or two per key, the 12c keys included
     fn deserialize<D: Deserializer<'de>>(de: D) -> Result<Self, D::Error> {
         #[derive(Default, Deserialize)]
         #[serde(default)]
@@ -817,10 +933,13 @@ impl<'de> Deserialize<'de> for StatuslinePrefs {
             reset: Option<Lax<bool>>,
             pace: Option<Lax<bool>>,
             text: Option<Lax<String>>,
+            width: Option<Lax<i64>>,
         }
         #[derive(Default, Deserialize)]
         #[serde(default)]
         struct Raw {
+            version: Option<Lax<i64>>,
+            margin: Option<Lax<i64>>,
             items: Option<Lax<Vec<Lax<RawItem>>>>,
             theme: Option<Lax<String>>,
             separator: Option<Lax<String>>,
@@ -850,15 +969,18 @@ impl<'de> Deserialize<'de> for StatuslinePrefs {
                     if let Some(text) = lax(r.text) {
                         item.text = text;
                     }
+                    if let Some(width) = lax(r.width) {
+                        item.width = small(width, MAX_SPACE);
+                    }
                     Some(item)
                 })
                 .collect()
         });
-        let base = match items {
-            Some(items) if !items.is_empty() => Self {
-                items,
-                ..Self::default()
-            },
+        let separator = lax(raw.separator).unwrap_or_else(|| DEFAULT_SEPARATOR.to_owned());
+        let migrated = lax(raw.version).is_some_and(|v| v >= i64::from(PREFS_VERSION));
+        let items = match items {
+            Some(items) if !items.is_empty() && migrated => items,
+            Some(items) if !items.is_empty() => with_separators(items, &separator),
             // A 12c table, or a file without `[statusline]`.
             _ => {
                 let segments: Vec<SegmentKind> = lax(raw.segments).map_or_else(
@@ -880,25 +1002,28 @@ impl<'de> Deserialize<'de> for StatuslinePrefs {
                     Some("double") => Layout::Double,
                     _ => Layout::Single,
                 };
-                Self::legacy(
+                let items = Self::legacy_items(
                     &segments,
                     layout,
                     lax(raw.bar).unwrap_or(true),
                     lax(raw.pace).unwrap_or(true),
-                )
+                );
+                with_separators(items, &separator)
             }
         };
         Ok(Self {
+            version: PREFS_VERSION,
+            items,
             theme: lax(raw.theme)
                 .as_deref()
                 .and_then(Theme::parse)
                 .unwrap_or_default(),
-            separator: lax(raw.separator).unwrap_or_else(|| DEFAULT_SEPARATOR.to_owned()),
+            separator,
             color: lax(raw.color)
                 .as_deref()
                 .and_then(ColorMode::parse)
                 .unwrap_or_default(),
-            ..base
+            margin: lax(raw.margin).map_or(0, |m| small(m, MAX_MARGIN)),
         }
         .normalized())
     }

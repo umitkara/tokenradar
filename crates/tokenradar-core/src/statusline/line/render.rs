@@ -17,10 +17,17 @@
 //! dim drawing of estimates and stale values, always win. Without color the Powerline themes
 //! fall back to the plain one and the bar is left out. The Powerline blocks leave the bar out
 //! too: drawn in the block's text color, its full and empty cells look alike.
+//!
+//! Layout (ADR-051): only the separators in the list are drawn, and only between two items
+//! that are drawn in the same region; two neighbouring items are joined by one space, `space`
+//! and `flex` items by their own columns. `flex` items split a line into regions: after one the
+//! rest goes to the right, between two the middle region is centred. The line may be
+//! [`CLAUDE_CODE_RESERVED`] plus the margin narrower than the terminal.
 
 use serde::Serialize;
 use specta::Type;
 use tokenradar_i18n::{Arg, Localizer};
+use unicode_width::UnicodeWidthStr;
 
 use super::{AnsiColor, Format, Item, Line, Reading, SegmentKind, StatuslinePrefs, Theme, Window};
 use crate::limits::Severity;
@@ -31,6 +38,16 @@ const BAR_FULL: char = '█';
 const BAR_EMPTY: char = '░';
 /// Where the window's time stands, between two cells (ADR-044).
 const BAR_MARK: char = '│';
+
+/// Columns Claude Code keeps free at the right of the statusline: a line wider than
+/// `COLUMNS - 4` is cut with `…` there (observed 2026-11-08, ADR-051).
+pub const CLAUDE_CODE_RESERVED: usize = 4;
+
+/// The terminal cells `text` takes. `⏱`, `▲` and `≈` were observed to take one each, as the
+/// Unicode tables say, so no glyph needs an exception (ADR-051).
+pub fn display_width(text: &str) -> usize {
+    text.width()
+}
 
 /// How a span is drawn. The CLI maps it to ANSI codes; the settings preview to colors.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Type)]
@@ -62,8 +79,8 @@ pub struct Span {
     pub fg: Option<AnsiColor>,
     /// A Powerline block.
     pub bg: Option<AnsiColor>,
-    /// The index of the item in `StatuslinePrefs::items` the span belongs to; `None` for
-    /// separators and joints between items.
+    /// The index of the item in `StatuslinePrefs::items` the span belongs to (`space` and
+    /// `flex` items too); `None` for the spaces and joints between items.
     pub item: Option<u16>,
 }
 
@@ -80,7 +97,8 @@ fn span(text: impl Into<String>, paint: Paint) -> Span {
 #[derive(Debug, Clone, Copy)]
 pub struct Style {
     pub color: bool,
-    /// Terminal columns; `None` is unlimited.
+    /// Terminal columns (`COLUMNS`); `None` is unknown: nothing is dropped and a `flex` is one
+    /// space. The line itself keeps [`CLAUDE_CODE_RESERVED`] and the margin free.
     pub width: Option<usize>,
 }
 
@@ -147,9 +165,12 @@ pub fn spans(l: &Localizer, line: &Line, prefs: &StatuslinePrefs, style: Style) 
             _ => groups.last_mut().expect("never empty").push(i),
         }
     }
+    let width = style
+        .width
+        .map(|w| w.saturating_sub(CLAUDE_CODE_RESERVED + usize::from(prefs.margin)));
     let lines: Vec<Vec<Span>> = groups
         .iter()
-        .map(|items| fit(&ctx, items, style.width))
+        .map(|items| fit(&ctx, items, width))
         .filter(|spans| !spans.is_empty())
         .collect();
     if lines.is_empty() {
@@ -159,8 +180,8 @@ pub fn spans(l: &Localizer, line: &Line, prefs: &StatuslinePrefs, style: Style) 
     }
 }
 
-/// The richest form of the items at `indices` that fits `width`. Empty when none of them
-/// has a value to show.
+/// The richest form of the items at `indices` that fits `width` columns, with every `flex` at
+/// least one of them. Empty when none of the items has a value to show.
 fn fit(ctx: &Ctx<'_>, indices: &[usize], width: Option<usize>) -> Vec<Span> {
     let mut d = Detail {
         bar: true,
@@ -178,10 +199,10 @@ fn fit(ctx: &Ctx<'_>, indices: &[usize], width: Option<usize>) -> Vec<Span> {
         return Vec::new();
     }
     loop {
-        let out = compose(ctx, &idx, d);
-        let len: usize = out.iter().map(|s| s.text.chars().count()).sum();
+        let regions = compose(ctx, &idx, d);
+        let len: usize = regions.iter().map(|r| spans_width(r)).sum::<usize>() + regions.len() - 1;
         if width.is_none_or(|w| len <= w) {
-            return out;
+            return place(ctx, &idx, regions, width);
         }
         let values = idx.iter().filter(|&&i| !ctx.kind(i).is_layout()).count();
         if values > 1
@@ -203,48 +224,156 @@ fn fit(ctx: &Ctx<'_>, indices: &[usize], width: Option<usize>) -> Vec<Span> {
             && let Some(p) = idx.iter().rposition(|&i| !ctx.kind(i).is_layout())
         {
             drop_at(ctx, &mut idx, p);
-        } else if let Some(p) = idx.iter().rposition(|&i| ctx.kind(i).is_layout()) {
+        } else if let Some(p) = idx.iter().rposition(|&i| droppable_layout(ctx.kind(i))) {
             idx.remove(p);
         } else {
-            return out;
+            return place(ctx, &idx, regions, width);
         }
     }
 }
 
-/// Removes the value at `p` and the separators and texts right before it.
+/// Layout items a narrow line may give up; a `flex` always stays.
+fn droppable_layout(kind: SegmentKind) -> bool {
+    kind.is_layout() && kind != SegmentKind::Flex
+}
+
+/// Removes the value at `p` and the separators, texts and spaces right before it.
 fn drop_at(ctx: &Ctx<'_>, idx: &mut Vec<usize>, p: usize) {
     idx.remove(p);
     let mut q = p;
-    while q > 0 && ctx.kind(idx[q - 1]).is_layout() {
+    while q > 0 && droppable_layout(ctx.kind(idx[q - 1])) {
         idx.remove(q - 1);
         q -= 1;
     }
 }
 
-fn compose(ctx: &Ctx<'_>, idx: &[usize], d: Detail) -> Vec<Span> {
-    match ctx.theme {
-        Theme::Plain => compose_plain(ctx, idx, d),
-        Theme::Powerline => compose_blocks(ctx, idx, d, '\u{E0B0}', '\u{E0B1}'),
-        Theme::PowerlineRound => compose_blocks(ctx, idx, d, '\u{E0B4}', '\u{E0B5}'),
+fn spans_width(spans: &[Span]) -> usize {
+    spans.iter().map(|s| display_width(&s.text)).sum()
+}
+
+/// Which way the Powerline joints of a region point: to the right, or to the left in the
+/// region after the last `flex`, so that it leans on the right edge.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Dir {
+    Right,
+    Left,
+}
+
+/// The regions between the `flex` items at `idx`, each composed on its own.
+fn compose(ctx: &Ctx<'_>, idx: &[usize], d: Detail) -> Vec<Vec<Span>> {
+    let parts: Vec<&[usize]> = idx.split(|&i| ctx.kind(i) == SegmentKind::Flex).collect();
+    let last = parts.len() - 1;
+    parts
+        .iter()
+        .enumerate()
+        .map(|(n, part)| {
+            let dir = if last > 0 && n == last {
+                Dir::Left
+            } else {
+                Dir::Right
+            };
+            match ctx.theme {
+                Theme::Plain => compose_plain(ctx, part, d),
+                Theme::Powerline => compose_blocks(ctx, part, d, &POWERLINE, dir),
+                Theme::PowerlineRound => compose_blocks(ctx, part, d, &POWERLINE_ROUND, dir),
+            }
+        })
+        .collect()
+}
+
+/// The regions joined by the `flex` items at `idx`: the free columns of `width` shared out
+/// between them, or one space each when the width is unknown.
+fn place(ctx: &Ctx<'_>, idx: &[usize], regions: Vec<Vec<Span>>, width: Option<usize>) -> Vec<Span> {
+    let flexes: Vec<usize> = idx
+        .iter()
+        .copied()
+        .filter(|&i| ctx.kind(i) == SegmentKind::Flex)
+        .collect();
+    let widths: Vec<usize> = regions.iter().map(|r| spans_width(r)).collect();
+    let gaps = gaps(&widths, width);
+    let mut out = Vec::new();
+    for (n, region) in regions.into_iter().enumerate() {
+        out.extend(region);
+        if let (Some(&gap), Some(&i)) = (gaps.get(n), flexes.get(n)) {
+            out.push(Span {
+                item: Some(tag(i)),
+                ..span(" ".repeat(gap), Paint::Plain)
+            });
+        }
+    }
+    out
+}
+
+/// The columns of each `flex` between regions `widths` wide, on a line `width` wide; at least
+/// one each. One: the rest of the line. Two: the middle region centred on the line, a column
+/// off its neighbours at least. More: the free columns shared alike, the remainder to the last.
+fn gaps(widths: &[usize], width: Option<usize>) -> Vec<usize> {
+    let n = widths.len() - 1;
+    let Some(w) = width else {
+        return vec![1; n];
+    };
+    let free = w.saturating_sub(widths.iter().sum()).max(n);
+    match n {
+        0 => Vec::new(),
+        1 => vec![free],
+        2 => {
+            let (left, middle, right) = (widths[0], widths[1], widths[2]);
+            let lo = left + 1;
+            let hi = w.saturating_sub(right + 1 + middle).max(lo);
+            let start = (w.saturating_sub(middle) / 2).clamp(lo, hi);
+            let first = start - left;
+            vec![first, free.saturating_sub(first).max(1)]
+        }
+        _ => {
+            let each = free / n;
+            let mut gaps = vec![each; n];
+            gaps[n - 1] += free - each * n;
+            gaps
+        }
     }
 }
 
+/// Plain: the items joined by a space; `space` items by their own columns instead. A separator
+/// is drawn only between two items drawn in the region, and once in a row (the first).
 fn compose_plain(ctx: &Ctx<'_>, idx: &[usize], d: Detail) -> Vec<Span> {
-    let mut out = Vec::new();
-    let mut prev: Option<SegmentKind> = None;
+    // The items drawn, in order: a separator waits (with the spaces after it) until something
+    // follows it, so a separator at either end of the region or next to a missing value is
+    // left out.
+    let mut drawn: Vec<(usize, Vec<Span>)> = Vec::new();
+    let mut waiting: Vec<(usize, Vec<Span>)> = Vec::new();
+    let mut shown = false;
     for &i in idx {
         let Some(spans) = piece(ctx, i, d) else {
             continue;
         };
+        match ctx.kind(i) {
+            SegmentKind::Separator => {
+                if shown && waiting.is_empty() {
+                    waiting.push((i, spans));
+                }
+            }
+            SegmentKind::Space if !waiting.is_empty() => waiting.push((i, spans)),
+            SegmentKind::Space => drawn.push((i, spans)),
+            _ => {
+                drawn.append(&mut waiting);
+                drawn.push((i, spans));
+                shown = true;
+            }
+        }
+    }
+    // A separator nothing followed: its spaces stay.
+    drawn.extend(
+        waiting
+            .into_iter()
+            .filter(|(i, _)| ctx.kind(*i) == SegmentKind::Space),
+    );
+
+    let mut out = Vec::new();
+    let mut prev: Option<SegmentKind> = None;
+    for (i, spans) in drawn {
         let item = &ctx.items[i];
-        if let Some(p) = prev {
-            // The separator goes between two values; next to a text or a separator of the
-            // user's, a space.
-            out.push(if p.is_layout() || item.kind.is_layout() {
-                span(" ", Paint::Plain)
-            } else {
-                value_sep(ctx)
-            });
+        if prev.is_some_and(|p| !p.is_blank() && !item.kind.is_blank()) {
+            out.push(span(" ", Paint::Plain));
         }
         out.extend(spans.into_iter().map(|mut s| {
             if let Some(c) = item.color
@@ -261,17 +390,53 @@ fn compose_plain(ctx: &Ctx<'_>, idx: &[usize], d: Detail) -> Vec<Span> {
     out
 }
 
-/// Powerline: each item a colored block, joined by `full`; two blocks of the same color by
-/// the thin `thin`. Separator items have no place here and are skipped.
-fn compose_blocks(ctx: &Ctx<'_>, idx: &[usize], d: Detail, full: char, thin: char) -> Vec<Span> {
+/// The joints of a Powerline theme: full and thin, pointing right, then left.
+struct Joints {
+    right: char,
+    right_thin: char,
+    left: char,
+    left_thin: char,
+}
+
+const POWERLINE: Joints = Joints {
+    right: '\u{E0B0}',
+    right_thin: '\u{E0B1}',
+    left: '\u{E0B2}',
+    left_thin: '\u{E0B3}',
+};
+
+const POWERLINE_ROUND: Joints = Joints {
+    right: '\u{E0B4}',
+    right_thin: '\u{E0B5}',
+    left: '\u{E0B6}',
+    left_thin: '\u{E0B7}',
+};
+
+/// Powerline: each item a colored block, joined by the full joint; two blocks of the same
+/// color by the thin one. Pointing right, a chain of blocks ends with a joint; pointing left,
+/// it starts with one. A `space` item ends the chain and is drawn without a block; separator
+/// items have no place here and are skipped.
+fn compose_blocks(ctx: &Ctx<'_>, idx: &[usize], d: Detail, j: &Joints, dir: Dir) -> Vec<Span> {
     let mut out = Vec::new();
     let mut prev: Option<AnsiColor> = None;
-    let block = |text: &str, paint: Paint, fg: AnsiColor, bg: AnsiColor, item: Option<u16>| Span {
+    let joint = |c: char, fg: AnsiColor, bg: Option<AnsiColor>| Span {
+        text: c.to_string(),
+        paint: Paint::Plain,
+        fg: Some(fg),
+        bg,
+        item: None,
+    };
+    let block = |text: &str, paint: Paint, fg: AnsiColor, bg: AnsiColor, item: u16| Span {
         text: text.to_owned(),
         paint,
         fg: Some(fg),
         bg: Some(bg),
-        item,
+        item: Some(item),
+    };
+    let close = |out: &mut Vec<Span>, prev: Option<AnsiColor>| {
+        if let (Dir::Right, Some(p)) = (dir, prev) {
+            out.push(joint(j.right, p, None));
+        }
     };
     for &i in idx {
         let item = &ctx.items[i];
@@ -281,35 +446,37 @@ fn compose_blocks(ctx: &Ctx<'_>, idx: &[usize], d: Detail, full: char, thin: cha
         let Some(spans) = piece(ctx, i, d) else {
             continue;
         };
+        if item.kind == SegmentKind::Space {
+            close(&mut out, prev.take());
+            out.extend(spans.into_iter().map(|s| Span {
+                item: Some(tag(i)),
+                ..s
+            }));
+            continue;
+        }
         let bg = block_color(ctx, item);
         let fg = bg.contrast();
-        match prev {
-            Some(p) if p == bg => out.push(block(&thin.to_string(), Paint::Plain, fg, bg, None)),
-            Some(p) => out.push(block(&full.to_string(), Paint::Plain, p, bg, None)),
-            None => {}
+        match (dir, prev) {
+            (Dir::Right, Some(p)) if p == bg => out.push(joint(j.right_thin, fg, Some(bg))),
+            (Dir::Right, Some(p)) => out.push(joint(j.right, p, Some(bg))),
+            (Dir::Right, None) => {}
+            (Dir::Left, Some(p)) if p == bg => out.push(joint(j.left_thin, fg, Some(bg))),
+            (Dir::Left, p) => out.push(joint(j.left, bg, p)),
         }
-        out.push(block(" ", Paint::Plain, fg, bg, Some(tag(i))));
+        out.push(block(" ", Paint::Plain, fg, bg, tag(i)));
         for s in spans {
             // The block's color carries the severity; inside it only dim stays, in a grey
             // that shows (ADR-049: estimates and stale values stay told apart).
             if s.paint == Paint::Dim {
-                out.push(block(&s.text, Paint::Dim, bg.muted(), bg, Some(tag(i))));
+                out.push(block(&s.text, Paint::Dim, bg.muted(), bg, tag(i)));
             } else {
-                out.push(block(&s.text, Paint::Plain, fg, bg, Some(tag(i))));
+                out.push(block(&s.text, Paint::Plain, fg, bg, tag(i)));
             }
         }
-        out.push(block(" ", Paint::Plain, fg, bg, Some(tag(i))));
+        out.push(block(" ", Paint::Plain, fg, bg, tag(i)));
         prev = Some(bg);
     }
-    if let Some(p) = prev {
-        out.push(Span {
-            text: full.to_string(),
-            paint: Paint::Plain,
-            fg: Some(p),
-            bg: None,
-            item: None,
-        });
-    }
+    close(&mut out, prev);
     out
 }
 
@@ -555,6 +722,12 @@ fn piece(ctx: &Ctx<'_>, i: usize, d: Detail) -> Option<Vec<Span>> {
         SegmentKind::CustomText => {
             (!item.text.is_empty()).then(|| vec![span(item.text.clone(), Paint::Plain)])
         }
+        SegmentKind::Space => Some(vec![span(
+            " ".repeat(usize::from(item.width)),
+            Paint::Plain,
+        )]),
+        // Its columns are given out when the line is placed.
+        SegmentKind::Flex => Some(Vec::new()),
         SegmentKind::LineBreak => None,
     }
 }
@@ -730,15 +903,19 @@ fn ms_arg(ms: u64) -> Arg<'static> {
     Arg::Num(ms as f64)
 }
 
-/// Spans as terminal text; `color` false leaves the escape codes out.
+/// Spans as terminal text; `color` false leaves the color codes out. A line that starts with a
+/// space starts with a reset (`ESC[0m`) even then: Claude Code trims the leading spaces of a
+/// statusline line, and the reset keeps them (observed 2026-11-08, ADR-051).
 pub fn to_ansi(lines: &[Vec<Span>], color: bool) -> String {
     use std::fmt::Write as _;
+    let mut all = String::new();
     let mut out = String::new();
     let mut codes = String::new();
     for (i, spans) in lines.iter().enumerate() {
         if i > 0 {
-            out.push('\n');
+            all.push('\n');
         }
+        out.clear();
         // An empty span (the bar's empty part at 100 %) would only add escape codes.
         for s in spans.iter().filter(|s| !s.text.is_empty()) {
             codes.clear();
@@ -773,6 +950,10 @@ pub fn to_ansi(lines: &[Vec<Span>], color: bool) -> String {
                 out.push_str("\x1b[0m");
             }
         }
+        if out.starts_with(' ') {
+            all.push_str("\x1b[0m");
+        }
+        all.push_str(&out);
     }
-    out
+    all
 }

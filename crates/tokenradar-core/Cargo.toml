@@ -33,6 +33,8 @@ toml_edit = { version = "0.25.17", default-features = false, features = ["parse"
 # `net`, `io-util` and `macros` for the IPC server's named pipe (ADR-029).
 tokio = { version = "1.54.1", default-features = false, features = ["sync", "rt", "time", "net", "io-util", "macros"] }
 tracing = "0.1.44"
+# Statusline display width (ADR-051); without `cjk`, the ambiguous-width table is left out.
+unicode-width = { version = "0.2.3", default-features = false }
 xxhash-rust = { version = "0.8.19", features = ["xxh3"] }
 zeroize = "1.9.1"
 
