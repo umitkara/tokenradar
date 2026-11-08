@@ -189,3 +189,87 @@ fn title_records_are_meta() {
         ParseOutcome::Skip
     ));
 }
+
+// Synthetic, written from the observed key layout (data-sources.md S3); no real record.
+const COMPACT: &str = r#"{"parentUuid":null,"logicalParentUuid":"p1","isSidechain":false,"type":"system","subtype":"compact_boundary","content":"Conversation compacted","isMeta":false,"timestamp":"2026-11-08T10:00:00.000Z","uuid":"c-1","level":"info","compactMetadata":{"trigger":"auto","preTokens":180000,"postTokens":12000,"durationMs":42000},"sessionId":"s1"}"#;
+
+/// The owned parts of a compact record: `(uuid, trigger, pre_tokens, is_sidechain)`.
+fn compact_of(line: &str) -> (Option<String>, CompactTrigger, Option<u64>, bool) {
+    match LineParser::default().parse(line.as_bytes()) {
+        ParseOutcome::Compact(c) => (
+            c.uuid.map(Cow::into_owned),
+            c.trigger,
+            c.pre_tokens,
+            c.is_sidechain,
+        ),
+        other => panic!("expected a compact record, got {other:?}"),
+    }
+}
+
+#[test]
+fn compact_boundaries_carry_trigger_and_size_only() {
+    let ParseOutcome::Compact(c) = LineParser::default().parse(COMPACT.as_bytes()) else {
+        panic!("not a compact record");
+    };
+    assert_eq!(c.uuid.as_deref(), Some("c-1"));
+    assert_eq!(c.session_id.as_deref(), Some("s1"));
+    assert_eq!(
+        c.ts,
+        Timestamp::parse_iso("2026-11-08T10:00:00.000Z").expect("ts")
+    );
+    assert_eq!(
+        compact_of(COMPACT),
+        (
+            Some("c-1".into()),
+            CompactTrigger::Auto,
+            Some(180_000),
+            false
+        )
+    );
+    let with = |from: &str, to: &str| compact_of(&COMPACT.replace(from, to));
+    assert_eq!(
+        with(r#""trigger":"auto""#, r#""trigger":"manual""#).1,
+        CompactTrigger::Manual
+    );
+    // A trigger added later, or none at all, still counts (ADR-042).
+    assert_eq!(
+        with(r#""trigger":"auto""#, r#""trigger":"idle""#).1,
+        CompactTrigger::Other
+    );
+    let bare = with(
+        r#""compactMetadata":{"trigger":"auto","preTokens":180000,"postTokens":12000,"durationMs":42000},"#,
+        "",
+    );
+    assert_eq!((bare.1, bare.2), (CompactTrigger::Other, None));
+    assert!(with(r#""isSidechain":false"#, r#""isSidechain":true"#).3);
+    assert_eq!(with(r#""uuid":"c-1","#, "").0, None);
+}
+
+#[test]
+fn the_word_compact_boundary_elsewhere_is_not_a_compaction() {
+    let parser = LineParser::default();
+    // A search for the word, as a tool input of an assistant line: still a usage record.
+    let search = ASSISTANT.replace(
+        r#""model":"#,
+        r#""tool":{"pattern":"compact_boundary"},"model":"#,
+    );
+    assert!(matches!(
+        parser.parse(search.as_bytes()),
+        ParseOutcome::Usage(_)
+    ));
+    let user = r#"{"type":"user","toolUseResult":{"pattern":"compact_boundary"},"timestamp":"2026-11-08T10:00:00.000Z"}"#;
+    assert!(matches!(parser.parse(user.as_bytes()), ParseOutcome::Skip));
+    let other_system = COMPACT.replace(
+        r#""subtype":"compact_boundary""#,
+        r#""subtype":"x","note":"compact_boundary""#,
+    );
+    assert!(matches!(
+        parser.parse(other_system.as_bytes()),
+        ParseOutcome::Skip
+    ));
+    let bad_ts = COMPACT.replace("2026-11-08T10:00:00.000Z", "soon");
+    assert!(matches!(
+        parser.parse(bad_ts.as_bytes()),
+        ParseOutcome::Unknown(UnknownReason::BadTimestamp)
+    ));
+}

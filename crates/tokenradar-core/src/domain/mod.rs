@@ -11,8 +11,8 @@ mod time;
 mod usage;
 
 pub use entities::{
-    Account, AccountSpec, Model, ModelFamily, Project, ProjectSpec, Provider, Session, SessionKind,
-    SessionSpec, SessionTitle, TitleSource,
+    Account, AccountSpec, CompactEvent, CompactTrigger, Model, ModelFamily, Project, ProjectSpec,
+    Provider, Session, SessionKind, SessionSpec, SessionTitle, TitleSource,
 };
 pub use ids::{AccountId, ModelId, ProjectId, SessionId};
 pub use limit::{

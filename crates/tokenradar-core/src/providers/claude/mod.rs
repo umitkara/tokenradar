@@ -17,7 +17,9 @@ use std::ffi::OsStr;
 use std::path::{Component, Path, PathBuf};
 
 pub use project::{ProjectKey, UNRESOLVED_PREFIX};
-pub use record::{AdvisorRecord, LineParser, MetaRecord, ParseOutcome, UnknownReason, UsageRecord};
+pub use record::{
+    AdvisorRecord, CompactRecord, LineParser, MetaRecord, ParseOutcome, UnknownReason, UsageRecord,
+};
 
 /// Name of the transcript directory inside a config directory.
 pub const PROJECTS_DIR: &str = "projects";

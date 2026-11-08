@@ -476,3 +476,70 @@ fn retention_runs_once_per_interval() {
             .is_some()
     );
 }
+
+/// A synthetic `compact_boundary` record (observed key layout, data-sources.md S3).
+fn compact_line(uuid: &str, session: &str, trigger: &str, sidechain: bool) -> String {
+    format!(
+        r#"{{"parentUuid":null,"isSidechain":{sidechain},"type":"system","subtype":"compact_boundary","content":"Conversation compacted","timestamp":"2026-11-08T10:00:00.000Z","uuid":"{uuid}","compactMetadata":{{"trigger":"{trigger}","preTokens":150000}},"sessionId":"{session}"}}"#
+    )
+}
+
+#[test]
+fn compactions_count_once_per_main_session() {
+    const D1: &str = "0d4c0000-0000-4000-8000-00000000d001";
+    const D2: &str = "0d4c0000-0000-4000-8000-00000000d002";
+    let env = Env::new();
+    let dir = env.path("C--Work-Delta");
+    fs::create_dir_all(dir.join(D1).join("subagents")).expect("mkdir");
+    let lines = |ls: &[String]| ls.join("\n") + "\n";
+    fs::write(
+        dir.join(format!("{D1}.jsonl")),
+        lines(&[
+            compact_line("c-1", D1, "auto", false),
+            compact_line("c-2", D1, "manual", false),
+            // A sidechain record in a main file does not count either.
+            compact_line("c-3", D1, "auto", true),
+        ]),
+    )
+    .expect("d1");
+    // Resumed: the first record copied over keeps its session, plus one of its own.
+    fs::write(
+        dir.join(format!("{D2}.jsonl")),
+        lines(&[
+            compact_line("c-1", D1, "auto", false),
+            compact_line("c-4", D2, "manual", false),
+        ]),
+    )
+    .expect("d2");
+    // A subagent's own compaction.
+    fs::write(
+        dir.join(D1).join("subagents").join("agent-d1.jsonl"),
+        lines(&[compact_line("c-5", D1, "auto", true)]),
+    )
+    .expect("agent");
+
+    let (report, _) = env.scan();
+    assert_eq!(report.parse.compact_records, 6);
+    let counts = |uuid: &str| env.store.compact_counts(uuid).expect("counts");
+    let c1 = counts(D1).expect("d1 indexed");
+    assert_eq!((c1.auto, c1.manual, c1.other), (1, 1, 0));
+    let c2 = counts(D2).expect("d2 indexed");
+    assert_eq!((c2.auto, c2.manual), (0, 1));
+    // A session without compactions is zero, an unknown one is unknown.
+    assert_eq!(counts(BETA).map(|c| c.auto + c.manual), Some(0));
+    assert_eq!(counts("not-a-session"), None);
+
+    // Reading everything again changes nothing.
+    env.store
+        .writer()
+        .call(|c| {
+            c.execute(
+                "UPDATE source_files SET offset = 0, size = 0, mtime = 0",
+                [],
+            )?;
+            Ok(())
+        })
+        .expect("reset");
+    env.scan();
+    assert_eq!(counts(D1), Some(c1));
+}

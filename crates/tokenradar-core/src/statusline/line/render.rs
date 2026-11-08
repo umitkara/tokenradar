@@ -35,6 +35,7 @@ use super::{
     Theme, Window,
 };
 use crate::limits::Severity;
+use crate::statusline::auto_compact::AutoCompact;
 
 /// Cells in a bar when it has to narrow (and by default); each stands for 12.5 %.
 const BAR_CELLS: usize = 8;
@@ -112,6 +113,8 @@ struct Detail {
     pace: bool,
     eta: bool,
     resets: bool,
+    /// The `compact` item's auto-compact part (Step 12n).
+    compact_limit: bool,
 }
 
 const COMPACT: Detail = Detail {
@@ -120,6 +123,7 @@ const COMPACT: Detail = Detail {
     pace: false,
     eta: false,
     resets: false,
+    compact_limit: false,
 };
 
 /// How an item draws a limit window: its format and its bar.
@@ -220,6 +224,7 @@ fn fit(ctx: &Ctx<'_>, indices: &[usize], width: Option<usize>) -> Vec<Span> {
         pace: true,
         eta: true,
         resets: true,
+        compact_limit: true,
     };
     // Only items that have something to show take part.
     let mut idx: Vec<usize> = indices
@@ -237,11 +242,21 @@ fn fit(ctx: &Ctx<'_>, indices: &[usize], width: Option<usize>) -> Vec<Span> {
             return place(ctx, &idx, regions, width);
         }
         let values = idx.iter().filter(|&&i| !ctx.kind(i).is_layout()).count();
+        let next_session_drop = idx.iter().rposition(|&i| {
+            let k = ctx.kind(i);
+            !k.is_layout() && !k.is_limit()
+        });
+        // The `compact` item gives up its auto-compact part before it goes (Step 12n).
         if values > 1
-            && let Some(p) = idx.iter().rposition(|&i| {
-                let k = ctx.kind(i);
-                !k.is_layout() && !k.is_limit()
-            })
+            && d.compact_limit
+            && let Some(p) = next_session_drop
+            && ctx.kind(idx[p]) == SegmentKind::Compact
+            && ctx.line.auto_compact.is_some()
+            && ctx.line.compacts.is_some()
+        {
+            d.compact_limit = false;
+        } else if values > 1
+            && let Some(p) = next_session_drop
         {
             drop_at(ctx, &mut idx, p);
         } else if d.wide && wide_bars(ctx, &idx) {
@@ -811,6 +826,10 @@ fn piece(ctx: &Ctx<'_>, i: usize, d: Detail) -> Option<Vec<Span>> {
                 &l.fmt("sl-percent", &[("pct", Arg::Num(pct.round()))]),
             ))
         }
+        SegmentKind::Compact => {
+            let text = compact(l, line, item.format, d.compact_limit)?;
+            plain(labeled(&lbl(), &text))
+        }
         SegmentKind::Separator => Some(vec![span(
             item.text.clone(),
             if item.color.is_some() {
@@ -992,6 +1011,45 @@ fn count(l: &Localizer, n: u64, format: Format) -> String {
         Format::Compact if n >= 1_000_000.0 => scaled("sl-millions", n / 1_000_000.0),
         Format::Compact if n >= 1_000.0 => scaled("sl-thousands", n / 1_000.0),
         _ => l.fmt("sl-number", &[("n", Arg::Num(n))]),
+    }
+}
+
+/// `⟲3 · 300k`, `⟲2 auto 1 manual · auto off`. Without a count (the app is not running, or
+/// the session is not indexed yet) only the setting shows, and the other way round; with
+/// neither, nothing. `limit` false leaves the setting out (a narrow terminal).
+fn compact(l: &Localizer, line: &Line, format: Option<Format>, limit: bool) -> Option<String> {
+    let counted = line.compacts.map(|c| match format {
+        Some(Format::Split) => {
+            let mut text = l.fmt(
+                "sl-compact-split",
+                &[
+                    ("auto", Arg::Num(f64::from(c.auto))),
+                    ("manual", Arg::Num(f64::from(c.manual))),
+                ],
+            );
+            if c.other > 0 {
+                text.push(' ');
+                text.push_str(&l.fmt("sl-compact-other", &[("n", Arg::Num(f64::from(c.other)))]));
+            }
+            text
+        }
+        _ => l.fmt("sl-compact-total", &[("n", Arg::Num(f64::from(c.total())))]),
+    });
+    let setting = line
+        .auto_compact
+        .filter(|_| limit || counted.is_none())
+        .map(|a| match a {
+            AutoCompact::Off => l.msg("sl-compact-off"),
+            AutoCompact::Window(t) => count(l, t, Format::Compact),
+        });
+    match (counted, setting) {
+        (Some(c), Some(s)) => Some(l.fmt(
+            "sl-compact-with-limit",
+            &[("count", Arg::Str(&c)), ("limit", Arg::Str(&s))],
+        )),
+        (Some(c), None) => Some(c),
+        (None, Some(s)) => Some(l.fmt("sl-compact-limit-only", &[("limit", Arg::Str(&s))])),
+        (None, None) => None,
     }
 }
 

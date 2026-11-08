@@ -6,6 +6,7 @@
 //!                                └──► spool/*.jsonl ──(app start, every 5 min)──► LimitEngine
 //! ```
 
+pub mod auto_compact;
 pub mod claude_mod;
 pub mod git;
 pub mod install;

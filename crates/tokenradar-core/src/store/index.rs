@@ -6,7 +6,10 @@ use std::collections::HashMap;
 use rusqlite::{Connection, OptionalExtension, Transaction, params};
 
 use super::{Result, StoreError, catalog, events};
-use crate::domain::{AccountId, SessionId, SessionKind, SessionSpec, Timestamp, UsageEvent};
+use crate::domain::{
+    AccountId, CompactEvent, CompactTrigger, SessionId, SessionKind, SessionSpec, Timestamp,
+    UsageEvent,
+};
 
 /// Read position of one transcript file.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -32,6 +35,8 @@ pub struct IndexBatch {
     pub sessions: Vec<SessionSpec>,
     pub events: Vec<UsageEvent>,
     pub files: Vec<SourceFileState>,
+    /// Main-session compactions (Step 12n); a uuid already stored is left alone.
+    pub compacts: Vec<CompactEvent>,
 }
 
 pub(crate) fn commit(conn: &mut Connection, batch: &IndexBatch) -> Result<events::UpsertStats> {
@@ -40,6 +45,7 @@ pub(crate) fn commit(conn: &mut Connection, batch: &IndexBatch) -> Result<events
         catalog::upsert_session(&tx, spec)?;
     }
     let stats = events::upsert(&tx, &batch.events)?;
+    insert_compacts(&tx, &batch.compacts)?;
     for file in &batch.files {
         upsert_file(&tx, file)?;
     }
@@ -161,4 +167,59 @@ fn to_sql(v: u64, column: &'static str) -> Result<i64> {
 /// Sizes and offsets are written from `u64` and never negative.
 fn from_sql(v: i64) -> u64 {
     u64::try_from(v).unwrap_or(0)
+}
+
+fn insert_compacts(tx: &Transaction<'_>, compacts: &[CompactEvent]) -> Result<()> {
+    let mut stmt = tx.prepare_cached(
+        "INSERT INTO compact_events (uuid, session_uuid, at, trigger, pre_tokens)
+         VALUES (?1, ?2, ?3, ?4, ?5) ON CONFLICT (uuid) DO NOTHING",
+    )?;
+    for c in compacts {
+        stmt.execute(params![
+            c.uuid,
+            c.session_uuid,
+            c.at,
+            c.trigger.as_str(),
+            c.pre_tokens.and_then(|t| i64::try_from(t).ok()),
+        ])?;
+    }
+    Ok(())
+}
+
+/// Compactions of the main session with this uuid, in any account; `None` when no such
+/// session is indexed (the count is unknown, not zero).
+pub(crate) fn compact_counts(conn: &Connection, uuid: &str) -> Result<Option<CompactCounts>> {
+    let found: Option<i64> = conn
+        .prepare_cached("SELECT COUNT(*) FROM sessions WHERE uuid = ?1 AND kind = 'main'")?
+        .query_row([uuid], |r| r.get(0))
+        .optional()?;
+    if found.unwrap_or(0) == 0 {
+        return Ok(None);
+    }
+    let mut counts = CompactCounts::default();
+    let mut stmt = conn.prepare_cached(
+        "SELECT trigger, COUNT(*) FROM compact_events WHERE session_uuid = ?1 GROUP BY trigger",
+    )?;
+    let rows = stmt.query_map([uuid], |r| {
+        Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?))
+    })?;
+    for row in rows {
+        let (trigger, n) = row?;
+        let n = u32::try_from(n).unwrap_or(u32::MAX);
+        match trigger.parse() {
+            Ok(CompactTrigger::Auto) => counts.auto += n,
+            Ok(CompactTrigger::Manual) => counts.manual += n,
+            _ => counts.other += n,
+        }
+    }
+    Ok(Some(counts))
+}
+
+/// How many times a session was compacted, by trigger.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct CompactCounts {
+    pub auto: u32,
+    pub manual: u32,
+    /// A trigger this build does not know; still part of the total.
+    pub other: u32,
 }

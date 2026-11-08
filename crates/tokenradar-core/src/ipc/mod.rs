@@ -22,8 +22,8 @@ pub use proto::{
     StatusQuery,
 };
 pub use view::{
-    AbsentLimit, AccountInfo, JSON_SCHEMA, LimitInfo, LimitsReply, Origin, SessionInfo,
-    SessionsReply, StatusReply,
+    AbsentLimit, AccountInfo, CompactCount, JSON_SCHEMA, LimitInfo, LimitsReply, Origin,
+    SessionInfo, SessionsReply, StatusReply,
 };
 
 /// The pipe of the current user. Each user has their own; the name reveals nothing about them.

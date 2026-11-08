@@ -12,7 +12,9 @@ use rusqlite::Connection;
 
 use super::testutil::{Fixture, account_spec, memory_db, seed};
 use super::*;
-use crate::domain::{BUCKET_MS, LimitKind, Scope, SessionKind, SessionTitle, Source, TitleSource};
+use crate::domain::{
+    BUCKET_MS, CompactEvent, LimitKind, Scope, SessionKind, SessionTitle, Source, TitleSource,
+};
 
 fn upsert(conn: &mut Connection, batch: &[UsageEvent]) -> UpsertStats {
     let tx = conn.transaction().expect("tx");
@@ -105,7 +107,7 @@ fn migrations_run_once_and_reopen_is_idempotent() {
         })
         .expect("read");
     assert_eq!(version, migrate::LATEST);
-    assert_eq!(tables, 14);
+    assert_eq!(tables, 15);
     // Data survives and the account keeps its id.
     assert_eq!(
         store
@@ -708,4 +710,97 @@ fn release_memory_keeps_the_store_usable() {
         .kv_set("k".into(), "v".into())
         .expect("write");
     assert_eq!(store.kv_get("k").expect("read").as_deref(), Some("v"));
+}
+
+// --- Step 12n: compact events -------------------------------------------------------------
+
+fn compact(uuid: &str, session: &str, trigger: crate::domain::CompactTrigger) -> CompactEvent {
+    CompactEvent {
+        uuid: uuid.into(),
+        session_uuid: session.into(),
+        at: Timestamp::from_millis(1_000),
+        trigger,
+        pre_tokens: Some(180_000),
+    }
+}
+
+#[test]
+fn compact_counts_split_by_trigger_and_ignore_copies() {
+    use crate::domain::CompactTrigger::{Auto, Manual, Other};
+    let mut conn = memory_db();
+    seed(&conn);
+    let batch = IndexBatch {
+        compacts: vec![
+            compact("c-1", "s-0", Auto),
+            compact("c-2", "s-0", Auto),
+            compact("c-3", "s-0", Manual),
+            compact("c-4", "s-0", Other),
+        ],
+        ..IndexBatch::default()
+    };
+    index::commit(&mut conn, &batch).expect("commit");
+    // The same records again, as a resumed session's copy or a re-read file brings them.
+    let again = IndexBatch {
+        compacts: vec![compact("c-1", "s-0", Auto), compact("c-3", "s-0", Manual)],
+        ..IndexBatch::default()
+    };
+    index::commit(&mut conn, &again).expect("commit");
+    assert_eq!(
+        index::compact_counts(&conn, "s-0").expect("counts"),
+        Some(CompactCounts {
+            auto: 2,
+            manual: 1,
+            other: 1
+        })
+    );
+    // Indexed but never compacted: zero, which is worth showing.
+    assert_eq!(
+        index::compact_counts(&conn, "s-1").expect("counts"),
+        Some(CompactCounts::default())
+    );
+    // Not indexed (yet): unknown, not zero.
+    assert_eq!(index::compact_counts(&conn, "nope").expect("counts"), None);
+}
+
+#[test]
+fn upgrading_from_schema_1_rereads_every_live_file() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let path = dir.path().join("tokenradar.db");
+    {
+        let conn = Connection::open(&path).expect("open");
+        conn.execute_batch(include_str!("migrations/0001_init.sql"))
+            .expect("schema 1");
+        conn.pragma_update(None, "user_version", 1)
+            .expect("version");
+        let account =
+            catalog::upsert_account(&conn, &account_spec("C:/a"), Timestamp::from_millis(0))
+                .expect("account");
+        for (p, deleted) in [("live.jsonl", None), ("gone.jsonl", Some(5_i64))] {
+            conn.execute(
+                "INSERT INTO source_files (account_id, path, kind, size, mtime, offset, deleted_at)
+                 VALUES (?1, ?2, 'main', 900, 77, 900, ?3)",
+                rusqlite::params![account, p, deleted],
+            )
+            .expect("file");
+        }
+    }
+    let store = Store::open(&path).expect("migrate");
+    let rows: Vec<(String, i64, i64, i64)> = store
+        .read(|c| {
+            let mut stmt =
+                c.prepare("SELECT path, size, mtime, offset FROM source_files ORDER BY path")?;
+            let rows = stmt
+                .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))?
+                .collect::<rusqlite::Result<_>>()?;
+            Ok(rows)
+        })
+        .expect("read");
+    assert_eq!(
+        rows,
+        vec![
+            // A deleted file keeps its state; it is not on disk to read again.
+            ("gone.jsonl".into(), 900, 77, 900),
+            ("live.jsonl".into(), 0, 0, 0),
+        ]
+    );
 }

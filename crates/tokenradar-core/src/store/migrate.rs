@@ -5,7 +5,10 @@ use rusqlite::Connection;
 use super::{Result, StoreError};
 
 /// `(version, sql)`. Append only; a released migration is never edited.
-const MIGRATIONS: &[(i64, &str)] = &[(1, include_str!("migrations/0001_init.sql"))];
+const MIGRATIONS: &[(i64, &str)] = &[
+    (1, include_str!("migrations/0001_init.sql")),
+    (2, include_str!("migrations/0002_compact_events.sql")),
+];
 
 pub(crate) const LATEST: i64 = MIGRATIONS[MIGRATIONS.len() - 1].0;
 

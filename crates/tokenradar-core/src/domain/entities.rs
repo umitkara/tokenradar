@@ -97,6 +97,41 @@ impl TitleSource {
     }
 }
 
+stored_enum! {
+    /// What started a compaction (`compactMetadata.trigger`). A value Claude Code adds later
+    /// is kept as `Other` and still counts (ADR-042).
+    CompactTrigger as "compact trigger" {
+        Auto = "auto",
+        Manual = "manual",
+        Other = "other",
+    }
+}
+
+impl CompactTrigger {
+    /// The transcript's value, read leniently.
+    pub fn from_transcript(value: Option<&str>) -> Self {
+        match value {
+            Some("auto") => Self::Auto,
+            Some("manual") => Self::Manual,
+            _ => Self::Other,
+        }
+    }
+}
+
+/// One `compact_boundary` record of a main session (Step 12n). Only metadata: the summary
+/// that follows it is conversation content and is never read.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CompactEvent {
+    /// The record's `uuid`: the same record copied into another file (`--resume`) counts once.
+    pub uuid: String,
+    /// The session the record names (`sessionId`), else the file's. Taken from the record so
+    /// that a copy lands on the same session whichever file is read first.
+    pub session_uuid: String,
+    pub at: Timestamp,
+    pub trigger: CompactTrigger,
+    pub pre_tokens: Option<u64>,
+}
+
 /// A session title and its source.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
 pub struct SessionTitle {

@@ -299,6 +299,7 @@ impl CoreRuntime {
                 limits_tx: limits_tx.clone(),
                 status: status.clone(),
                 accounts: account_dirs,
+                store: store.clone(),
             };
             let (tx, thread) = spawn_ipc(ipc, handler)?;
             ipc_stop = Some(tx);

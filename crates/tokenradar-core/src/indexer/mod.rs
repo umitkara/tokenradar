@@ -37,8 +37,8 @@ use serde::Serialize;
 use specta::Type;
 
 use crate::domain::{
-    AccountId, ModelId, MsgKey, ProjectId, ProjectSpec, SessionId, SessionKind, SessionSpec,
-    SessionTitle, Timestamp, TitleSource, Usage, UsageEvent,
+    AccountId, CompactEvent, CompactTrigger, ModelId, MsgKey, ProjectId, ProjectSpec, SessionId,
+    SessionKind, SessionSpec, SessionTitle, Timestamp, TitleSource, Usage, UsageEvent,
 };
 use crate::pricing::{Pricing, family_of};
 use crate::providers::claude::{
@@ -137,6 +137,8 @@ pub struct ParseStats {
     pub usage_records: u64,
     pub advisor_records: u64,
     pub title_records: u64,
+    /// `compact_boundary` records, sidechain ones included (those are not stored).
+    pub compact_records: u64,
     pub malformed: u64,
     pub bad_timestamps: u64,
     /// Usage lines that only the loose pre-filter caught (ADR-024).
@@ -154,6 +156,7 @@ impl ParseStats {
         self.usage_records += o.usage_records;
         self.advisor_records += o.advisor_records;
         self.title_records += o.title_records;
+        self.compact_records += o.compact_records;
         self.malformed += o.malformed;
         self.bad_timestamps += o.bad_timestamps;
         self.prefilter_misses += o.prefilter_misses;
@@ -221,6 +224,16 @@ struct RawEvent {
     usage: Usage,
 }
 
+/// One main-session compaction, owned, ready for the coordinator.
+#[derive(Debug)]
+struct RawCompact {
+    uuid: String,
+    session_uuid: Option<String>,
+    at: Timestamp,
+    trigger: CompactTrigger,
+    pre_tokens: Option<u64>,
+}
+
 /// Part of a file's records, up to `offset`.
 #[derive(Debug, Default)]
 struct Chunk {
@@ -229,6 +242,8 @@ struct Chunk {
     /// Position of each key in `events`.
     seen: HashMap<MsgKey, usize>,
     titles: Vec<(TitleSource, String)>,
+    /// Compactions of the main conversation; sidechain ones are dropped while parsing.
+    compacts: Vec<RawCompact>,
     /// First cwd seen in this chunk.
     cwd: Option<String>,
     git_branch: Option<String>,
@@ -547,6 +562,24 @@ impl Indexer {
                 usage: raw.usage,
                 cost,
             });
+        }
+        // Only a main session's own compactions count; a subagent's are its own business.
+        if let SourceKind::Main { session: file, .. } = &entry.kind {
+            state
+                .batch
+                .compacts
+                .extend(chunk.compacts.into_iter().map(|c| {
+                    CompactEvent {
+                        uuid: c.uuid,
+                        session_uuid: c
+                            .session_uuid
+                            .filter(|s| !s.is_empty())
+                            .unwrap_or_else(|| file.clone()),
+                        at: c.at,
+                        trigger: c.trigger,
+                        pre_tokens: c.pre_tokens,
+                    }
+                }));
         }
         state.sessions.insert(session, spec);
         state.files.insert(
@@ -1021,6 +1054,23 @@ fn collect_line(parser: &LineParser, line: &[u8], chunk: &mut Chunk) {
         ParseOutcome::Meta(MetaRecord::Title { source, text }) => {
             chunk.stats.title_records += 1;
             chunk.titles.push((source, text.into_owned()));
+        }
+        ParseOutcome::Compact(rec) => {
+            chunk.stats.compact_records += 1;
+            if !rec.is_sidechain {
+                chunk.compacts.push(RawCompact {
+                    // A record without a `uuid` is keyed by its bytes, so re-reading it is
+                    // still idempotent.
+                    uuid: rec.uuid.map_or_else(
+                        || format!("line:{:032x}", xxhash_rust::xxh3::xxh3_128(line)),
+                        std::borrow::Cow::into_owned,
+                    ),
+                    session_uuid: rec.session_id.map(std::borrow::Cow::into_owned),
+                    at: rec.ts,
+                    trigger: rec.trigger,
+                    pre_tokens: rec.pre_tokens,
+                });
+            }
         }
         ParseOutcome::Skip => {}
         ParseOutcome::Unknown(UnknownReason::Malformed) => chunk.stats.malformed += 1,

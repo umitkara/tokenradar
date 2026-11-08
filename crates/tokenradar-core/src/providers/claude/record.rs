@@ -12,7 +12,7 @@ use memchr::memmem;
 use serde::Deserialize;
 use serde::de::{self, Deserializer, SeqAccess, Visitor};
 
-use crate::domain::{MsgKey, Speed, Timestamp, TitleSource, TokenCounts, Usage};
+use crate::domain::{CompactTrigger, MsgKey, Speed, Timestamp, TitleSource, TokenCounts, Usage};
 
 /// What one line contributed.
 #[derive(Debug)]
@@ -20,6 +20,8 @@ use crate::domain::{MsgKey, Speed, Timestamp, TitleSource, TokenCounts, Usage};
 pub enum ParseOutcome<'a> {
     Usage(UsageRecord<'a>),
     Meta(MetaRecord<'a>),
+    /// A `compact_boundary` record (Step 12n).
+    Compact(CompactRecord<'a>),
     /// Not relevant to usage: user turns, attachments, API request logs, …
     Skip,
     /// Looked relevant but could not be used. Counted as a schema-drift signal (§15).
@@ -63,6 +65,19 @@ pub struct AdvisorRecord<'a> {
     pub usage: Usage,
 }
 
+/// A compaction: only the record's identity and `compactMetadata`'s trigger and size. The
+/// summary Claude Code writes after it is a separate record and never parsed.
+#[derive(Debug, PartialEq, Eq)]
+pub struct CompactRecord<'a> {
+    /// `None` when the record has no `uuid`; the indexer then keys it by the line's hash.
+    pub uuid: Option<Cow<'a, str>>,
+    pub session_id: Option<Cow<'a, str>>,
+    pub ts: Timestamp,
+    pub is_sidechain: bool,
+    pub trigger: CompactTrigger,
+    pub pre_tokens: Option<u64>,
+}
+
 /// Session metadata that is not tied to a response.
 #[derive(Debug, PartialEq, Eq)]
 pub enum MetaRecord<'a> {
@@ -77,6 +92,7 @@ pub struct LineParser {
     usage: memmem::Finder<'static>,
     assistant_strict: memmem::Finder<'static>,
     assistant_loose: memmem::Finder<'static>,
+    compact: memmem::Finder<'static>,
 }
 
 impl Default for LineParser {
@@ -85,6 +101,7 @@ impl Default for LineParser {
             usage: memmem::Finder::new(br#""usage""#),
             assistant_strict: memmem::Finder::new(br#""type":"assistant""#),
             assistant_loose: memmem::Finder::new(br#""assistant""#),
+            compact: memmem::Finder::new(br#""compact_boundary""#),
         }
     }
 }
@@ -95,18 +112,26 @@ impl LineParser {
     /// Pre-filter: a usage record must contain `"usage"` and `"type":"assistant"`. Lines that
     /// contain `"usage"` and only a looser `"assistant"` are parsed too, so a change in JSON
     /// spacing degrades into a warning instead of silently losing every event.
+    ///
+    /// A line that is not a usage record is searched for `"compact_boundary"` next, so the
+    /// second pattern never runs over assistant lines, the largest ones.
     pub fn parse<'a>(&self, line: &'a [u8]) -> ParseOutcome<'a> {
         if self.usage.find(line).is_some() {
             let strict = self.assistant_strict.find(line).is_some();
             if strict || self.assistant_loose.find(line).is_some() {
-                return parse_usage(line, !strict);
+                match parse_usage(line, !strict) {
+                    ParseOutcome::Skip => {}
+                    outcome => return outcome,
+                }
             }
-            return ParseOutcome::Skip;
         }
-        match title_source(line) {
-            Some(source) => parse_title(line, source),
-            None => ParseOutcome::Skip,
+        if let Some(source) = title_source(line) {
+            return parse_title(line, source);
         }
+        if self.compact.find(line).is_some() {
+            return parse_compact(line);
+        }
+        ParseOutcome::Skip
     }
 }
 
@@ -250,6 +275,34 @@ fn parse_title(line: &[u8], source: TitleSource) -> ParseOutcome<'_> {
         }
         _ => ParseOutcome::Skip,
     }
+}
+
+/// The quoted word may also appear in a tool's input (a search for it, say): only a
+/// top-level `"type":"system"` with `"subtype":"compact_boundary"` counts.
+fn parse_compact(line: &[u8]) -> ParseOutcome<'_> {
+    let Ok(parsed) = serde_json::from_slice::<CompactLine<'_>>(line) else {
+        return ParseOutcome::Unknown(UnknownReason::Malformed);
+    };
+    let is = |v: &Option<Str<'_>>, want: &str| v.as_ref().is_some_and(|s| s.0 == want);
+    if !is(&parsed.kind, "system") || !is(&parsed.subtype, "compact_boundary") {
+        return ParseOutcome::Skip;
+    }
+    let Some(Ok(ts)) = parsed
+        .timestamp
+        .as_ref()
+        .map(|t| Timestamp::parse_iso(&t.0))
+    else {
+        return ParseOutcome::Unknown(UnknownReason::BadTimestamp);
+    };
+    let meta = parsed.compact_metadata.unwrap_or_default();
+    ParseOutcome::Compact(CompactRecord {
+        uuid: parsed.uuid.map(|s| s.0),
+        session_id: parsed.session_id.map(|s| s.0),
+        ts,
+        is_sidechain: parsed.is_sidechain.unwrap_or(false),
+        trigger: CompactTrigger::from_transcript(meta.trigger.as_ref().map(|t| t.0.as_ref())),
+        pre_tokens: meta.pre_tokens,
+    })
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -427,6 +480,34 @@ impl<'de: 'a, 'a> Deserialize<'de> for Advisors<'a> {
 
         deserializer.deserialize_any(SeqVisitor)
     }
+}
+
+/// Every other field of a `compact_boundary` record, `content` included, is skipped.
+#[derive(Deserialize)]
+struct CompactLine<'a> {
+    #[serde(rename = "type", borrow, default)]
+    kind: Option<Str<'a>>,
+    #[serde(borrow, default)]
+    subtype: Option<Str<'a>>,
+    #[serde(borrow, default)]
+    uuid: Option<Str<'a>>,
+    #[serde(rename = "sessionId", borrow, default)]
+    session_id: Option<Str<'a>>,
+    #[serde(borrow, default)]
+    timestamp: Option<Str<'a>>,
+    #[serde(rename = "isSidechain", default)]
+    is_sidechain: Option<bool>,
+    #[serde(rename = "compactMetadata", borrow, default)]
+    compact_metadata: Option<CompactMetadata<'a>>,
+}
+
+/// `trigger` and `preTokens` only; `postTokens` and the rest are not needed (Step 12n).
+#[derive(Deserialize, Default)]
+struct CompactMetadata<'a> {
+    #[serde(borrow, default)]
+    trigger: Option<Str<'a>>,
+    #[serde(rename = "preTokens", default)]
+    pre_tokens: Option<u64>,
 }
 
 #[derive(Deserialize)]

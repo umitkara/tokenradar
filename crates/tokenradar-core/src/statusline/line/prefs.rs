@@ -76,6 +76,8 @@ pub enum SegmentKind {
     /// The share of the last request's input read from the prompt cache.
     CacheRatio,
     OutputStyle,
+    /// How many times the session was compacted and the auto-compact window (Step 12n).
+    Compact,
     /// A separator glyph of the user's choice.
     Separator,
     /// Starts a new output line.
@@ -131,6 +133,10 @@ pub enum Format {
     Remaining,
     /// The context window: the tokens left, `185k left`.
     TokensLeft,
+    /// Compactions: the total, `⟲3`.
+    Total,
+    /// Compactions: automatic and manual apart, `⟲2 auto 1 manual`.
+    Split,
 }
 
 /// How a limit shows its reset (Step 12m).
@@ -221,7 +227,7 @@ pub const DEFAULT_SEPARATOR: &str = "│";
 pub const BAR_WIDTHS: [u8; 3] = [8, 4, 12];
 
 impl SegmentKind {
-    pub const ALL: [Self; 29] = [
+    pub const ALL: [Self; 30] = [
         Self::FiveHour,
         Self::SevenDay,
         Self::Scoped,
@@ -246,6 +252,7 @@ impl SegmentKind {
         Self::SessionName,
         Self::CacheRatio,
         Self::OutputStyle,
+        Self::Compact,
         Self::Separator,
         Self::LineBreak,
         Self::CustomText,
@@ -279,6 +286,7 @@ impl SegmentKind {
             Self::SessionName => "session_name",
             Self::CacheRatio => "cache_ratio",
             Self::OutputStyle => "output_style",
+            Self::Compact => "compact",
             Self::Separator => "separator",
             Self::LineBreak => "line_break",
             Self::CustomText => "custom_text",
@@ -366,6 +374,7 @@ impl SegmentKind {
             Self::LinesChanged => &[Format::Both, Format::Net],
             Self::Cwd => &[Format::Basename, Format::Home, Format::Full],
             Self::ProjectDir => &[Format::Basename, Format::Full],
+            Self::Compact => &[Format::Total, Format::Split],
             _ => &[],
         }
     }
@@ -393,7 +402,7 @@ impl SegmentKind {
                 AnsiColor::Magenta
             }
             Self::Cost | Self::BurnRate | Self::LinesChanged | Self::GitBranch => AnsiColor::Green,
-            Self::SessionName | Self::OutputStyle => AnsiColor::BrightBlue,
+            Self::SessionName | Self::OutputStyle | Self::Compact => AnsiColor::BrightBlue,
             Self::VimMode => AnsiColor::Yellow,
             Self::AgentName => AnsiColor::BrightCyan,
             _ => AnsiColor::Gray,
@@ -402,7 +411,7 @@ impl SegmentKind {
 }
 
 impl Format {
-    pub const ALL: [Self; 15] = [
+    pub const ALL: [Self; 17] = [
         Self::Bar,
         Self::Percent,
         Self::Fraction,
@@ -418,6 +427,8 @@ impl Format {
         Self::Home,
         Self::Remaining,
         Self::TokensLeft,
+        Self::Total,
+        Self::Split,
     ];
 
     pub const fn as_str(self) -> &'static str {
@@ -437,6 +448,8 @@ impl Format {
             Self::Home => "home",
             Self::Remaining => "remaining",
             Self::TokensLeft => "tokens_left",
+            Self::Total => "total",
+            Self::Split => "split",
         }
     }
 

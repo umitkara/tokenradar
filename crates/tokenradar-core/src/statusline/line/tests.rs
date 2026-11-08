@@ -304,6 +304,7 @@ fn session(share: Option<f64>) -> SessionInfo {
         share_percent: share,
         cost_usd: 0.0,
         tokens_per_min: 0.0,
+        compacts: None,
     }
 }
 
@@ -537,4 +538,5 @@ fn the_payload_window_gets_its_elapsed_time() {
 
 mod layout;
 mod v12m;
+mod v12n;
 mod v3;

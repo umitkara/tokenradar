@@ -7,7 +7,7 @@ use std::sync::{Arc, Mutex};
 use super::{CoreStatus, LimitsMsg, lock};
 use crate::domain::{AccountId, LimitObservation, Timestamp};
 use crate::ipc::proto::Handler;
-use crate::ipc::{LimitsReply, SessionsReply, StatusQuery, StatusReply};
+use crate::ipc::{CompactCount, LimitsReply, SessionInfo, SessionsReply, StatusQuery, StatusReply};
 use crate::statusline::{StatuslinePush, account_for, spool};
 use crate::store::Store;
 
@@ -24,6 +24,8 @@ pub(super) struct CoreIpc {
     pub limits_tx: mpsc::Sender<LimitsMsg>,
     pub status: Arc<Mutex<CoreStatus>>,
     pub accounts: Vec<(AccountId, PathBuf)>,
+    /// For the asked session's compactions (Step 12n): one small indexed read per call.
+    pub store: Store,
 }
 
 impl CoreIpc {
@@ -32,6 +34,23 @@ impl CoreIpc {
             || StatusReply::empty(Timestamp::now()),
             |s| StatusReply::from_snapshot(s, session),
         )
+    }
+}
+
+/// Adds the session's compactions to `reply`. A session the view does not list gets an entry
+/// of its own; a session the database does not know stays without a count.
+pub(super) fn add_compacts(reply: &mut StatusReply, uuid: &str, store: &Store) {
+    let counts = match store.compact_counts(uuid) {
+        Ok(Some(c)) => CompactCount::from(c),
+        Ok(None) => return,
+        Err(error) => {
+            tracing::debug!(%error, "could not read compactions");
+            return;
+        }
+    };
+    match &mut reply.session {
+        Some(s) => s.compacts = Some(counts),
+        None => reply.session = Some(SessionInfo::compacts_only(uuid, counts)),
     }
 }
 
@@ -44,7 +63,11 @@ impl Handler for CoreIpc {
     }
 
     fn status(&self, query: &StatusQuery) -> StatusReply {
-        self.snapshot(query.session_uuid.as_deref())
+        let mut reply = self.snapshot(query.session_uuid.as_deref());
+        if let Some(uuid) = query.session_uuid.as_deref() {
+            add_compacts(&mut reply, uuid, &self.store);
+        }
+        reply
     }
 
     fn limits(&self) -> LimitsReply {
@@ -127,4 +150,71 @@ pub(super) fn import_spool(
         tracing::info!(?report, "imported spooled statusline readings");
     }
     report
+}
+
+#[cfg(test)]
+mod compact_tests {
+    use super::*;
+    use crate::domain::{
+        AccountSpec, CompactEvent, CompactTrigger, Provider, SessionKind, SessionSpec,
+    };
+    use crate::store::IndexBatch;
+
+    #[test]
+    fn the_asked_session_gets_its_compactions() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let store = Store::open(dir.path().join("db.sqlite")).expect("store");
+        let w = store.writer();
+        let account = w
+            .upsert_account(AccountSpec {
+                provider: Provider::Claude,
+                label: "Claude".into(),
+                config_dir: "C:/c".into(),
+                plan: None,
+                tier: None,
+                environment: "native".into(),
+            })
+            .expect("account");
+        for uuid in ["s1", "s2"] {
+            w.upsert_session(SessionSpec::new(account, uuid, SessionKind::Main))
+                .expect("session");
+        }
+        w.commit_index_batch(IndexBatch {
+            compacts: vec![CompactEvent {
+                uuid: "c-1".into(),
+                session_uuid: "s1".into(),
+                at: Timestamp::from_millis(1),
+                trigger: CompactTrigger::Manual,
+                pre_tokens: None,
+            }],
+            ..IndexBatch::default()
+        })
+        .expect("batch");
+
+        // Not in the view: an entry of its own, nothing measured.
+        let mut reply = StatusReply::empty(Timestamp::from_millis(5));
+        add_compacts(&mut reply, "s1", &store);
+        let s = reply.session.expect("session");
+        assert_eq!(s.session_uuid.as_deref(), Some("s1"));
+        assert_eq!(s.compacts.map(|c| (c.manual, c.total())), Some((1, 1)));
+        assert_eq!(s.share_percent, None);
+
+        // In the view: the count joins what the view has.
+        let mut reply = StatusReply::empty(Timestamp::from_millis(5));
+        let mut listed = SessionInfo::compacts_only("s2", CompactCount::default());
+        listed.share_percent = Some(4.0);
+        listed.compacts = None;
+        reply.session = Some(listed);
+        add_compacts(&mut reply, "s2", &store);
+        let s = reply.session.expect("session");
+        assert_eq!(
+            (s.share_percent, s.compacts),
+            (Some(4.0), Some(CompactCount::default()))
+        );
+
+        // Unknown to the database: no count at all.
+        let mut reply = StatusReply::empty(Timestamp::from_millis(5));
+        add_compacts(&mut reply, "new", &store);
+        assert!(reply.session.is_none());
+    }
 }

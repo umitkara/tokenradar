@@ -28,7 +28,7 @@ use std::thread;
 use rusqlite::{Connection, OpenFlags};
 
 pub use events::UpsertStats;
-pub use index::{IndexBatch, SourceFileState};
+pub use index::{CompactCounts, IndexBatch, SourceFileState};
 pub use retention::{PruneStats, RETENTION_INTERVAL_MS};
 pub use stats::AccountStats;
 pub use windows::{SessionLabel, WINDOW_MATCH_TOLERANCE_MS};
@@ -247,6 +247,11 @@ impl Store {
     /// Id of a session by uuid, if it has been indexed.
     pub fn session_id_by_uuid(&self, account: AccountId, uuid: &str) -> Result<Option<SessionId>> {
         self.read(|c| catalog::session_id_by_uuid(c, account, uuid))
+    }
+
+    /// Compactions of the main session with this uuid; `None` when it is not indexed.
+    pub fn compact_counts(&self, uuid: &str) -> Result<Option<CompactCounts>> {
+        self.read(|c| index::compact_counts(c, uuid))
     }
 }
 

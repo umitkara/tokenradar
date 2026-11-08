@@ -17,9 +17,10 @@
 use serde::{Deserialize, Serialize};
 use specta::Type;
 
+use super::auto_compact::AutoCompact;
 use super::payload::{RateWindow, StatuslinePayload};
 use crate::domain::{Scope, Source, Timestamp};
-use crate::ipc::{LimitInfo, StatusReply};
+use crate::ipc::{CompactCount, LimitInfo, StatusReply};
 use crate::limits::{FRESH_MS, SESSION_WINDOW_MS, Severity, WEEK_MS};
 
 mod prefs;
@@ -104,6 +105,11 @@ pub struct Line {
     pub facts: Facts,
     /// Where the local time of a reset comes from (`reset_format = "clock"`).
     pub zone: Zone,
+    /// The session's compactions, from the app (Step 12n); `None` when unknown.
+    pub compacts: Option<CompactCount>,
+    /// Claude Code's auto-compact setting, read by the caller from the settings files (I/O);
+    /// `None` when it is on with no window set.
+    pub auto_compact: Option<AutoCompact>,
 }
 
 /// The time zone a reset's wall-clock time is shown in.
@@ -200,6 +206,8 @@ impl Line {
             model: None,
             facts: Facts::default(),
             zone: Zone::System,
+            compacts: None,
+            auto_compact: None,
         }
     }
 
@@ -262,6 +270,8 @@ impl Line {
                 .map(|name| Reading::now(name.to_owned(), Source::Statusline, now)),
             facts: payload.map(facts).unwrap_or_default(),
             zone: Zone::System,
+            compacts: reply.and_then(|r| r.session.as_ref()?.compacts),
+            auto_compact: None,
         }
     }
 
@@ -421,6 +431,12 @@ impl Line {
                 context_used: Some(76_000),
             },
             zone: Zone::System,
+            compacts: Some(CompactCount {
+                auto: 2,
+                manual: 1,
+                other: 0,
+            }),
+            auto_compact: Some(AutoCompact::Window(300_000)),
         }
     }
 }

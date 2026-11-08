@@ -46,6 +46,12 @@ sl-weekday-thu = Per
 sl-weekday-fri = Cum
 sl-weekday-sat = Cmt
 sl-weekday-sun = Paz
+sl-compact-total = ⟲{ NUM($n, 0) }
+sl-compact-split = ⟲{ NUM($auto, 0) } oto { NUM($manual, 0) } elle
+sl-compact-other = { NUM($n, 0) } diğer
+sl-compact-off = oto kapalı
+sl-compact-with-limit = { $count } · { $limit }
+sl-compact-limit-only = ⟲ { $limit }
 sl-no-limits = henüz limit verisi yok
 
 ## Tablolar

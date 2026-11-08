@@ -71,6 +71,34 @@ impl AbsentLimit {
     }
 }
 
+/// How many times a session was compacted (Step 12n), from its transcript.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CompactCount {
+    pub auto: u32,
+    pub manual: u32,
+    /// A trigger this build does not know; part of [`CompactCount::total`].
+    #[serde(default)]
+    pub other: u32,
+}
+
+impl CompactCount {
+    pub fn total(&self) -> u32 {
+        self.auto
+            .saturating_add(self.manual)
+            .saturating_add(self.other)
+    }
+}
+
+impl From<crate::store::CompactCounts> for CompactCount {
+    fn from(c: crate::store::CompactCounts) -> Self {
+        Self {
+            auto: c.auto,
+            manual: c.manual,
+            other: c.other,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SessionInfo {
     pub session_uuid: Option<String>,
@@ -84,6 +112,10 @@ pub struct SessionInfo {
     /// API-equivalent cost in the window, USD.
     pub cost_usd: f64,
     pub tokens_per_min: f64,
+    /// Compactions so far. Added in Step 12n; `None` from older apps and while the session is
+    /// not indexed: unknown, never shown as 0.
+    #[serde(default)]
+    pub compacts: Option<CompactCount>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -251,6 +283,23 @@ impl SessionInfo {
             share_percent: s.share_percent,
             cost_usd,
             tokens_per_min: s.tokens_per_min,
+            compacts: None,
+        }
+    }
+
+    /// A session the view does not list but the database knows: only its identity and
+    /// compactions, nothing measured.
+    pub fn compacts_only(uuid: &str, compacts: CompactCount) -> Self {
+        Self {
+            session_uuid: Some(uuid.to_owned()),
+            name: None,
+            title: None,
+            project: None,
+            status: None,
+            share_percent: None,
+            cost_usd: 0.0,
+            tokens_per_min: 0.0,
+            compacts: Some(compacts),
         }
     }
 
@@ -265,6 +314,7 @@ impl SessionInfo {
             share_percent: None,
             cost_usd: 0.0,
             tokens_per_min: 0.0,
+            compacts: None,
         }
     }
 }
@@ -318,6 +368,30 @@ mod tests {
         v.as_object_mut().expect("object").remove("absent");
         let old: StatusReply = serde_json::from_value(v).expect("old reply");
         assert_eq!(old.absent.len(), 0);
+    }
+
+    #[test]
+    fn sessions_without_compacts_from_older_apps_still_parse() {
+        let mut info = SessionInfo::compacts_only(
+            "s1",
+            CompactCount {
+                auto: 2,
+                manual: 1,
+                other: 0,
+            },
+        );
+        let mut v = serde_json::to_value(&info).expect("json");
+        assert_eq!(v["compacts"]["auto"], 2);
+        assert_eq!(info.compacts.map(|c| c.total()), Some(3));
+        // An app from before Step 12n sends neither field.
+        v.as_object_mut().expect("object").remove("compacts");
+        let old: SessionInfo = serde_json::from_value(v).expect("old session");
+        assert_eq!(old.compacts, None);
+        info.compacts = None;
+        assert_eq!(old, info);
+        let no_other: CompactCount =
+            serde_json::from_str(r#"{"auto":1,"manual":0}"#).expect("count");
+        assert_eq!(no_other.total(), 1);
     }
 
     #[test]
