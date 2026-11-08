@@ -1,0 +1,58 @@
+# Step 12o: statusline latency A/B (release-cli, NO_COLOR=1, 200 measured + 10 warm-up calls per mode)
+# main = e493353, 12o = 3bec203; same ipc_serve (12o) for both; order main/12o/main/12o, then 12o x2, main x1
+=== main run 1 ===
+Mode Runs P50  P95  Max  Spooled
+---- ---- ---  ---  ---  -------
+off   200 25.5 33.5 47.5     200
+on    200 12.7 15.5 33.4       0
+off: 5h 49% ⏱60% · 1h59m │ 7d 41.2% ⏱57.1% · 2d23h │ ctx 38% │ API $4.12
+on: 5h 49% ⏱60% · 1h59m │ 7d 41.2% ⏱57.1% · 2d23h │ ctx 38% │ API $4.12
+Budget: p95 <= 30 ms (on), <= 40 ms (off). 'Spooled' should equal Runs for off and 0 for on.
+=== 12o run 1 ===
+Mode Runs P50  P95  Max  Spooled
+---- ---- ---  ---  ---  -------
+off   200 26.6 74.1 85.5     200
+on    200 12.5 14.4 54.6       0
+off: 5h 49% ⏱60% · 1h59m │ 7d 41.2% ⏱57.1% · 2d23h │ ctx 38% │ API $4.12
+on: 5h 49% ⏱60% · 1h59m │ 7d 41.2% ⏱57.1% · 2d23h │ ctx 38% │ API $4.12
+Budget: p95 <= 30 ms (on), <= 40 ms (off). 'Spooled' should equal Runs for off and 0 for on.
+=== main run 2 ===
+Mode Runs P50  P95  Max  Spooled
+---- ---- ---  ---  ---  -------
+off   200 22.9 26.3 42.5     200
+on    200 12.3 13.5 31.5       0
+off: 5h 49% ⏱60% · 1h59m │ 7d 41.2% ⏱57.1% · 2d23h │ ctx 38% │ API $4.12
+on: 5h 49% ⏱60% · 1h59m │ 7d 41.2% ⏱57.1% · 2d23h │ ctx 38% │ API $4.12
+Budget: p95 <= 30 ms (on), <= 40 ms (off). 'Spooled' should equal Runs for off and 0 for on.
+=== 12o run 2 ===
+Mode Runs P50  P95  Max  Spooled
+---- ---- ---  ---  ---  -------
+off   200 23.1 27.4 48.2     200
+on    200 12.4 13.6 33.1       0
+off: 5h 49% ⏱60% · 1h59m │ 7d 41.2% ⏱57.1% · 2d23h │ ctx 38% │ API $4.12
+on: 5h 49% ⏱60% · 1h59m │ 7d 41.2% ⏱57.1% · 2d23h │ ctx 38% │ API $4.12
+Budget: p95 <= 30 ms (on), <= 40 ms (off). 'Spooled' should equal Runs for off and 0 for on.
+=== 12o run 3 ===
+Mode Runs P50  P95  Max  Spooled
+---- ---- ---  ---  ---  -------
+off   200 21.5 23.7 41.1     200
+on    200 12.6 14.5 32.5       0
+off: 5h 49% ⏱60% · 1h59m │ 7d 41.2% ⏱57.1% · 2d23h │ ctx 38% │ API $4.12
+on: 5h 49% ⏱60% · 1h59m │ 7d 41.2% ⏱57.1% · 2d23h │ ctx 38% │ API $4.12
+Budget: p95 <= 30 ms (on), <= 40 ms (off). 'Spooled' should equal Runs for off and 0 for on.
+=== 12o run 4 ===
+Mode Runs P50  P95  Max  Spooled
+---- ---- ---  ---  ---  -------
+off   200 22.3 26.5 44.1     200
+on    200 12.6 14.0 34.1       0
+off: 5h 49% ⏱60% · 1h59m │ 7d 41.2% ⏱57.1% · 2d23h │ ctx 38% │ API $4.12
+on: 5h 49% ⏱60% · 1h59m │ 7d 41.2% ⏱57.1% · 2d23h │ ctx 38% │ API $4.12
+Budget: p95 <= 30 ms (on), <= 40 ms (off). 'Spooled' should equal Runs for off and 0 for on.
+=== main run 3 ===
+Mode Runs P50  P95  Max  Spooled
+---- ---- ---  ---  ---  -------
+off   200 22.9 28.6 46.0     200
+on    200 12.5 13.5 32.7       0
+off: 5h 49% ⏱60% · 1h59m │ 7d 41.2% ⏱57.1% · 2d23h │ ctx 38% │ API $4.12
+on: 5h 49% ⏱60% · 1h59m │ 7d 41.2% ⏱57.1% · 2d23h │ ctx 38% │ API $4.12
+Budget: p95 <= 30 ms (on), <= 40 ms (off). 'Spooled' should equal Runs for off and 0 for on.

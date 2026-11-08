@@ -131,6 +131,7 @@ Sürümler uygulama anında güncel stable olarak seçilir ve lock dosyalarıyla
 | `IpcServer` | CLI ve statusline protokolünü sunar (§11). |
 | `EventBus` | `tokio::sync::broadcast<CoreEvent>` (kapasite 256, runtime gerektirmez). Geride kalan alıcı `Resync` alır ve tam durumu `CoreHandle::status()` ile yeniden yükler. Tauri katmanı olayları yalnızca açık pencerelere iletir. |
 | `CoreRuntime` | Bileşenleri adlandırılmış `std::thread`'lerde başlatır (`core-watch`, `core-index-<hesap>`, `retention`, `store-writer`) ve `shutdown(timeout)` ile durdurur (ADR-027). |
+| `terminal_font` | Nerd Font yardımcısı (ADR-055): font klasörlerini tarar (cmap kademesi, mono), sabit sürümü indirir ve SHA-256 ile doğrular, kullanıcı başına kurar ve kaldırır; Windows Terminal ve VS Code ayarlarını `jsonc` ile cerrahi düzenler, yedekten geri alır. Tauri'siz; uygulama yalnızca görünüm modeli ve onay token'ı ekler. |
 | `Pricing` | Uygulamaya gömülü, sürümlü fiyat tablosu: model → $/MTok, modele özgü cache okuma çarpanı, uzun istem kademesi, fast mode çarpanı, web search ücreti. Bilinmeyen model aile yedeğiyle fiyatlanır (ADR-025). |
 
 **UI'da hesaplama yapılmaz.** Tauri komutları önceden agregasyonu yapılmış görünüm modelleri döner (`get_panel_snapshot`, `get_panel_detail`, `get_overview(range)`, `list_sessions(filter, page)` …). Frontend yalnızca çizer.
@@ -359,7 +360,7 @@ S2 yalnızca **açık onay** varsa kullanılır.
   - `PIPE_REJECT_REMOTE_CLIENTS` bayrağı set edilir.
 - **Çerçeveleme:** Satır sonuyla ayrılmış JSON. İstek `{"v":1,"id":7,"op":"…","data":{…}}`, yanıt `{"v":1,"id":7,"ok":true,"data":{…}}` biçimindedir.
 - **İşlemler (v1):** `hello` (sürüm müzakeresi), `statusline.push` (yanıt beklenmez), `status.get`, `limits.get`, `sessions.live`.
-- **Alan eklemeleri:** Yeni alanlar `#[serde(default)]` ile eklenir; `PROTOCOL_VERSION` ve `--json` şema numarası değişmez. Eski CLI bilinmeyen alanı yok sayar, yeni CLI eski uygulamadan boş değer okur. Örnek: 0.1.1'de `StatusReply` ve `LimitsReply`'a eklenen `absent` (ADR-041).
+- **Alan eklemeleri:** Yeni alanlar `#[serde(default)]` ile eklenir; `PROTOCOL_VERSION` ve `--json` şema numarası değişmez. Eski CLI bilinmeyen alanı yok sayar, yeni CLI eski uygulamadan boş değer okur. Örnek: 0.1.1'de `StatusReply` ve `LimitsReply`'a eklenen `absent` (ADR-041). Adım 12o: `StatusQuery.terminal` (`windows_terminal` / `vscode` / `other`); uygulama görülen türleri ve sonuncusunu bellekte tutar, saklamaz (ADR-055).
 - **`tokenradar statusline` akışı (p95 < 30 ms):**
   1. stdin okunur (en fazla 1 MB) ve minimal alanlar parse edilir.
   2. Daemon'a 50 ms zaman aşımıyla bağlanılır ve `statusline.push` gönderilir.
@@ -401,13 +402,14 @@ S2 yalnızca **açık onay** varsa kullanılır.
 - **Telemetri yok.** Ağ trafiği yalnızca şu iki hedefe gider:
   - `api.anthropic.com` (S2 onayı varsa)
   - GitHub Releases (güncelleme kontrolü; ayarlardan kapatılabilir)
+  - Nerd Fonts'un GitHub release varlığı ve `release-assets.githubusercontent.com` (yalnızca kullanıcı font indirmeyi onaylarsa; sabit sürüm ve SHA-256, ADR-055)
 - **Token:** Bkz. data-sources.md S2/S5. Token yalnızca istek anında okunur, `zeroize` edilir, loglanmaz ve IPC'den geçmez. `refreshToken` asla okunmaz.
 - **İçerik:** Konuşma içeriği (`message.content`) **asla** okunmaz, saklanmaz ve gösterilmez. Yalnızca meta veri ve kullanım bilgisi işlenir. Oturum başlığı için yalnızca Claude Code'un ürettiği başlık ve ad alanları kullanılır.
 - **Tauri:**
   - Pencere başına minimal izin (capabilities) tanımlanır.
   - CSP `default-src 'self'` olarak ayarlanır. Uzak içerik yüklenmez, `eval` kullanılmaz.
   - `opener` yalnızca beyaz listedeki URL'leri açar.
-- **Dosya değişikliği:** Uygulamanın dışarıda değiştirdiği tek dosya `settings.json`'dır (statusline kurulumu). Bu işlem her zaman kullanıcı tıklamasıyla yapılır; öncesinde yedek alınır, diff gösterilir ve dosya atomik olarak yazılır.
+- **Dosya değişikliği:** Uygulamanın dışarıda değiştirdiği dosyalar Claude Code'un `settings.json`'ı (statusline ve mod kurulumu) ile Windows Terminal ve VS Code'un `settings.json`'larıdır (terminal fontu, ADR-055). Bu işlem her zaman kullanıcı tıklamasıyla yapılır; öncesinde diff gösterilir, yedek alınır ve dosya atomik olarak yazılır. Nerd Font kullanıcının font klasörüne ve HKCU font anahtarına kurulur. Tek tıkla geri dönüş tek bir özet onayıyla ayarları ve fontu birlikte geri alır.
 - **Güncelleme:** Tauri updater minisign imzasıyla güncellemeleri doğrular. Özel anahtar yalnızca GitHub Secrets'ta tutulur.
 - **Tedarik zinciri:** Lock dosyaları commit'lenir. `cargo-deny` (lisans ve advisory kontrolü) ve `pnpm audit` CI'da çalışır. Bağımlılık eklemek bir gerekçe gerektirir.
 

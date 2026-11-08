@@ -328,6 +328,29 @@ Ek gözlemler (2026-10-27, Codex CLI 0.142.4, yalnızca anahtar adları incelend
 
 ---
 
+## Terminal ortamı, fontlar ve terminal ayarları (Adım 12o)
+
+Kullanım verisi değil. Nerd Font yardımcısının okuduğu ve (onayla) yazdığı yerler. Ayrıntılar ve kurallar: ADR-055.
+
+- **Terminal türü (statusline alt sürecinin ortamı):**
+  - Claude Code statusline komutuna kendi ortamını geçirir. Windows Terminal'de `WT_SESSION` (bir GUID) gelir (2026-11-08 gözlemi, 12c'deki `NO_COLOR` gibi).
+  - VS Code'un entegre terminali `TERM_PROGRAM=vscode` koyar. VS Code bir WT sekmesinden başlatıldıysa `WT_SESSION`'ı da devralır; bu yüzden VS Code işareti önce bakılır.
+  - Yalnızca değişkenin var olup olmadığına bakılır; değer saklanmaz, gönderilmez, loglanmaz.
+- **Font dosyaları:** `C:\Windows\Fonts` ve `%LOCALAPPDATA%\Microsoft\Windows\Fonts`. Yalnızca `name`, `cmap`, `hhea`, `hmtx` tabloları okunur; TTC'ler desteklenir. Font kayıt defteri taranmaz.
+- **Kod noktaları:** U+E0A0 (Powerline dal), U+F418 (`oct-git_branch`, Nerd Fonts ≥ 3.0), U+EE00 (`extra-progress_empty_left`, Nerd Fonts ≥ 3.4). Cascadia Mono, Cascadia Code ve Consolas'ta üçü de yok. Microsoft'un "Cascadia Code NF"si U+F418 içerir, U+EE00 içermez.
+- **CaskaydiaMono Nerd Font Mono v3.5.1:**
+  - Typographic family (ID 16) "CaskaydiaMono Nerd Font Mono", legacy family (ID 1) "CaskaydiaMono NFM", tam adlar "CaskaydiaMono NFM Regular" vb. Kayıt defteri değeri tam addan türer: `CaskaydiaMono NFM Regular (TrueType)`.
+  - WebView2 (Chromium) iki aile adını da çözüyor (2026-11-09 ölçümü). Ayarlara ID 16 adı yazılır.
+- **Yeni kurulan font ve çalışan programlar:** Chromium tabanlı süreçler (TokenRadar'ın WebView'u, VS Code) yalnızca başlarken kurulu olan fontları görüyor. `AddFontResourceW` ve `WM_FONTCHANGE` yetmiyor; süreç yeniden başlayınca font çözülüyor (2026-11-09, canvas ölçümü). Windows Terminal için gözlem açık.
+- **Windows Terminal ayarı:**
+  - Yollar: `%LOCALAPPDATA%\Packages\Microsoft.WindowsTerminal_8wekyb3d8bbwe\LocalState\settings.json`, aynı yolun `Microsoft.WindowsTerminalPreview_8wekyb3d8bbwe` hali ve paketsiz kurulum için `%LOCALAPPDATA%\Microsoft\Windows Terminal\settings.json`.
+  - JSONC: dosya bir yorum satırıyla başlar, sondaki virgüller olabilir.
+  - Font `profiles.defaults.font.face`; eski anahtar `fontFace` okunur, yazılmaz. Profiller kendi `font.face`'leriyle `defaults`'u ezer. Eski biçimde `profiles` bir dizidir ve `defaults` yoktur.
+  - Font yazılmamışsa WT "Cascadia Mono" ile çizer.
+- **VS Code ayarı:** `%APPDATA%\Code\User\settings.json` ve `%APPDATA%\Code - Insiders\User\settings.json`. JSONC. Terminal fontu `terminal.integrated.fontFamily` (CSS listesi). Yoksa terminal `editor.fontFamily`'yi kullanır; o da yoksa Windows varsayılanı `Consolas, 'Courier New', monospace`'tir. Çizilen font, listede kurulu olan ilk ailedir.
+
+---
+
 ## Kaynak füzyonu (özet)
 
 Ayrıntılar [architecture.md §7](architecture.md#7-limit-modeli-ve-kaynak-füzyonu) içinde.

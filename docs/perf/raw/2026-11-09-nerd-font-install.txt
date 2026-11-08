@@ -1,0 +1,7 @@
+# Step 12o: verify + unpack the real CascadiaMono.tar.xz (release test the_real_archive_unpacks), peak private bytes of the test process
+run 1: peak private 102,2 MiB, 329 ms, passed=True
+run 2: peak private 102,2 MiB, 307 ms, passed=True
+run 3: peak private 102,2 MiB, 298 ms, passed=True
+# Debug app (portable) after the real install through the card: PeakPagefileUsage 118.4 MiB, private 18.6 MiB right after
+# Sizes: tokenradar-app.exe release main 14155776 B, 12o 14477312 B; tokenradar.exe release-cli main 2481664 B, 12o 2483200 B
+# Font scan, release test real::scan_this_machine (426 faces, after the install): 293.7 ms (first run), 18.4 / 19.0 ms (warm)

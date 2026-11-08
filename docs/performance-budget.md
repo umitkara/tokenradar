@@ -9,7 +9,7 @@
 | Durum | Bütçe | Not |
 |---|---|---|
 | Yalnızca tray (pencere yok, indeksleme bitmiş) | **≤ 25 MB** | Ana hedef. "Görünmez ayak izi" vaadi bu değere dayanıyor. |
-| Tray + ilk indeksleme sürüyor | ≤ 120 MB (tepe) | İndeksleme bitince ≤ 25 MB'a dönmeli. Adım 02: 22 MiB'lık satırlar biriktirilirse 4 worker ~165 MiB'a çıkıyor. Adım 04: 4 MiB üstü satırlar biriktirilmeden atlanıyor; indeksleyici süreci tepe private 50-57 MiB (tray ve UI hariç). |
+| Tray + ilk indeksleme sürüyor | ≤ 120 MB (tepe) | İndeksleme bitince ≤ 25 MB'a dönmeli. Adım 12o: Nerd Font kurulumu (tek seferlik, kullanıcı başlatır) xz çıkarması için 0,3 s boyunca tepe private 102 MiB ekler, ardından geri verir (ADR-055). Adım 02: 22 MiB'lık satırlar biriktirilirse 4 worker ~165 MiB'a çıkıyor. Adım 04: 4 MiB üstü satırlar biriktirilmeden atlanıyor; indeksleyici süreci tepe private 50-57 MiB (tray ve UI hariç). |
 | Panel açık | ≤ 130 MB | WebView2 süreçleri dahil |
 | Ana pencere açık (v0.2) | ≤ 180 MB | Büyük listeler sanallaştırılmış |
 | Tüm pencereler kapandıktan `warm_ttl + 10 s` sonra | ≤ 30 MB | **Adım 02'de doğrulandı:** WebView2 süreçleri `destroy()` sonrası ~0,4 s'de çıkıyor, 60 s sonra 3,6 MB (ADR-023). |
@@ -48,8 +48,8 @@
 | Öğe | Bütçe |
 |---|---|
 | Installer (NSIS) | ≤ 12 MB |
-| `tokenradar-app.exe` | ≤ 15 MB. Adım 11b: 12,04 MiB |
-| `tokenradar.exe` (CLI) | ≤ 3 MB. Adım 07: 2,95 MiB. Adım 11b: doctor ile `--release` 3,14 MiB; `release-cli` profili (`opt-level = "s"`, ADR-034) ile 2,17 MiB. Adım 12c: 2,21 MiB. Adım 12i: 2,30 MiB. Adım 12k: 2,33 MiB (`unicode-width`, +28,5 KiB). Adım 12m: 2,35 MiB. Adım 12n: 2,37 MiB |
+| `tokenradar-app.exe` | ≤ 15 MB. Adım 11b: 12,04 MiB. Adım 12o: 13,81 MiB (`lzma-rust2`, `ttf-parser`, +314 KiB) |
+| `tokenradar.exe` (CLI) | ≤ 3 MB. Adım 07: 2,95 MiB. Adım 11b: doctor ile `--release` 3,14 MiB; `release-cli` profili (`opt-level = "s"`, ADR-034) ile 2,17 MiB. Adım 12c: 2,21 MiB. Adım 12i: 2,30 MiB. Adım 12k: 2,33 MiB (`unicode-width`, +28,5 KiB). Adım 12m: 2,35 MiB. Adım 12n: 2,37 MiB. Adım 12o: 2,37 MiB (+1,5 KiB) |
 | Frontend bundle (panel sayfası, gzip) | ≤ 60 KB JS + ≤ 15 KB CSS |
 | Frontend bundle (ana pencere, gzip) | ≤ 180 KB JS |
 | Veritabanı büyümesi | ≤ 30 MB/ay (referans kullanım). Ham olaylar 90 gün sonra silinir, `usage_5m` kalıcıdır. |

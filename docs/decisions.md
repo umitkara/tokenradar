@@ -1036,3 +1036,49 @@
   - Sahipliği dosyaya vermek: `--resume` kopyalarında sonuç belirsizdi.
   - Ayar dosyalarının `env` bloklarını okumak: süreç ortamıyla aynı bilgiyi verir, `env` içinde başka gizli değerler bulunabilir.
   - Pencerenin ≈%90'ını tetiklenme noktası diye göstermek: belgelenmemiş bir iç ayrıntı; kullanıcı istemedi.
+
+### ADR-055 — Nerd Font yardımcısı: indirme, kullanıcı başına kurulum, terminal ayarına yazma ve tek tıkla geri dönüş
+**Durum:** Kabul (2026-11-09, Adım 12o, kullanıcı kararlarıyla). ADR-013'ün ağ allowlist'ini ve ADR-009'un "kullanıcı ayarı kutsaldır" akışını genişletir.
+- **Bağlam:**
+  - Statusline'ı terminal kendi fontuyla çizer. TokenRadar da Claude Code da fontu terminale enjekte edemez; Claude Code ayarlarında font yok, CLI terminalin fontunu sorgulayamaz.
+  - Bu makinede Nerd Font yoktu. Powerline temaları 12i'den beri hiç gerçek fontla görülmemişti. Simge setleri ve Nerd bar stilleri (12p) kör yapılmasın diye font önce geldi.
+  - Kullanıcı kararları (2026-11-08): font uygulama içinden indirilir; Windows Terminal ve VS Code ayarına diff → onay → yedek → atomik yazma ile yazılır; diğer terminaller için yönerge gösterilir. 2026-11-09: CaskaydiaMono tar.xz'ten alınır; tek tıkla eski haline dönülebilir (ayarlar ve font birlikte, tek bir özet onayıyla).
+- **Karar:**
+  - **Font: CaskaydiaMono Nerd Font Mono, Nerd Fonts v3.5.1.**
+    - Görünüşü Windows Terminal'in varsayılanı Cascadia Mono ile aynı, artı simgeler. Mono varyantında simgeler tek hücredir; bu, `unicode-width` sayımıyla uyumludur.
+    - CaskaydiaCove (Cascadia Code) ligatürlüdür; terminalde `->` ve `!=` gibi dizileri birleştirir, statusline'da istenmez. Plandaki CaskaydiaCove bu yüzden değişti.
+    - "Cascadia" OFL-1.1'de Reserved Font Name'dir; değiştirilmiş yapı bu adı taşıyamaz, Nerd Fonts adı "Caskaydia" yapar. Font dağıtılmaz, kaynağından indirilir.
+    - Microsoft'un "Cascadia Code NF"si U+F418 içerir, U+EE00 içermez (Nerd Fonts < 3.4 kapsaması). İkinci seçenek olmadı.
+  - **Kaynak ve doğrulama (ağ allowlist'ine ek):**
+    - `https://github.com/ryanoasis/nerd-fonts/releases/download/v3.5.1/CascadiaMono.tar.xz` (3.577.856 B) ve GitHub'ın yönlendirdiği `release-assets.githubusercontent.com`. Başka yönlendirme izlenmez; en çok 3 yönlendirme, yalnızca HTTPS.
+    - İndirme yalnızca kullanıcının açık onayıyla başlar. Onaydan önce aile, sürüm, boyut, lisans ve tam URL gösterilir. Telemetri ya da başka bir istek yoktur.
+    - Arşivin SHA-256'sı ve alınan dört dosyanın (Regular, Bold, Italic, BoldItalic) SHA-256'ları koda sabitlenir. Gövde bellekte tutulur, sabit boyutla sınırlanır; hash tutmazsa hiçbir dosya yazılmaz. Kısmi indirme diske gitmez.
+    - Çıkarma: xz (`lzma-rust2`, bellek sınırı 72 MiB) ve en küçük bir ustar okuyucu. Yalnızca adı koddaki listede olan normal dosyalar alınır; hedef adlar arşivden değil koddan gelir.
+    - Sürüm yalnızca uygulama güncellemesiyle değişir; kendiliğinden güncelleme yoktur.
+  - **Kurulum (Windows, yönetici izni yok):** Önce dört dosyanın da geçerli font olduğu (name ID 4) doğrulanır. Sonra her dosya `%LOCALAPPDATA%\Microsoft\Windows\Fonts` altına atomik yazılır (aynı baytlar varsa dokunulmaz), `HKCU\Software\Microsoft\Windows NT\CurrentVersion\Fonts` altına `"<tam ad> (TrueType)"` değeri yazılır, `AddFontResourceW` çağrılır ve `WM_FONTCHANGE` yayınlanır. macOS ve Linux Adım 21'e kalır.
+  - **Tespit:** Sistem ve kullanıcı font klasörlerindeki dosyaların yalnızca `name`, `cmap`, `hhea` ve `hmtx` tabloları okunur. Kademe: yok / eski (U+F418 var, U+EE00 yok) / tam (ikisi de var). Mono: U+F418'in genişliği 'A'nınkinden büyük değil. Font kayıt defteri taranmaz; başka klasörlerden kurulmuş fontlar görünmeyebilir.
+  - **Terminal türü:** CLI her statusline çağrısında yalnızca bir enum gönderir: `TERM_PROGRAM=vscode` → `vscode`, boş olmayan `WT_SESSION` → `windows_terminal`, aksi halde `other`. Değerler, yollar ve oturum kimliği gönderilmez ve loglanmaz. VS Code, kendisini başlatan WT'den `WT_SESSION`'ı devraldığı için VS Code işareti önce bakılır. IPC alanı `serde(default, skip_serializing_if)`; eski ve yeni CLI/uygulama birbiriyle çalışır.
+  - **Terminal ayarına yazma:**
+    - Windows Terminal (Store, Preview, paketsiz): `profiles.defaults.font.face`. Eski biçim (`profiles` bir dizi) yazılmaz, yönerge gösterilir. Kendi fontunu belirleyen profiller sayılır ve korunur.
+    - VS Code ve Insiders: `terminal.integrated.fontFamily`. Font mevcut listenin başına eklenir; liste yoksa `editor.fontFamily`'nin, o da yoksa VS Code'un Windows varsayılanının başına. Yedek fontlar korunur.
+    - JSONC cerrahi düzenleme (`jsonc.rs`): yorumlar ve sondaki virgüller aynı uzunlukta boşluğa çevrilmiş bir kopya üzerinde yürünür; değişiklik özgün metne eklenir. Dosya hiçbir zaman yeniden serileştirilmez; yorumlar, sıra ve girinti korunur.
+    - Akış: plan → diff → kullanıcı onayı (token ile korunan tek plan) → dosya yeniden okunur ve değişmemiş olmalı → `settings.json.tokenradar-<UTC>.bak` yedeği → atomik yazma.
+  - **Geri alma (terminal başına):** Kayıtlı durum gerekmez; dosyanın yanındaki en yeni TokenRadar yedeği önceki değeri tutar. Dosya bizim yazmamızdan beri değişmemişse yedek bayt bayt geri gelir. Değişmişse yalnızca anahtar geri alınır; TokenRadar'ın oluşturduğu nesneler boş kaldıysa onlar da silinir. Geri almanın kendi yedeği `.undo.bak` uzantısını alır ve sonraki geri almanın kaynağı olmaz.
+  - **Tek tıkla geri dönüş (kullanıcı kararı, 2026-11-09):**
+    - Tek düğme bir özet açar: her terminal için "önce → sonra" fontu ve kaldırılacak font dosyaları. Tek bir onay hepsini uygular. Dosya başına diff gösterilmez; bu, diff → onay kuralından bilinçli bir sapmadır. Kuralın amacı korunur: değişiklik önceden gösterilir, onaysız hiçbir şey yazılmaz, her dosyanın yedeği alınır.
+    - Yalnızca TokenRadar'ın değişikliği hâlâ yerindeyse bir terminal geri alınır: anahtar bir Nerd Font ile (ya da kurulu olmasa bile TokenRadar'ın ailesiyle) başlamalı ve bir yedek farklı bir değer tutmalı. Kullanıcının sonradan seçtiği font onundur ve kalır.
+    - Önce ayarlar, sonra font: hiçbir terminal kaldırılmış bir fonta işaret ederek kalmaz. Bir ayar yazılamazsa işlem orada durur.
+    - Font kaldırma yalnızca baytları sabit SHA-256 ile eşleşen dosyalara uygulanır; aynı adlı başka bir dosya elle kurulmuştur ve dokunulmaz. Sıra: `RemoveFontResourceW` → dosyayı sil → kayıt defteri değerini sil → `WM_FONTCHANGE`. Dosya kullanımdaysa font oturuma geri eklenir ve hata döner; yarım kalmış bir durum oluşmaz.
+  - **Önizleme:** Kurulu Nerd Font `--font-term` listesinin başına geçer. Pencere fontu gerçekten çizemiyorsa (aşağıya bakın) açıklama satırı "yeniden başlatınca" der; önizleme fontu çiziyormuş gibi yapmaz.
+- **Bedel:**
+  - **Geçici bellek:** xz sözlüğü 64 MiB'tır. Release derlemede doğrulama ve çıkarma süreci tepe private 102,2 MiB'a çıkarıyor, 0,32 s sürüyor; ardından bellek eski düzeyine iniyor (`docs/perf/2026-11-09-nerd-font.md`). Yalnızca kullanıcının başlattığı tek seferlik bir işlemde olur.
+  - Uygulama 321.536 B büyüdü (13,81 MiB, bütçe ≤ 15 MB): `lzma-rust2`, `ttf-parser`, yeni ekran. CLI 1.536 B büyüdü. `lzma-rust2`, `sha2`'nin ikinci bir sürümünü (0.11) getiriyor.
+  - **Yeniden başlatma:** Chromium tabanlı programlar (TokenRadar'ın WebView'u, VS Code) yalnızca süreç başlarken kurulu olan fontları görüyor; ölçüldü. Windows Terminal için gözlem açık. İpucu metni yeniden başlatmayı kesin bir adım olarak yazıyor.
+  - Terminal türü yalnızca yeni CLI'dan gelir; kurulu v0.1.0 CLI'ı göndermez, bu yüzden kart "çağrı görülmedi" der.
+  - Font kayıt defteri taranmadığı için başka bir yere kurulmuş Nerd Font'lar "yok" görünebilir.
+- **Alternatifler:**
+  - Fontu kurulum paketine gömmek: installer büyürdü ve kullanıcı istemeden font dağıtılırdı.
+  - Kullanıcıyı tarayıcıya yönlendirmek: kurulum ve terminal ayarı kullanıcıya kalırdı; kullanıcı reddetti.
+  - `CascadiaCode.zip` ya da tek tek TTF indirmek: zip daha büyük; tek tek TTF'ler release varlığı değil, depo dosyası. Kullanıcı tar.xz'i seçti.
+  - Geri dönüşte dosya başına diff göstermek: tek tık isteğine uymuyordu. Hiç onaysız uygulamak: kural tamamen bırakılırdı; kullanıcı özet onayını seçti.
+  - Kurulum durumunu bir dosyada tutmak: yedekler ve sabit hash'ler aynı bilgiyi veriyor, eskiyebilecek ikinci bir durum gerekmiyor.
