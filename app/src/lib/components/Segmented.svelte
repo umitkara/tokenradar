@@ -6,6 +6,8 @@
 interface Option {
   value: T;
   label: string;
+  /** Terminal glyphs shown before the label in the terminal font; hidden from assistive tech. */
+  glyphs?: string;
 }
 
 interface Props {
@@ -56,6 +58,7 @@ function keydown(e: KeyboardEvent) {
       {disabled}
       onclick={() => pick(option.value)}
     >
+      {#if option.glyphs}<span class="glyphs" aria-hidden="true">{option.glyphs}</span>{/if}
       {option.label}
     </button>
   {/each}
@@ -91,6 +94,10 @@ function keydown(e: KeyboardEvent) {
     color: var(--text-1);
     font-weight: 600;
     box-shadow: inset 0 -2px 0 var(--accent);
+  }
+  .glyphs {
+    font-family: var(--font-term);
+    margin-right: 4px;
   }
   button:disabled {
     opacity: 0.5;

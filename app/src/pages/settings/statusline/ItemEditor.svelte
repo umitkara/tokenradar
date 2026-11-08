@@ -12,6 +12,8 @@ import { t } from "../../../lib/i18n/i18n.svelte";
 import type { AnsiColor, Format, Item, StatuslineKind } from "../../../lib/ipc/bindings";
 import {
   ANSI_COLORS,
+  BAR_WIDTHS,
+  barStyleKey,
   colorKey,
   formatKey,
   groupKey,
@@ -22,6 +24,7 @@ import {
   MAX_LABEL,
   MAX_SEPARATOR,
   MAX_TEXT,
+  resetFormatKey,
   SPACE_WIDTHS,
 } from "../view";
 
@@ -46,6 +49,19 @@ const formats = $derived(
 );
 const swatches = $derived<(AnsiColor | null)[]>([null, ...ANSI_COLORS]);
 const widths = $derived(SPACE_WIDTHS.map((n) => ({ value: n, label: String(n) })));
+const resetFormats = $derived(
+  (info?.reset_formats ?? []).map((f) => ({ value: f, label: t(resetFormatKey(f)) })),
+);
+const barWidths = $derived(BAR_WIDTHS.map((n) => ({ value: n, label: String(n) })));
+// Each style shows its glyphs, drawn by the core.
+const barStyles = $derived(
+  (info?.bar_styles ?? []).map((b) => ({
+    value: b.style,
+    label: t(barStyleKey(b.style)),
+    glyphs: b.sample,
+  })),
+);
+const showsBar = $derived(barStyles.length > 0 && item.format === "bar");
 
 let swatchGroup = $state<HTMLDivElement>();
 
@@ -100,6 +116,27 @@ function swatchKey(e: KeyboardEvent) {
         value={item.format ?? info?.default_format ?? formats[0]?.value ?? "percent"}
         options={formats}
         onchange={(format) => onchange({ format }, null)}
+      />
+    </div>
+  {/if}
+
+  {#if showsBar}
+    <div class="field">
+      <span class="label">{t("statusline-bar-width")}</span>
+      <Segmented
+        label={t("statusline-bar-width")}
+        value={item.bar_width}
+        options={barWidths}
+        onchange={(bar_width) => onchange({ bar_width }, null)}
+      />
+    </div>
+    <div class="field">
+      <span class="label">{t("statusline-bar-style")}</span>
+      <Segmented
+        label={t("statusline-bar-style")}
+        value={item.bar_style}
+        options={barStyles}
+        onchange={(bar_style) => onchange({ bar_style }, null)}
       />
     </div>
   {/if}
@@ -203,6 +240,17 @@ function swatchKey(e: KeyboardEvent) {
         label={t("statusline-reset-countdown")}
         onchange={(reset) => onchange({ reset }, null)}
       />
+      {#if item.reset && resetFormats.length > 0}
+        <div class="field">
+          <span class="label">{t("statusline-reset-format")}</span>
+          <Segmented
+            label={t("statusline-reset-format")}
+            value={item.reset_format}
+            options={resetFormats}
+            onchange={(reset_format) => onchange({ reset_format }, null)}
+          />
+        </div>
+      {/if}
       <Toggle
         checked={item.pace}
         label={t("statusline-pace")}

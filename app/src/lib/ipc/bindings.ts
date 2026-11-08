@@ -187,6 +187,24 @@ export type AvailableUpdate = {
 	date: string | null,
 };
 
+/**
+ *  The glyphs of a bar (Step 12m). The new styles use only glyphs that take one cell in every
+ *  terminal: none of them is East Asian "Ambiguous".
+ */
+export type BarStyle = 
+/**  `███░░░░░`. */
+"blocks" | 
+/**  `▬▬▬▭▭▭▭▭`. */
+"thin" | 
+/**  `⣿⣿⣿⣀⣀⣀⣀⣀`. */
+"dots";
+
+/**  A bar style and how it looks. */
+export type BarStyleSample = {
+	style: BarStyle,
+	sample: string,
+};
+
 export type ChartPoint = {
 	at: Timestamp,
 	percent: number | null,
@@ -349,7 +367,11 @@ export type Format =
 /**  The last folder. */
 "basename" | 
 /**  The path with the home folder as `~`. */
-"home";
+"home" | 
+/**  Limits and the context window: the percentage left, `58% left`. */
+"remaining" | 
+/**  The context window: the tokens left, `185k left`. */
+"tokens_left";
 
 export type Freshness = 
 /**  Under 10 minutes old. */
@@ -424,6 +446,11 @@ export type Item = {
 	text: string,
 	/**  `space`: the columns, 1–[`MAX_SPACE`]. 1 on every other kind. */
 	width: number,
+	/**  Limit windows: the reset as a countdown or a local time (Step 12m). */
+	reset_format: ResetFormat,
+	/**  Kinds with a bar: its cells, one of [`BAR_WIDTHS`]; 8 on every other kind. */
+	bar_width: number,
+	bar_style: BarStyle,
 };
 
 /**  Signals for the notifier (Step 11), which applies its own rules, hysteresis and quiet hours. */
@@ -673,6 +700,13 @@ export type RateMethod =
 /**  Local cost rate times the window's percent-per-dollar. */
 "cost_rate";
 
+/**  How a limit shows its reset (Step 12m). */
+export type ResetFormat = 
+/**  `3d4h`. */
+"countdown" | 
+/**  `Mon 09:00`, local time. */
+"clock";
+
 /**  Which rule produced a notice. */
 export type Rule = "threshold" | "projection" | 
 /**  The last projection warning, shortly before the limit is full. */
@@ -701,6 +735,12 @@ export type Scope = ({ model: string }) & { surface?: never } | ({ surface: stri
 export type SegmentKind = "five_hour" | "seven_day" | 
 /**  Weekly limits of one model or surface, e.g. Fable's. */
 "scoped" | "context" | "session_share" | "cost" | "model" | "tokens_in" | "tokens_out" | "duration" | "api_duration" | "lines_changed" | "vim_mode" | "version" | "agent_name" | "session_id" | "cwd" | "project_dir" | "git_branch" | 
+/**  The weekly window's room left per day until its reset (Step 12m). */
+"daily_budget" | 
+/**  The session's API-priced cost per hour. */
+"burn_rate" | "session_name" | 
+/**  The share of the last request's input read from the prompt cache. */
+"cache_ratio" | "output_style" | 
 /**  A separator glyph of the user's choice. */
 "separator" | 
 /**  Starts a new output line. */
@@ -819,6 +859,10 @@ export type StatuslineKind = {
 	sample: string,
 	/**  The account is known not to have it (ADR-041). */
 	absent: boolean,
+	/**  How its reset can be shown (Step 12m); empty when it has one look. */
+	reset_formats: ResetFormat[],
+	/**  The bar styles with a sample of each; empty for kinds without a bar. */
+	bar_styles: BarStyleSample[],
 };
 
 /**  A planned `settings.json` change, shown before anything is written. */

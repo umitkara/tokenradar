@@ -18,7 +18,8 @@ use tokenradar_core::domain::{LimitKind, Timestamp, WindowPresence};
 use tokenradar_core::notifier::NotifyPrefs;
 use tokenradar_core::paths::Paths;
 use tokenradar_core::statusline::line::{
-    self, Format, Group, Item, Line, Preset, SampleState, SegmentKind, Span, StatuslinePrefs, Style,
+    self, BarStyle, Format, Group, Item, Line, Preset, ResetFormat, SampleState, SegmentKind, Span,
+    StatuslinePrefs, Style,
 };
 use tokenradar_i18n::{HourCycle, Locale};
 
@@ -405,6 +406,17 @@ pub struct StatuslineKind {
     pub sample: String,
     /// The account is known not to have it (ADR-041).
     pub absent: bool,
+    /// How its reset can be shown (Step 12m); empty when it has one look.
+    pub reset_formats: Vec<ResetFormat>,
+    /// The bar styles with a sample of each; empty for kinds without a bar.
+    pub bar_styles: Vec<BarStyleSample>,
+}
+
+/// A bar style and how it looks.
+#[derive(Debug, Clone, Serialize, Type)]
+pub struct BarStyleSample {
+    pub style: BarStyle,
+    pub sample: String,
 }
 
 /// Every kind of item, in palette order.
@@ -436,6 +448,22 @@ pub fn statusline_catalog(app: &AppHandle) -> Vec<StatuslineKind> {
                 line::render(&l10n, &sample, &alone, plain)
             },
             absent: kind == SegmentKind::FiveHour && !five_hour,
+            reset_formats: if kind.is_window() {
+                ResetFormat::ALL.to_vec()
+            } else {
+                Vec::new()
+            },
+            bar_styles: if kind.has_bar() {
+                BarStyle::ALL
+                    .iter()
+                    .map(|&style| BarStyleSample {
+                        style,
+                        sample: line::bar_sample(style),
+                    })
+                    .collect()
+            } else {
+                Vec::new()
+            },
         })
         .collect()
 }

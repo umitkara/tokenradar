@@ -18,6 +18,7 @@ import {
   addToLine,
   apiStatus,
   applySeparator,
+  barStyleKey,
   COLOR_MODES,
   canAdd,
   canDrop,
@@ -51,6 +52,7 @@ import {
   removeItem,
   removeLine,
   removeThreshold,
+  resetFormatKey,
   SAMPLE_STATES,
   selectionAfterRemove,
   sizeMessage,
@@ -311,6 +313,8 @@ describe("statusline items", () => {
       colored: false,
       sample: k,
       absent,
+      reset_formats: [],
+      bar_styles: [],
     });
     const catalog = [
       kind("five_hour", "limit", true),
@@ -614,6 +618,11 @@ describe("statusline message keys", () => {
     "cwd",
     "project_dir",
     "git_branch",
+    "daily_budget",
+    "burn_rate",
+    "session_name",
+    "cache_ratio",
+    "output_style",
     "separator",
     "line_break",
     "custom_text",
@@ -634,6 +643,8 @@ describe("statusline message keys", () => {
     "net",
     "basename",
     "home",
+    "remaining",
+    "tokens_left",
   ] as const;
   const PRESETS = ["default", "minimal", "detailed", "two-line", "powerline", "split"];
 
@@ -650,6 +661,11 @@ describe("statusline message keys", () => {
       ...THEMES.map(themeKey),
       ...COLOR_MODES.map(colorModeKey),
       ...SAMPLE_STATES.map(stateKey),
+      ...(["countdown", "clock"] as const).map(resetFormatKey),
+      ...(["blocks", "thin", "dots"] as const).map(barStyleKey),
+      "statusline-reset-format",
+      "statusline-bar-width",
+      "statusline-bar-style",
       ...PRESETS.flatMap((p) => [`statusline-preset-${p}`, `statusline-preset-${p}-hint`]),
       ...[1, 2, 3].map((n) =>
         flexHintKey(

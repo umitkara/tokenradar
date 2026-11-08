@@ -5,11 +5,13 @@ import type { Args } from "../../lib/i18n/fluent";
 import type {
   AnsiColor,
   ApiConsentView,
+  BarStyle,
   ColorMode,
   Format,
   Group,
   Item,
   PickError,
+  ResetFormat,
   SampleState,
   SegmentKind,
   SettingsSection,
@@ -295,6 +297,11 @@ export const groupKey = (group: Group) => `statusline-group-${group}`;
 export const themeKey = (theme: Theme) => `statusline-theme-${kebab(theme)}`;
 export const colorModeKey = (mode: ColorMode) => `statusline-color-mode-${mode}`;
 export const stateKey = (state: SampleState) => `statusline-state-${state}`;
+export const resetFormatKey = (f: ResetFormat) => `statusline-reset-format-${f}`;
+export const barStyleKey = (style: BarStyle) => `statusline-bar-style-${style}`;
+
+/** The bar widths in cells (prefs.rs `BAR_WIDTHS`). */
+export const BAR_WIDTHS = [4, 8, 12] as const;
 
 export const isLayout = (kind: SegmentKind) => LAYOUT.includes(kind);
 export const hasThresholdColors = (kind: SegmentKind) => THRESHOLD_COLORED.includes(kind);
@@ -315,6 +322,9 @@ export function newItem(kind: SegmentKind, separator = ""): Item {
     pace: true,
     text: kind === "separator" && separator.trim() !== "" ? separator : "",
     width: 1,
+    reset_format: "countdown",
+    bar_width: 8,
+    bar_style: "blocks",
   };
 }
 
