@@ -2,7 +2,7 @@
 
 | Sürüm | Bağımlılık | Tahmini süre | Durum |
 |---|---|---|---|
-| v0.1.x | 12k | 1 oturum | ⬜ |
+| v0.1.x | 12k | 1 oturum | ✅ |
 
 ## Amaç
 
@@ -61,14 +61,14 @@ Adım 12k'nin çekirdeğini (ayraç öğeleri, `space`, `flex`, sağ pay) düzen
 
 ## Görevler
 
-- [ ] `view.ts`: `lines`, `addLine`, `removeLine`, `moveToLine`, otomatik ayraç, `flex` ipucu; testleri.
-- [ ] Satır kartları: kart başına `ItemList`, kartlar arası sürükleme ve klavye taşıması, duyurular.
-- [ ] Ekleme paleti: düzen grubu, "+ Satır ekle".
-- [ ] Öğe editörü: `space` genişliği, ayraç glifi ve "Tüm ayraçlara uygula", `flex` açıklaması.
-- [ ] Toolbar: sağ pay; global ayraç alanının kaldırılması.
-- [ ] Önizleme: `flex`/`space` seçimi, hizalama notu.
-- [ ] Fluent (EN/TR).
-- [ ] İlk çalışan düzenin ekran görüntüsü kullanıcıya gösterilir ve onaylanır, ardından cila.
+- [x] `view.ts`: `lines`, `addLine`, `removeLine`, `moveToLine`, otomatik ayraç, `flex` ipucu; testleri.
+- [x] Satır kartları: kart başına `ItemList`, kartlar arası sürükleme ve klavye taşıması, duyurular.
+- [x] Ekleme paleti: düzen grubu, "+ Satır ekle".
+- [x] Öğe editörü: `space` genişliği, ayraç glifi ve "Tüm ayraçlara uygula", `flex` açıklaması.
+- [x] Toolbar: sağ pay; global ayraç alanının kaldırılması.
+- [x] Önizleme: `flex`/`space` seçimi, hizalama notu.
+- [x] Fluent (EN/TR).
+- [x] İlk çalışan düzenin ekran görüntüsü kullanıcıya gösterilir ve onaylanır, ardından cila.
 
 ## Teknik notlar ve tuzaklar
 
@@ -94,4 +94,53 @@ Adım 12k'nin çekirdeğini (ayraç öğeleri, `space`, `flex`, sağ pay) düzen
 
 ## Devir notu
 
-_(Oturum sonunda doldurulur: yapılanlar · sapmalar · açık konular · sonraki adıma notlar)_
+**Tarih:** 2026-11-08 · **Karar:** ADR-052 · **Ekran görüntüleri:** `img/12l-statusline-en.png` (açık, 80 sütun, `flex` seçili), `img/12l-statusline-tr-dark.png` (koyu, ikinci kart ve ayraç editörü)
+
+### Yapılanlar
+- **`view.ts`:**
+  - `lines`, `placeOf`, `addToLine`, `addLine`, `canRemoveLine`, `removeLine`, `moveToLine`, `dropInto`, `flexHintKey` ve `applySeparator` eklendi.
+  - `addItem` otomatik ayraç koyuyor. Palet `line_break`'i sunmuyor ve düzen grubunu Ayraç, Boşluk, Esnek boşluk, Özel metin sırasıyla veriyor.
+  - Önizleme ve seçiciler için `SPACE_WIDTHS`, `MARGINS` ve `RESERVED_COLUMNS` sabitleri eklendi.
+- **Testler:** `view.test.ts` içinde yeni "statusline lines" grubu var (7 test): kart bölme (gizli satır sonu dahil), otomatik ayraç (iki yan, boş kart, düzen öğesi, gizli komşu, dolu liste), satır ekleme ve silme kuralları, kartlar arası taşıma ve bırakma, Alt+ok takası, `flex` ipucu, tüm ayraçlara uygulama. Fluent anahtar testi `flex` ipuçlarını da kapsıyor. Frontend testleri 113'ten 120'ye çıktı.
+- **`ItemList`:**
+  - Öğeler kart başına çiziliyor: başlık, silme düğmesi, kart başına "+ Öğe ekle", boş kart yer tutucusu ve en altta "+ Satır ekle".
+  - Sürükle-bırak kartlar arasında da çalışıyor. ↑/↓ kartlar boyunca geziniyor; Alt+↑/↓ kart sınırını geçiyor.
+  - Duyurular satır numarasını söylüyor. Satır ekleme ve silme de duyuruluyor.
+  - Düzen satırları 30 px. `flex` satırı `⟷` işaretini ve ipucunu, `space` satırı genişliğini, ayraç satırı glifini gösteriyor.
+- **`ItemEditor`:** `space` için 1–8 seçici, ayraç için "Tüm ayraçlara uygula" ve `flex` için satırdaki etkisini anlatan not.
+- **`StatuslineTab`:**
+  - Global ayraç alanı kaldırıldı. "Sağ pay" (0–8) önizleme çubuğunda.
+  - Hizalama notu, satırda etkin bir `flex` varken gösteriliyor. Palet başlığı hangi satıra eklendiğini söylüyor.
+- **`TermPreview`:** Satırın boş bıraktığı sağ sütunlar (4 + `margin`) taralı. Metni olmayan span'ler seçiliyken ve üzerine gelinince tonlanıyor; tıklanınca öğeyi seçiyor.
+- **Fluent (EN/TR):** Yeni anahtarlar eklendi. Kullanılmayan `statusline-separator`, `statusline-add-title`, `statusline-items` ve `statusline-moved` silindi.
+- **Dokümanlar:** ADR-052, design-language (kartlar, düzen satırları, önizlemede pay ve sözlük), CHANGELOG (12j'nin eksik kaydı da bu girdiye dahil edildi).
+
+### Sapmalar (kullanıcı ilk düzenin ekran görüntüsünde onayladı)
+- **Sağ pay önizleme çubuğunda,** araç çubuğunda değil. Araç çubuğunda Dışa/İçe aktar düğmelerini alt satıra itiyordu.
+- **Otomatik ayraç iki yana da konuyor:** önceki öğe değerse öne, sonraki öğe değerse arkaya.
+- **Düzen satırları ince** (30 px). Plan bunu öngörmüyordu; ayraçlar listeyi uzatıyordu.
+- **Kart başına "+ Öğe ekle":** Plan tek bir ekleme düğmesi varsayıyordu. Boş bir karta ekleyebilmek için kart başına düğme gerekti.
+- **Alt+↑/↓ için ayrı bir kod yazılmadı.** Komşu bir satır sonuyla takas, öğeyi zaten komşu karta geçiriyor. `moveToLine` sürükleme için kullanılıyor.
+- **12j'den kalan bir hata düzeltildi:** Liste uzayınca bütün sayfa kayıyordu. Ekran okuyucu duyurusu (`position: absolute`) kaydırılan sütunun dışına taşıyordu; sütun artık konumlanmış.
+- **Çekirdek ve binding değişmedi.** Bu yüzden `cargo` komutları çalıştırılmadı.
+
+### Doğrulama
+- `pnpm -C app check`, `lint` ve `test` temiz (120 test).
+- Debug build, portable mod ve `TOKENRADAR_FAKE_LIMITS=panel:no-five-hour` ile CDP üzerinden (kurulu uygulama kapalıydı) şunlar denendi:
+  - Gerçek tıklamalarla `flex` eklendi, satır eklendi ve ikinci satıra iki değer eklendi. Araya ayraç kendiliğinden girdi; önizleme sağa yaslamayı gösterdi.
+  - Alt+↓ son öğeyi 2. satırın başına taşıdı. Duyuru "moved to line 2, position 1 of 4" oldu ve odak öğeyle gitti. ↑ yalnızca gezindi, Alt+↑ öğeyi geri getirdi.
+  - Satır silindi ve duyuruldu. Ctrl+Z satırı geri getirdi.
+  - Gerçek fare olaylarıyla 2. satırdan 1. satırın başına sürükleme yapıldı. Bırakma çizgisi doğru kartta göründü.
+  - 80 sütunda taralı pay bölgesi görüldü. TR'de araç çubuğu artık tek satır (12j'nin açık konusu).
+- Ekran görüntüleri DWM sınırları ve `CopyFromScreen` ile alındı, alttaki 8 px kırpıldı.
+
+### Açık konular
+- **Gerçek satır yeni sürüme kadar değişmez** (12k'dan sürüyor). Kurulu v0.1.0 CLI, `space`, `flex` ve `margin`'i bilmiyor.
+- **Sürüklerken liste kendiliğinden kaymıyor.** Uzun bir listede uzak bir karta sürüklemek için önce kaydırmak ya da Alt+ok kullanmak gerekiyor. Gerekirse kenarda otomatik kaydırma eklenebilir; ADR-019 kapsamında kısa ve veri odaklı olmalı.
+- **Ekran okuyucuyla gerçek deneme yapılmadı** (Narrator). Duyurular CDP ile okundu.
+- **Bir öğe kartlar arasında taşınınca otomatik ayraç eklenmiyor.** Kural yalnızca eklemede çalışıyor; taşınan değerin yanına ayracı kullanıcı ekliyor.
+- **12i'den kalanlar sürüyor:** Powerline'da `▲` rengi, stdin'de UTF-8 BOM, gerçek Nerd Font ile görsel kontrol.
+
+### Sonraki adıma notlar
+- Statusline v3 zinciri (12i–12l) tamamlandı. Sürüm hazırlığında CHANGELOG'daki Unreleased girdileri tek bir statusline başlığı altında toplanabilir. Sürüm notu daralma sonrası `…` kesilmesini anlatmalı (12k).
+- Kartlar bir görünüm olduğu için TOML'da elle yazılan art arda iki `line_break` boş bir kart olarak görünür. Bu bilerek böyle.

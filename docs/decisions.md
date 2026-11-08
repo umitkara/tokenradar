@@ -940,3 +940,24 @@
   - Otomatik ayracı korumak ve yalnızca bastırma seçeneği eklemek: ayraçlar yine listede görünmez ve tek tek seçilemezdi.
   - `flex`'i yalnızca dolgu olarak kullanmak (satır başında düşmesi): gözlem `ESC[0m`'ın baştaki boşluğu koruduğunu gösterdi.
   - `margin`'i toplam pay (varsayılan 4) yapmak: kullanıcının Claude Code'un iç payını bilmesini gerektirirdi.
+
+### ADR-052 — Statusline satır düzenleyicisi: kartlar düz listenin görünümüdür
+**Durum:** Kabul (2026-11-08, Adım 12l, kullanıcı kararlarıyla). ADR-050'yi genişletir.
+- **Bağlam:**
+  - 12k'dan sonra ayraçlar öğe oldu, `space` ve `flex` geldi. Düz listede satır sonu yalnızca bir çizgiydi; satır ve öğe sayısı arttıkça liste takip edilemez hâle geliyordu.
+  - Kullanıcı satır kartları, otomatik ayraç ve `flex` ile hizalama istedi (2026-11-08).
+- **Karar:**
+  - **Veri düz liste kalır.** Kartlar, listenin *etkin* `line_break` öğelerine göre bölünmüş bir görünümüdür (`lines`). Kural çekirdeğin `render.rs` gruplamasıyla aynıdır, böylece kart ile önizleme satırı ayrışmaz. Gizli bir satır sonu bölmez; kartın içinde sıradan bir satır olarak görünür ve oradan gösterilebilir. Geri alma, kayıt ve TOML biçimi değişmez.
+  - **Taşıma:** Alt+↑/↓ ve tutamaç okları komşuyla takas eder. Komşu bir satır sonuysa öğe kendiliğinden komşu karta geçer. Sürükle-bırak hedefi (kart, aralık) olarak hesaplanır (`dropInto`). Duyuru satır numarasını da söyler.
+  - **Satır silme** onay istemez ve geri alınabilir. Son görünür değer öğesini götürecekse düğme pasiftir.
+  - **Otomatik ayraç (kullanıcı kararı):** Yeni bir değer, satırdaki önceki öğe de değerse önüne, sonraki öğe değerse arkasına bir ayraç alır. Plan yalnızca öne koymayı öngörüyordu; iki değerin arasına eklemede "A │ yeni B" oluşuyordu. Gizli bir değer de komşu sayılır: çekirdek, çizilmeyen komşunun ayracını zaten düşürür. Liste doluysa ayraç eklenmez, değer eklenir.
+  - **Yer:** "Sağ pay" araç çubuğunda değil, önizleme çubuğunda terminal genişliğinin yanındadır (kullanıcı kararı). Araç çubuğuna sığmıyor, Dışa/İçe aktar düğmelerini alt satıra itiyordu. Pay, satırın doldurabileceği genişliği daraltır; genişlik seçicisinin yanında anlamı daha açıktır.
+  - **Global ayraç alanı araç çubuğundan kalktı.** Ayraç editöründeki "Tüm ayraçlara uygula" hem mevcut ayraçları hem `separator` alanını (yeni ayraçların glifi) günceller.
+  - **Düzen satırları incedir (kullanıcı kararı):** Ayraç, boşluk ve esnek boşluk satırları 30 px'tir. Ayraçlar öğe sayısını yaklaşık ikiye katlıyor.
+  - **`line_break` paletten çıktı;** yerine kartların altındaki "+ Satır ekle" geldi. Her kartın kendi "+ Öğe ekle" düğmesi vardır: seçim o karttaysa ondan sonra, değilse kartın sonuna ekler.
+- **Bedel:**
+  - Çekirdeğin `CLAUDE_CODE_RESERVED` (4) ve `MAX_SPACE`/`MAX_MARGIN` sabitleri frontend'de tekrarlanıyor (önizlemedeki taralı bölge ve seçiciler). Binding değişmesin diye kabul edildi; çekirdek değeri yine kendisi sınırlar.
+  - Kartlar, öğeleri satır sonlarına göre yeniden gruplamak için her çizimde listeyi tarar. 64 öğede ihmal edilebilir.
+- **Alternatifler:**
+  - Satırları veride ayrı listeler olarak tutmak (`lines: Item[][]`): TOML biçimi, göç ve geri alma değişirdi. Görünüm yeterli.
+  - Satır silmede onay: geri alma zaten var.

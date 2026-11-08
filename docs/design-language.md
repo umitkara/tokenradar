@@ -109,6 +109,9 @@ Başlığın altında iki eşit düğmeli bir segment kontrolü: `Özet | Ayrın
 - **Terminal önizlemesi:** Uygulama temasından bağımsız olarak koyudur. `--term-*` paleti Windows Terminal'in varsayılan 16 ANSI rengini kullanır, font `--font-term`'dir (Cascadia, varsa Nerd Font ya da PL yapısı). Satır sarmaz; seçilen genişlik kesikli bir sağ kenarla gösterilir ve taşan satır yatay kayar. Seçili öğenin span'lerinin altı çizilir; üzerine gelinen öğe 1 px çerçeveyle vurgulanır. Powerline bloklarında da görünsün diye arka plan değil çerçeve kullanılır.
 - **Liste:** Seçili satır `--surface-2` zeminli ve kenarlıklıdır. Üzerine gelinen satır, metin renginin %7'siyle tonlanır, çünkü açık temada yüzeyler beyaz üstüne beyazdır. Sürüklemede bırakılacak yer 2 px `--accent` çizgiyle gösterilir; hareket yoktur (ADR-019). Gizli ve hesapta olmayan öğeler `--text-3` ile yazılır.
 - **Renk örnekleri:** Terminal zemininde 22 px kareler. Seçili örneğin çevresinde `--term-fg` halka vardır.
+- **Satır kartları (Adım 12l, ADR-052):** Her çıktı satırı `--surface-1` zeminli, `--radius-card` köşeli ve kenarlıklı bir karttır. Başlıkta "Satır N" (`--type-caption`, kalın) ve satırı silme düğmesi, altta kenarlıksız "+ Öğe ekle" bulunur. Kartların altında kesikli kenarlıklı "+ Satır ekle" yer alır. Boş kart, kesikli kenarlıklı bir yer tutucu gösterir ve sürüklenen öğeyi kabul eder.
+- **Düzen satırları:** Ayraç, boşluk, esnek boşluk ve gizli satır sonu satırları 30 px'tir (değer satırları 36 px). Adları `--type-caption` ve `--text-2` ile yazılır. Esnek boşluk `⟷` işaretini ve satırdaki etkisini ("Sonrası sağa yaslanır"), boşluk genişliğini, ayraç glifini gösterir.
+- **Önizlemede pay ve boşluklar:** Satırın boş bıraktığı sağ sütunlar (Claude Code'un 4 sütunu ve sağ pay) kenara kadar soluk çapraz taramayla gösterilir. Metni olmayan span'ler (boşluk, esnek boşluk) seçiliyken ve üzerine gelinince hafif beyaz bir tonla görünür olur.
 
 ### Tray ikonu
 
@@ -207,7 +210,9 @@ Başlığın altında iki eşit düğmeli bir segment kontrolü: `Özet | Ayrın
 | (statusline cost) | `API $4,12` | `API` işareti, değerin fatura olmadığını söyler; çıkarılmaz |
 | Item (statusline) | Öğe | Satırın bir parçası: limit, oturum, proje ya da düzen öğesi (ADR-049) |
 | Format / Label / Color | Biçim / Etiket / Renk | Öğe ayarları; limitlerde renk yalnızca normal durumun rengidir |
-| Line break / Separator / Custom text | Satır sonu / Ayraç / Özel metin | Düzen öğeleri |
+| Line break / Separator / Custom text / Space / Flexible space | Satır sonu / Ayraç / Özel metin / Boşluk / Esnek boşluk | Düzen öğeleri |
+| Line (editor card) | Satır | Düzenleyicide her çıktı satırı bir karttır: "Satır 2" |
+| Right margin | Sağ pay | Claude Code'un 4 sütununa ek olarak sağda boş bırakılan sütunlar |
 | Theme: Plain / Powerline / Rounded | Tema: Düz / Powerline / Yuvarlak | |
 | Preset | Şablon | Varsayılan, Sade, Ayrıntılı, İki satır, Powerline |
 | Export / Import | Dışa aktar / İçe aktar | `[statusline]` TOML metni; içe aktarma kaydetmeden önizler |
