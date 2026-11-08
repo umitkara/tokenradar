@@ -1,0 +1,100 @@
+== main default
+
+Mode Runs P50  P95  Max  Spooled
+---- ---- ---  ---  ---  -------
+off   200 22.3 25.5 36.4     200
+on    200 12.2 13.6 28.5       0
+
+off: 5h 49% ⏱60% · 1h59m │ 7d 41.2% ⏱57.1% · 2d23h │ ctx 38% │ API $4.12
+on: 5h 49% ⏱60% · 1h59m │ 7d 41.2% ⏱57.1% · 2d23h │ ctx 38% │ API $4.12
+Budget: p95 <= 30 ms (on), <= 40 ms (off). 'Spooled' should equal Runs for off and 0 for on.
+== 12n default
+
+Mode Runs P50  P95  Max  Spooled
+---- ---- ---  ---  ---  -------
+off   200 23.8 27.0 42.6     200
+on    200 12.2 13.5 31.1       0
+
+off: 5h 49% ⏱60% · 1h59m │ 7d 41.2% ⏱57.1% · 2d23h │ ctx 38% │ API $4.12
+on: 5h 49% ⏱60% · 1h59m │ 7d 41.2% ⏱57.1% · 2d23h │ ctx 38% │ API $4.12
+Budget: p95 <= 30 ms (on), <= 40 ms (off). 'Spooled' should equal Runs for off and 0 for on.
+== main default 2
+
+Mode Runs P50  P95  Max  Spooled
+---- ---- ---  ---  ---  -------
+off   200 21.0 24.6 40.3     200
+on    200 12.3 13.4 29.7       0
+
+off: 5h 49% ⏱60% · 1h59m │ 7d 41.2% ⏱57.1% · 2d23h │ ctx 38% │ API $4.12
+on: 5h 49% ⏱60% · 1h59m │ 7d 41.2% ⏱57.1% · 2d23h │ ctx 38% │ API $4.12
+Budget: p95 <= 30 ms (on), <= 40 ms (off). 'Spooled' should equal Runs for off and 0 for on.
+== 12n default 2
+
+Mode Runs P50  P95  Max  Spooled
+---- ---- ---  ---  ---  -------
+off   200 21.8 26.5 39.3     200
+on    200 12.2 13.6 28.2       0
+
+off: 5h 49% ⏱60% · 1h59m │ 7d 41.2% ⏱57.1% · 2d23h │ ctx 38% │ API $4.12
+on: 5h 49% ⏱60% · 1h59m │ 7d 41.2% ⏱57.1% · 2d23h │ ctx 38% │ API $4.12
+Budget: p95 <= 30 ms (on), <= 40 ms (off). 'Spooled' should equal Runs for off and 0 for on.
+== 12n compact 1
+
+Mode Runs P50  P95  Max  Spooled
+---- ---- ---  ---  ---  -------
+off   200 22.6 26.4 42.8     200
+on    200 12.5 13.6 29.4       0
+
+off: 7d 41.2% ⏱57.1% · 2d23h │ ctx 38% │ ⟲ 200k
+on: 7d 41.2% ⏱57.1% · 2d23h │ ctx 38% │ ⟲1 auto 0 manual · 200k
+Budget: p95 <= 30 ms (on), <= 40 ms (off). 'Spooled' should equal Runs for off and 0 for on.
+== 12n compact 2
+
+Mode Runs P50  P95  Max  Spooled
+---- ---- ---  ---  ---  -------
+off   200 23.9 27.8 44.0     200
+on    200 12.5 13.8 28.8       0
+
+off: 7d 41.2% ⏱57.1% · 2d23h │ ctx 38% │ ⟲ 200k
+on: 7d 41.2% ⏱57.1% · 2d23h │ ctx 38% │ ⟲1 auto 0 manual · 200k
+Budget: p95 <= 30 ms (on), <= 40 ms (off). 'Spooled' should equal Runs for off and 0 for on.
+== 12n compact 3
+
+Mode Runs P50  P95  Max  Spooled
+---- ---- ---  ---  ---  -------
+off   200 26.1 75.2 95.2     200
+on    200 12.8 31.7 63.2       0
+
+off: 7d 41.2% ⏱57.1% · 2d23h │ ctx 38% │ ⟲ 200k
+on: 7d 41.2% ⏱57.1% · 2d23h │ ctx 38% │ ⟲1 auto 0 manual · 200k
+Budget: p95 <= 30 ms (on), <= 40 ms (off). 'Spooled' should equal Runs for off and 0 for on.
+== main compact
+
+Mode Runs P50  P95  Max  Spooled
+---- ---- ---  ---  ---  -------
+off   200 23.8 29.1 44.6     200
+on    200 12.1 13.3 29.9       0
+
+off: 7d 41.2% ⏱57.1% · 2d23h │ ctx 38%
+on: 7d 41.2% ⏱57.1% · 2d23h │ ctx 38%
+Budget: p95 <= 30 ms (on), <= 40 ms (off). 'Spooled' should equal Runs for off and 0 for on.
+== 12n compact 4
+
+Mode Runs P50  P95  Max  Spooled
+---- ---- ---  ---  ---  -------
+off   200 24.0 26.9 54.0     200
+on    200 12.9 17.0 30.2       0
+
+off: 7d 41.2% ⏱57.1% · 2d23h │ ctx 38% │ ⟲ 200k
+on: 7d 41.2% ⏱57.1% · 2d23h │ ctx 38% │ ⟲1 auto 0 manual · 200k
+Budget: p95 <= 30 ms (on), <= 40 ms (off). 'Spooled' should equal Runs for off and 0 for on.
+== 12n compact 5
+
+Mode Runs P50  P95  Max  Spooled
+---- ---- ---  ---  ---  -------
+off   200 23.8 28.6 43.6     200
+on    200 12.4 13.5 29.0       0
+
+off: 7d 41.2% ⏱57.1% · 2d23h │ ctx 38% │ ⟲ 200k
+on: 7d 41.2% ⏱57.1% · 2d23h │ ctx 38% │ ⟲1 auto 0 manual · 200k
+Budget: p95 <= 30 ms (on), <= 40 ms (off). 'Spooled' should equal Runs for off and 0 for on.

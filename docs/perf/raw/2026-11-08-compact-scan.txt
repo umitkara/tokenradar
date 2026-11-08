@@ -1,0 +1,4 @@
+=== compact_scan (three runs, release)
+files 4526 · 11.58 GiB · inventory 399 ms · scan 16665 ms · 0.69 GiB/s · hits>0: true
+files 4526 · 11.58 GiB · inventory 737 ms · scan 16900 ms · 0.69 GiB/s · hits>0: true
+files 4526 · 11.58 GiB · inventory 828 ms · scan 17284 ms · 0.67 GiB/s · hits>0: true

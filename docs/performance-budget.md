@@ -32,14 +32,14 @@
 | Panel açılışı — soğuk (webview oluşturma dahil) | ≤ 500 ms. ADR-037 (önce 400 ms). v0.1.0: medyan 440 ms (`docs/perf/2026-10-28-v0.1.0.md`) |
 | Ana pencere açılışı — soğuk | ≤ 600 ms |
 | JSONL'e yeni satır yazılmasından UI/tray güncellemesine | ≤ 2 s (debounce dahil) |
-| `tokenradar statusline` (daemon açık) | p95 ≤ 30 ms. Adım 07: 13,3 ms (`docs/perf/2026-10-27-statusline.md`). Adım 12c: 12,0-13,4 ms (`docs/perf/2026-11-07-statusline-v2.md`). Adım 12i: 15,0-16,2 ms, main 13,8-14,9 ms aynı oturumda (`docs/perf/2026-11-08-statusline-v3.md`). Adım 12k: 12,6-12,8 ms, main 12,6-13,2 ms aynı oturumda; Split + `COLUMNS=120` 12,9-13,1 ms (`docs/perf/2026-11-08-statusline-layout.md`). Adım 12m: 12,3-12,4 ms, main 12,2-12,4 ms aynı oturumda; yeni öğelerle 12,4-13,0 ms (`docs/perf/2026-11-08-statusline-enrichment.md`) |
-| `tokenradar statusline` (daemon kapalı, spool) | p95 ≤ 40 ms. Adım 07: 25,5 ms. Adım 12c: 25,0-26,9 ms. Adım 12i: 29,1-29,9 ms. Adım 12k: 23,5-25,5 ms, main 24,4-26,9 ms aynı oturumda. Adım 12m: 21,3-24,3 ms, main 23,6-32,1 ms aynı oturumda; yeni öğelerle 24,7-30,7 ms, bir koşuda tekrarlanmayan 62,2 ms |
+| `tokenradar statusline` (daemon açık) | p95 ≤ 30 ms. Adım 07: 13,3 ms (`docs/perf/2026-10-27-statusline.md`). Adım 12c: 12,0-13,4 ms (`docs/perf/2026-11-07-statusline-v2.md`). Adım 12i: 15,0-16,2 ms, main 13,8-14,9 ms aynı oturumda (`docs/perf/2026-11-08-statusline-v3.md`). Adım 12k: 12,6-12,8 ms, main 12,6-13,2 ms aynı oturumda; Split + `COLUMNS=120` 12,9-13,1 ms (`docs/perf/2026-11-08-statusline-layout.md`). Adım 12m: 12,3-12,4 ms, main 12,2-12,4 ms aynı oturumda; yeni öğelerle 12,4-13,0 ms (`docs/perf/2026-11-08-statusline-enrichment.md`). Adım 12n: 13,5-13,6 ms, main 13,4-13,6 ms aynı oturumda; `compact` öğesiyle 13,5-17,0 ms, bir koşuda tekrarlanmayan 31,7 ms (`docs/perf/2026-11-08-statusline-compact.md`) |
+| `tokenradar statusline` (daemon kapalı, spool) | p95 ≤ 40 ms. Adım 07: 25,5 ms. Adım 12c: 25,0-26,9 ms. Adım 12i: 29,1-29,9 ms. Adım 12k: 23,5-25,5 ms, main 24,4-26,9 ms aynı oturumda. Adım 12m: 21,3-24,3 ms, main 23,6-32,1 ms aynı oturumda; yeni öğelerle 24,7-30,7 ms, bir koşuda tekrarlanmayan 62,2 ms. Adım 12n: 26,5-27,0 ms, main 24,6-25,5 ms aynı oturumda; `compact` öğesiyle 26,4-28,6 ms, bir koşuda tekrarlanmayan 75,2 ms |
 
 ## İndeksleme
 
 | İşlem | Bütçe |
 |---|---|
-| İlk indeksleme — referans veri seti, soğuk disk önbelleği | ≤ 60 s. Adım 04 (parse + SQLite, hibrit öncelik): **sıcak önbellekte 3,7-6,5 s**. Soğuk ölçülemedi; Adım 02'nin önbelleksiz okuma hızlarından tahmin **≈ 10 s** (`docs/perf/2026-10-27-indexer.md`). |
+| İlk indeksleme — referans veri seti, soğuk disk önbelleği | ≤ 60 s. Adım 04 (parse + SQLite, hibrit öncelik): **sıcak önbellekte 3,7-6,5 s**. Soğuk ölçülemedi; Adım 02'nin önbelleksiz okuma hızlarından tahmin **≈ 10 s** (`docs/perf/2026-10-27-indexer.md`). Adım 12n: veri seti büyüdü (11,58 GiB), sıcak önbellekte 14,5-15,2 s, main ile aynı. Şema 1 → 2 yükseltmesi her dosyayı bir kez yeniden okur: 14,5 s (`docs/perf/2026-11-08-statusline-compact.md`). |
 | İlk indeksleme — kullanılabilir ilk görünüm (mevcut pencere + bu hafta) | ≤ 5 s (en yeni dosyalardan başlanır). Adım 04: **sıcak önbellekte 1,1-2,4 s**, soğuk tahmini **≈ 2-3 s**. Yeniden başlatma sonrası soğuk ölçüm açık iş. |
 | Yeniden başlatma sonrası artımlı tarama (değişmemiş 5.200 dosya) | ≤ 500 ms (yalnızca metadata/stat). Adım 02: dizin yürüyüşü + `DirEntry::metadata` 177 ms. Adım 04 (envanter + `source_files` karşılaştırması): 107-123 ms, sıcak metadata önbelleği. |
 
@@ -49,7 +49,7 @@
 |---|---|
 | Installer (NSIS) | ≤ 12 MB |
 | `tokenradar-app.exe` | ≤ 15 MB. Adım 11b: 12,04 MiB |
-| `tokenradar.exe` (CLI) | ≤ 3 MB. Adım 07: 2,95 MiB. Adım 11b: doctor ile `--release` 3,14 MiB; `release-cli` profili (`opt-level = "s"`, ADR-034) ile 2,17 MiB. Adım 12c: 2,21 MiB. Adım 12i: 2,30 MiB. Adım 12k: 2,33 MiB (`unicode-width`, +28,5 KiB) |
+| `tokenradar.exe` (CLI) | ≤ 3 MB. Adım 07: 2,95 MiB. Adım 11b: doctor ile `--release` 3,14 MiB; `release-cli` profili (`opt-level = "s"`, ADR-034) ile 2,17 MiB. Adım 12c: 2,21 MiB. Adım 12i: 2,30 MiB. Adım 12k: 2,33 MiB (`unicode-width`, +28,5 KiB). Adım 12m: 2,35 MiB. Adım 12n: 2,37 MiB |
 | Frontend bundle (panel sayfası, gzip) | ≤ 60 KB JS + ≤ 15 KB CSS |
 | Frontend bundle (ana pencere, gzip) | ≤ 180 KB JS |
 | Veritabanı büyümesi | ≤ 30 MB/ay (referans kullanım). Ham olaylar 90 gün sonra silinir, `usage_5m` kalıcıdır. |

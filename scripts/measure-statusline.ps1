@@ -82,6 +82,17 @@ $project = Join-Path $cfg 'projects\C--Work-Alpha'
 New-Item -ItemType Directory -Force $bin, $project | Out-Null
 Copy-Item $cli $bin
 New-Item -ItemType File (Join-Path $bin 'portable') | Out-Null
+# Step 12n: a synthetic transcript with one compaction, so `status.get` finds the session and
+# reads its count, and user settings with an auto-compact window for a `compact` item.
+$session = '00000000-0000-4000-8000-000000000001'
+$boundary = @{
+    type = 'system'; subtype = 'compact_boundary'; isSidechain = $false
+    timestamp = [DateTimeOffset]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ss.fffZ')
+    uuid = '00000000-0000-4000-8000-0000000000c1'; sessionId = $session
+    compactMetadata = @{ trigger = 'auto'; preTokens = 150000 }
+} | ConvertTo-Json -Compress -Depth 3
+[IO.File]::WriteAllText((Join-Path $project "$session.jsonl"), $boundary + "`n")
+[IO.File]::WriteAllText((Join-Path $cfg 'settings.json'), '{"autoCompactWindow": 300000}')
 $exe = Join-Path $bin 'tokenradar.exe'
 if ($Config) {
     New-Item -ItemType Directory -Force (Join-Path $bin 'data') | Out-Null

@@ -1,0 +1,47 @@
+=== run 1 main
+elapsed:        15227 ms
+recent ready:   863 ms
+cpu:            9203 ms
+bytes read:     11.58 GiB (779 MiB/s)
+peak memory:    working set 47.5 MiB · private 59.6 MiB
+db size:        29.5 MiB
+fingerprint:    7148a8c760733e28
+elapsed:        122 ms
+=== run 1 branch
+elapsed:        14793 ms
+recent ready:   636 ms
+cpu:            9797 ms
+bytes read:     11.58 GiB (802 MiB/s)
+peak memory:    working set 44.7 MiB · private 58.1 MiB
+db size:        32.1 MiB
+fingerprint:    43968a02a4e73e6d
+elapsed:        118 ms
+=== run 2 main
+elapsed:        14466 ms
+recent ready:   603 ms
+cpu:            9641 ms
+bytes read:     11.58 GiB (820 MiB/s)
+peak memory:    working set 44.6 MiB · private 56.6 MiB
+db size:        30.2 MiB
+fingerprint:    2f7ffd229bcfa1ba
+elapsed:        117 ms
+=== run 2 branch
+elapsed:        15143 ms
+recent ready:   624 ms
+cpu:            10391 ms
+bytes read:     11.58 GiB (783 MiB/s)
+peak memory:    working set 43.2 MiB · private 51.1 MiB
+db size:        32.0 MiB
+fingerprint:    52d288de45e2b7ec
+elapsed:        117 ms
+=== upgrade: main db -> branch
+fingerprint:    52d288de45e2b7ec
+elapsed:        14528 ms
+recent ready:   657 ms
+cpu:            9500 ms
+files:          seen 4526 · unchanged 0 · indexed 4526 · truncated 0 · deleted 0 · failed 0
+bytes read:     11.58 GiB (816 MiB/s)
+peak memory:    working set 49.4 MiB · private 61.5 MiB
+fingerprint:    52d288de45e2b7ec
+elapsed:        132 ms
+recent ready:   130 ms
