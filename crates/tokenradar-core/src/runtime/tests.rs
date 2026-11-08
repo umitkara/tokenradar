@@ -550,9 +550,22 @@ fn a_statusline_push_over_ipc_reaches_the_panel_snapshot() {
     // The next status answer reflects it.
     let mut client = Client::connect(&pipe, Duration::from_secs(2)).expect("connect");
     let replies = client
-        .call(&[Request::new(3, Op::StatusGet(StatusQuery::default()))])
+        .call(&[Request::new(
+            3,
+            Op::StatusGet(StatusQuery {
+                session_uuid: None,
+                terminal: Some(crate::terminal_font::TerminalKind::Vscode),
+            }),
+        )])
         .expect("call");
     let status: StatusReply = replies[0].clone().into_data().expect("status");
+    // The font card learns the terminal from the call (Step 12o).
+    let core = handle.status();
+    assert_eq!(core.terminals, [crate::terminal_font::TerminalKind::Vscode]);
+    assert_eq!(
+        core.last_terminal,
+        Some(crate::terminal_font::TerminalKind::Vscode)
+    );
     assert!(
         status
             .limits
@@ -615,4 +628,15 @@ fn spooled_readings_are_imported_once_at_start() {
     let report = bridge::import_spool(&spool_dir, handle.store(), &accounts, |_, _| again += 1);
     assert_eq!((report.ingested, report.duplicates, again), (0, 10, 0));
     handle.shutdown(SHUTDOWN_TIMEOUT);
+}
+
+#[test]
+fn terminals_are_kept_once_in_order_of_kind() {
+    use crate::terminal_font::TerminalKind::{Vscode, WindowsTerminal};
+    let mut status = CoreStatus::default();
+    status.saw_terminal(Vscode);
+    status.saw_terminal(WindowsTerminal);
+    status.saw_terminal(Vscode);
+    assert_eq!(status.terminals, [WindowsTerminal, Vscode]);
+    assert_eq!(status.last_terminal, Some(Vscode));
 }

@@ -39,6 +39,7 @@ fn deps<'a>(l10n: &'a Localizer, pipe: &str, spool: &Path) -> Deps<'a> {
             config_dir: None,
             env: |_| None,
         },
+        terminal: None,
     }
 }
 

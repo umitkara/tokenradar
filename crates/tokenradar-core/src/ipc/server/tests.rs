@@ -129,6 +129,7 @@ fn hello_push_and_status_in_one_exchange() {
                 3,
                 Op::StatusGet(StatusQuery {
                     session_uuid: Some("s1".into()),
+                    terminal: None,
                 }),
             ),
             Request::new(4, Op::LimitsGet),

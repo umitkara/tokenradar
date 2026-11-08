@@ -33,6 +33,10 @@ toml_edit = { version = "0.25.17", default-features = false, features = ["parse"
 # `net`, `io-util` and `macros` for the IPC server's named pipe (ADR-029).
 tokio = { version = "1.54.1", default-features = false, features = ["sync", "rt", "time", "net", "io-util", "macros"] }
 tracing = "0.1.44"
+# Unpacks the Nerd Font archive (`.tar.xz`) as a stream; decoder only (Step 12o, ADR-055).
+lzma-rust2 = { version = "0.25.0", default-features = false, features = ["std", "xz", "optimization"] }
+# The terminal font check reads the `name` and `cmap` tables of each font (Step 12o).
+ttf-parser = { version = "0.25.1", default-features = false, features = ["std"] }
 # Statusline display width (ADR-051); without `cjk`, the ambiguous-width table is left out.
 unicode-width = { version = "0.2.3", default-features = false }
 xxhash-rust = { version = "0.8.19", features = ["xxh3"] }
@@ -56,6 +60,8 @@ tracing-subscriber = { version = "0.3", default-features = false, features = ["f
 [target."cfg(windows)".dependencies]
 windows-sys = { version = "0.61", features = [
     "Win32_Foundation",
+    # `AddFontResourceW` and the `WM_FONTCHANGE` broadcast of a per-user font install (Step 12o).
+    "Win32_Graphics_Gdi",
     "Win32_Security",
     "Win32_Security_Authorization",
     "Win32_Storage_FileSystem",
@@ -64,6 +70,7 @@ windows-sys = { version = "0.61", features = [
     "Win32_System_Threading",
     # The local time of a statusline reset (Step 12m).
     "Win32_System_Time",
+    "Win32_UI_WindowsAndMessaging",
 ] }
 
 [target."cfg(windows)".dev-dependencies]

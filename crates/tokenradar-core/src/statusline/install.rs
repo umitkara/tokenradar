@@ -274,7 +274,7 @@ pub(super) fn read_optional(path: &Path) -> Result<Option<String>, InstallError>
 }
 
 /// `settings.json.tokenradar-20261027T101500Z.bak`, next to the file.
-pub(super) fn backup_path(settings: &Path, now: Timestamp) -> PathBuf {
+pub(crate) fn backup_path(settings: &Path, now: Timestamp) -> PathBuf {
     let stamp = jiff::Timestamp::from_millisecond(now.as_millis()).map_or_else(
         |_| now.as_millis().to_string(),
         |t| t.strftime("%Y%m%dT%H%M%SZ").to_string(),

@@ -16,18 +16,18 @@ pub enum EditError {
     Invalid,
 }
 
-/// Byte offsets of one top-level member.
+/// Byte offsets of one member of an object.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct Member {
-    key_start: usize,
-    value_start: usize,
-    value_end: usize,
+pub(crate) struct Member {
+    pub key_start: usize,
+    pub value_start: usize,
+    pub value_end: usize,
 }
 
-struct Object {
-    open: usize,
-    close: usize,
-    members: Vec<(String, Member)>,
+pub(crate) struct Object {
+    pub open: usize,
+    pub close: usize,
+    pub members: Vec<(String, Member)>,
 }
 
 /// The value of top-level `key` exactly as written, or `None` without that key.
@@ -99,7 +99,7 @@ fn set_raw(
     })
 }
 
-fn find<'o>(obj: &'o Object, key: &str) -> Option<(usize, &'o Member)> {
+pub(crate) fn find<'o>(obj: &'o Object, key: &str) -> Option<(usize, &'o Member)> {
     // Duplicate keys: the last one wins, as in every JSON parser Claude Code could use.
     obj.members
         .iter()
@@ -109,7 +109,7 @@ fn find<'o>(obj: &'o Object, key: &str) -> Option<(usize, &'o Member)> {
         .map(|(i, (_, m))| (i, m))
 }
 
-fn splice(text: &str, from: usize, to: usize, with: &str) -> String {
+pub(crate) fn splice(text: &str, from: usize, to: usize, with: &str) -> String {
     let mut out = String::with_capacity(text.len() - (to - from) + with.len());
     out.push_str(&text[..from]);
     out.push_str(with);
@@ -161,14 +161,17 @@ fn scan(text: &str) -> Result<Object, EditError> {
         Ok(Value::Object(_)) => {}
         _ => return Err(EditError::Invalid),
     }
+    scan_object(text, skip_ws(text.as_bytes(), text.len() - body.len()))
+}
+
+/// Records where each member of the object opening at `open` sits. The text must already be
+/// valid JSON (comments blanked out); only the structure is walked here.
+pub(crate) fn scan_object(text: &str, open: usize) -> Result<Object, EditError> {
     let b = text.as_bytes();
-    let mut i = text.len() - body.len();
-    i = skip_ws(b, i);
-    if b.get(i) != Some(&b'{') {
+    if b.get(open) != Some(&b'{') {
         return Err(EditError::Invalid);
     }
-    let open = i;
-    i += 1;
+    let mut i = open + 1;
     let mut members = Vec::new();
     loop {
         i = skip_ws(b, i);
@@ -209,7 +212,7 @@ fn scan(text: &str) -> Result<Object, EditError> {
     }
 }
 
-fn skip_ws(b: &[u8], mut i: usize) -> usize {
+pub(crate) fn skip_ws(b: &[u8], mut i: usize) -> usize {
     while matches!(b.get(i), Some(b' ' | b'\t' | b'\r' | b'\n')) {
         i += 1;
     }
@@ -217,7 +220,7 @@ fn skip_ws(b: &[u8], mut i: usize) -> usize {
 }
 
 /// `b[i]` is an opening quote; returns the index after the closing one.
-fn skip_string(b: &[u8], mut i: usize) -> Result<usize, EditError> {
+pub(crate) fn skip_string(b: &[u8], mut i: usize) -> Result<usize, EditError> {
     i += 1;
     while let Some(&c) = b.get(i) {
         match c {
@@ -229,7 +232,7 @@ fn skip_string(b: &[u8], mut i: usize) -> Result<usize, EditError> {
     Err(EditError::Invalid)
 }
 
-fn skip_value(b: &[u8], i: usize) -> Result<usize, EditError> {
+pub(crate) fn skip_value(b: &[u8], i: usize) -> Result<usize, EditError> {
     match b.get(i) {
         Some(b'"') => skip_string(b, i),
         Some(b'{' | b'[') => {

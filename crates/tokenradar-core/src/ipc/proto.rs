@@ -15,6 +15,7 @@ use serde_json::Value;
 
 use super::view::{LimitsReply, SessionsReply, StatusReply};
 use crate::statusline::StatuslinePush;
+use crate::terminal_font::TerminalKind;
 
 /// Current protocol version.
 pub const PROTOCOL_VERSION: u8 = 1;
@@ -79,6 +80,10 @@ pub struct StatusQuery {
     /// The statusline's session, to get its share of the window.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub session_uuid: Option<String>,
+    /// The terminal the statusline runs in, for the settings' font card (Step 12o). Only the
+    /// kind travels; an older app ignores it, an older CLI leaves it out.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub terminal: Option<TerminalKind>,
 }
 
 /// The envelope as it travels.
@@ -284,6 +289,33 @@ mod tests {
     }
 
     #[test]
+    fn the_terminal_kind_is_optional_both_ways() {
+        #[derive(Deserialize)]
+        struct OldQuery {
+            session_uuid: Option<String>,
+        }
+        // An older CLI leaves it out.
+        let old: StatusQuery = serde_json::from_str(r#"{"session_uuid":"s"}"#).expect("old CLI");
+        assert_eq!(old.terminal, None);
+        // An older app reads a newer query and ignores the new field.
+        let new = StatusQuery {
+            session_uuid: Some("s".into()),
+            terminal: Some(TerminalKind::WindowsTerminal),
+        };
+        let json = serde_json::to_string(&new).expect("json");
+        assert_eq!(
+            json,
+            r#"{"session_uuid":"s","terminal":"windows_terminal"}"#
+        );
+        let read: OldQuery = serde_json::from_str(&json).expect("old app");
+        assert_eq!(read.session_uuid.as_deref(), Some("s"));
+        assert_eq!(
+            serde_json::to_string(&StatusQuery::default()).expect("json"),
+            "{}"
+        );
+    }
+
+    #[test]
     fn requests_round_trip() {
         let ops = [
             Op::Hello(Hello {
@@ -293,6 +325,7 @@ mod tests {
             Op::StatuslinePush(Box::new(push())),
             Op::StatusGet(StatusQuery {
                 session_uuid: Some("s".into()),
+                terminal: Some(TerminalKind::Vscode),
             }),
             Op::StatusGet(StatusQuery::default()),
             Op::LimitsGet,

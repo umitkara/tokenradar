@@ -24,6 +24,7 @@ use tokenradar_core::statusline::shell::Shell;
 use tokenradar_core::statusline::{
     StatuslinePayload, StatuslinePush, default_config_dir, path_in_dir, spool,
 };
+use tokenradar_core::terminal_font::TerminalKind;
 use tokenradar_i18n::Localizer;
 
 /// Claude Code writes stdin at once; anything slower is not a statusline call.
@@ -49,6 +50,8 @@ pub struct Deps<'a> {
     pub prefs: StatuslinePrefs,
     /// Where the `compact` item reads Claude Code's auto-compact setting.
     pub compact: CompactSources,
+    /// The terminal kind told to the app for its font card; `None` in tests.
+    pub terminal: Option<TerminalKind>,
 }
 
 /// The places outside the payload that the auto-compact setting comes from; tests point
@@ -163,7 +166,13 @@ fn deliver(push: StatuslinePush, deps: &Deps<'_>) -> Option<StatusReply> {
             }),
         ),
         Request::new(2, Op::StatuslinePush(Box::new(push))),
-        Request::new(3, Op::StatusGet(StatusQuery { session_uuid })),
+        Request::new(
+            3,
+            Op::StatusGet(StatusQuery {
+                session_uuid,
+                terminal: deps.terminal,
+            }),
+        ),
     ];
     // The push is written first and in one piece; a slow answer only costs the enrichment.
     let replies = with_deadline(EXCHANGE_TIMEOUT, move || client.call(&requests)).ok()?;

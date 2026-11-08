@@ -63,6 +63,9 @@ impl Handler for CoreIpc {
     }
 
     fn status(&self, query: &StatusQuery) -> StatusReply {
+        if let Some(kind) = query.terminal {
+            lock(&self.status).saw_terminal(kind);
+        }
         let mut reply = self.snapshot(query.session_uuid.as_deref());
         if let Some(uuid) = query.session_uuid.as_deref() {
             add_compacts(&mut reply, uuid, &self.store);

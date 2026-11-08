@@ -56,6 +56,7 @@ use crate::providers::claude::usage_api::{
 use crate::providers::claude::{AccountDescriptor, PROJECTS_DIR, classify_path};
 use crate::statusline::spool;
 use crate::store::{Store, StoreError};
+use crate::terminal_font::TerminalKind;
 use crate::watcher::{self, Debouncer, FsSignal, FsWatcher, HotFiles, Stamp};
 
 mod bridge;
@@ -178,9 +179,20 @@ pub struct CoreStatus {
     pub recent_ready: bool,
     /// Unusable records seen since start.
     pub schema_drift: Option<SchemaDriftView>,
+    /// Terminals statusline calls came from since start, in order of kind (Step 12o).
+    pub terminals: Vec<TerminalKind>,
+    /// The terminal of the latest statusline call.
+    pub last_terminal: Option<TerminalKind>,
 }
 
 impl CoreStatus {
+    pub(crate) fn saw_terminal(&mut self, kind: TerminalKind) {
+        self.last_terminal = Some(kind);
+        if let Err(at) = self.terminals.binary_search(&kind) {
+            self.terminals.insert(at, kind);
+        }
+    }
+
     /// The panel's view model with the indexing state as of now. The limit engine copies that
     /// state only when it rebuilds, which a long first scan does not trigger.
     pub fn panel_snapshot(&self) -> Option<PanelSnapshot> {

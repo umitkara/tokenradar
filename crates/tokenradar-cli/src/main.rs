@@ -21,6 +21,8 @@ mod user_path;
 use std::io::Write;
 use std::process::ExitCode;
 
+use tokenradar_core::terminal_font::TerminalKind;
+
 use args::Command;
 use context::Context;
 use report::Report;
@@ -70,6 +72,7 @@ fn run(ctx: &Context, command: Command) -> ExitCode {
                 style: render::style_from_env(ctx.config.statusline.color),
                 prefs: ctx.config.statusline.clone(),
                 compact: statusline::CompactSources::system(),
+                terminal: Some(TerminalKind::detect(&|k| std::env::var_os(k))),
             };
             let out = statusline::respond(input.as_deref(), &deps);
             let mut stdout = std::io::stdout().lock();
