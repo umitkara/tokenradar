@@ -367,9 +367,13 @@ export function canAdd(items: readonly Item[], kind: SegmentKind): boolean {
   return isLayout(kind) || !items.some((i) => i.kind === kind);
 }
 
+/** A value item: not a layout item (a hidden one counts too; the core drops its separator). */
+const isValue = (item: Item | undefined) => !!item && !isLayout(item.kind);
+
 /**
  * `items` with a new `kind` after the item at `after` (at the end when `null`), and its index;
- * `null` when it cannot be added.
+ * `null` when it cannot be added. A new value next to another value in its line gets a
+ * separator between them (Step 12l): before it, and after it when it lands in front of one.
  */
 export function addItem(
   items: readonly Item[],
@@ -378,11 +382,182 @@ export function addItem(
   separator = "",
 ): { items: Item[]; index: number } | null {
   if (!canAdd(items, kind)) return null;
-  const index = after === null || after >= items.length ? items.length : after + 1;
+  let index = after === null || after >= items.length ? items.length : Math.max(0, after + 1);
   const list = [...items];
+  const value = !isLayout(kind);
+  // A line break never neighbors a value, so the check stays inside the line.
+  const before = value && isValue(list[index - 1]);
+  const behind = value && isValue(list[index]);
+  const room = () => list.length < MAX_ITEMS;
   list.splice(index, 0, newItem(kind, separator));
+  if (behind && room()) list.splice(index + 1, 0, newItem("separator", separator));
+  if (before && room()) {
+    list.splice(index, 0, newItem("separator", separator));
+    index += 1;
+  }
   return { items: list, index };
 }
+
+// --- Lines (Step 12l) ------------------------------------------------------------------------
+//
+// The list stays flat; the editor's line cards are a view of it, split at the line breaks the
+// core draws (enabled ones, render.rs `spans`). A hidden line break is an item of its card.
+
+const isBreak = (item: Item | undefined) => !!item && item.kind === "line_break" && item.enabled;
+
+export interface Line {
+  /** The indices of the card's items, line breaks that split the list left out. */
+  items: number[];
+  /** The line break that ends the card; `null` on the last one. */
+  end: number | null;
+}
+
+/** The line cards: never empty, and an empty card for two line breaks in a row. */
+export function lines(items: readonly Item[]): Line[] {
+  const out: Line[] = [{ items: [], end: null }];
+  items.forEach((item, i) => {
+    const last = out[out.length - 1] as Line;
+    if (isBreak(item)) {
+      last.end = i;
+      out.push({ items: [], end: null });
+    } else {
+      last.items.push(i);
+    }
+  });
+  return out;
+}
+
+/** The card the item at `index` is in, its 0-based position there and the card's size. */
+export function placeOf(
+  items: readonly Item[],
+  index: number,
+): { line: number; position: number; count: number } | null {
+  const all = lines(items);
+  for (const [line, l] of all.entries()) {
+    const position = l.items.indexOf(index);
+    if (position >= 0) return { line, position, count: l.items.length };
+  }
+  return null;
+}
+
+/** Where an item added to card `line` goes: after `after` when it is in the card, else last. */
+function slotIn(all: Line[], line: number, length: number, after: number | null): number {
+  const l = all[line];
+  if (!l) return length;
+  if (after !== null && l.items.includes(after)) return after + 1;
+  return l.end ?? length;
+}
+
+/** `addItem` into card `line`: after the selection when it is there, at its end otherwise. */
+export function addToLine(
+  items: readonly Item[],
+  kind: SegmentKind,
+  line: number,
+  after: number | null,
+  separator = "",
+): { items: Item[]; index: number } | null {
+  return addItem(items, kind, slotIn(lines(items), line, items.length, after) - 1, separator);
+}
+
+/** `items` with a new, empty card at the end; `null` when the list is full. */
+export function addLine(items: readonly Item[]): Item[] | null {
+  if (items.length >= MAX_ITEMS) return null;
+  return [...items, newItem("line_break")];
+}
+
+/** The items card `line` takes away with it: its own and the line break that bounds it. */
+function lineRange(all: Line[], line: number, length: number): { start: number; count: number } {
+  const l = all[line] as Line;
+  // The first card ends at its line break; any other starts at the previous card's one.
+  const start = line === 0 ? 0 : (all[line - 1]?.end as number);
+  const end = line === 0 ? (l.end as number) + 1 : (l.end ?? length);
+  return { start, count: end - start };
+}
+
+/** Whether card `line` may go: not the only one, and not with the last value item shown. */
+export function canRemoveLine(items: readonly Item[], line: number): boolean {
+  const all = lines(items);
+  if (all.length < 2 || !all[line]) return false;
+  const { start, count } = lineRange(all, line, items.length);
+  const rest = items.filter((_, n) => n < start || n >= start + count);
+  return shownCount(rest) > 0;
+}
+
+/**
+ * `items` without card `line` and its items; `start` and `count` tell which indices went, so
+ * the selection can follow. `null` when the card may not go.
+ */
+export function removeLine(
+  items: readonly Item[],
+  line: number,
+): { items: Item[]; start: number; count: number } | null {
+  if (!canRemoveLine(items, line)) return null;
+  const { start, count } = lineRange(lines(items), line, items.length);
+  return { items: items.filter((_, n) => n < start || n >= start + count), start, count };
+}
+
+/**
+ * `items` with the item at `from` moved into card `line` at `position` (of the card without
+ * it; clamped, so `Infinity` is last), and its new index. A line break that splits the list
+ * does not move this way.
+ */
+export function moveToLine(
+  items: readonly Item[],
+  from: number,
+  line: number,
+  position: number,
+): { items: Item[]; index: number } | null {
+  const item = items[from];
+  if (!item || isBreak(item)) return null;
+  const rest = items.filter((_, n) => n !== from);
+  const l = lines(rest)[line];
+  if (!l) return null;
+  const at = Math.max(0, Math.min(position, l.items.length));
+  const index = l.items[at] ?? l.end ?? rest.length;
+  rest.splice(index, 0, item);
+  return { items: rest, index };
+}
+
+/**
+ * A drop of the item at `from` into gap `slot` of card `line` (0 = before its first row). In
+ * its own card the gap is counted with the item still there, as `dropIndex` does.
+ */
+export function dropInto(
+  items: readonly Item[],
+  from: number,
+  line: number,
+  slot: number,
+): { items: Item[]; index: number } | null {
+  const place = placeOf(items, from);
+  if (!place) return null;
+  const position = place.line === line ? dropIndex(place.position, slot) : slot;
+  if (place.line === line && position === place.position) return null;
+  return moveToLine(items, from, line, position);
+}
+
+/** What a flexible space does, by how many the card shows (ADR-051). */
+export function flexHintKey(items: readonly Item[], index: number): string {
+  const place = placeOf(items, index);
+  const card = place ? (lines(items)[place.line]?.items ?? []) : [];
+  const n = card.filter((i) => items[i]?.kind === "flex" && items[i]?.enabled).length;
+  if (n >= 3) return "statusline-flex-spread";
+  return n === 2 ? "statusline-flex-center" : "statusline-flex-right";
+}
+
+/** Every separator with `glyph`, which new separators take too. */
+export function applySeparator(prefs: StatuslinePrefs, glyph: string): StatuslinePrefs {
+  return {
+    ...prefs,
+    separator: glyph,
+    items: prefs.items.map((i) => (i.kind === "separator" ? { ...i, text: glyph } : i)),
+  };
+}
+
+/** The widths a space offers and the right margins, in columns (prefs.rs `MAX_SPACE`, `MAX_MARGIN`). */
+export const SPACE_WIDTHS = [1, 2, 3, 4, 5, 6, 7, 8] as const;
+export const MARGINS = [0, 1, 2, 3, 4, 5, 6, 7, 8] as const;
+/** The columns Claude Code keeps free at the right (render.rs `CLAUDE_CODE_RESERVED`). */
+export const RESERVED_COLUMNS = 4;
 
 export function updateItem(items: readonly Item[], index: number, patch: Partial<Item>): Item[] {
   return items.map((i, n) => (n === index ? { ...i, ...patch } : i));
@@ -408,7 +583,18 @@ export interface PaletteGroup {
   entries: PaletteEntry[];
 }
 
-/** The add-item palette: the catalog in groups, in catalog order. */
+/**
+ * The layout group's order in the palette. A line break is not offered: "Add line" under the
+ * cards makes one.
+ */
+const PALETTE_LAYOUT: readonly SegmentKind[] = ["separator", "space", "flex", "custom_text"];
+
+const paletteOrder = (kind: SegmentKind) => {
+  const n = PALETTE_LAYOUT.indexOf(kind);
+  return n < 0 ? -1 : n;
+};
+
+/** The add-item palette: the catalog in groups, in catalog order (layout: `PALETTE_LAYOUT`). */
 export function palette(
   catalog: readonly StatuslineKind[],
   items: readonly Item[],
@@ -416,7 +602,8 @@ export function palette(
   return GROUPS.map((group) => ({
     group,
     entries: catalog
-      .filter((k) => k.group === group)
+      .filter((k) => k.group === group && k.kind !== "line_break")
+      .sort((a, b) => paletteOrder(a.kind) - paletteOrder(b.kind))
       .map((k) => ({
         kind: k.kind,
         sample: k.sample,

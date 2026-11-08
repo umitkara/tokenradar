@@ -13,17 +13,23 @@ import type {
 import {
   ANSI_COLORS,
   addItem,
+  addLine,
   addThreshold,
+  addToLine,
   apiStatus,
+  applySeparator,
   COLOR_MODES,
   canAdd,
   canDrop,
+  canRemoveLine,
   colorKey,
   colorModeKey,
   consentAge,
   createSaver,
   dropIndex,
+  dropInto,
   emptyHistory,
+  flexHintKey,
   formatKey,
   GROUPS,
   groupKey,
@@ -31,15 +37,19 @@ import {
   itemText,
   kindHintKey,
   kindKey,
+  lines,
   MAX_ITEMS,
   MAX_THRESHOLDS,
   moveItem,
+  moveToLine,
   newItem,
   optionsWith,
   palette,
   parseThreshold,
+  placeOf,
   record,
   removeItem,
+  removeLine,
   removeThreshold,
   SAMPLE_STATES,
   selectionAfterRemove,
@@ -251,9 +261,16 @@ describe("statusline items", () => {
     expect(canAdd(list, "cost")).toBe(false);
     expect(canAdd(list, "separator")).toBe(true);
     expect(addItem(list, "cost", null)).toBeNull();
-    const added = addItem(list, "model", 0);
-    expect(added?.index).toBe(1);
-    expect(kinds(added?.items ?? [])).toEqual(["five_hour", "model", "cost"]);
+    const added = addItem(items("five_hour", "separator", "cost"), "model", 1);
+    expect(added?.index).toBe(2);
+    // The separator before it is there already; one goes between it and `cost`.
+    expect(kinds(added?.items ?? [])).toEqual([
+      "five_hour",
+      "separator",
+      "model",
+      "separator",
+      "cost",
+    ]);
     expect(addItem(list, "separator", null)?.index).toBe(2);
     const full = Array.from({ length: MAX_ITEMS }, () => newItem("separator"));
     expect(canAdd(full, "separator")).toBe(false);
@@ -300,14 +317,171 @@ describe("statusline items", () => {
       kind("seven_day", "limit"),
       kind("cwd", "project"),
       kind("separator", "layout"),
+      kind("line_break", "layout"),
+      kind("custom_text", "layout"),
+      kind("flex", "layout"),
     ];
     const groups = palette(catalog, items("seven_day", "separator"));
     expect(groups.map((g) => g.group)).toEqual(["limit", "project", "layout"]);
+    // No line break ("Add line" makes one); the layout group in its own order.
+    expect(groups[2]?.entries.map((e) => e.kind)).toEqual(["separator", "flex", "custom_text"]);
     expect(groups[0]?.entries).toEqual([
       { kind: "five_hour", sample: "five_hour", used: false, absent: true },
       { kind: "seven_day", sample: "seven_day", used: true, absent: false },
     ]);
     expect(groups[2]?.entries[0]?.used).toBe(false);
+  });
+});
+
+describe("statusline lines", () => {
+  const items = (...k: SegmentKind[]) => k.map((kind) => newItem(kind));
+  const kinds = (list: Item[]) => list.map((i) => (i.enabled ? i.kind : `(${i.kind})`));
+  const hidden = (item: Item): Item => ({ ...item, enabled: false });
+
+  it("splits the list into cards at the line breaks the core draws", () => {
+    expect(lines([])).toEqual([{ items: [], end: null }]);
+    const list = items("five_hour", "line_break", "cost", "line_break", "line_break", "model");
+    expect(lines(list)).toEqual([
+      { items: [0], end: 1 },
+      { items: [2], end: 3 },
+      { items: [], end: 4 },
+      { items: [5], end: null },
+    ]);
+    // A hidden line break does not split; it is a row of its card.
+    const off = [list[0] as Item, hidden(list[1] as Item), list[2] as Item];
+    expect(lines(off)).toEqual([{ items: [0, 1, 2], end: null }]);
+    expect(placeOf(list, 5)).toEqual({ line: 3, position: 0, count: 1 });
+    expect(placeOf(list, 1)).toBeNull();
+  });
+
+  it("adds a value to a card with separators between values", () => {
+    const list = items("five_hour", "line_break", "cost");
+    // Not selected in the card: at its end, after a separator.
+    const end = addToLine(list, "model", 0, 2, "›");
+    expect(kinds(end?.items ?? [])).toEqual([
+      "five_hour",
+      "separator",
+      "model",
+      "line_break",
+      "cost",
+    ]);
+    expect(end?.index).toBe(2);
+    expect(end?.items[1]?.text).toBe("›");
+    // After the selection in the card.
+    const after = addToLine(list, "model", 1, 2);
+    expect(kinds(after?.items ?? [])).toEqual([
+      "five_hour",
+      "line_break",
+      "cost",
+      "separator",
+      "model",
+    ]);
+    // Into an empty card, and a layout item never brings a separator.
+    const empty = addToLine(items("cost", "line_break"), "model", 1, null);
+    expect(kinds(empty?.items ?? [])).toEqual(["cost", "line_break", "model"]);
+    expect(kinds(addToLine(list, "flex", 0, 0)?.items ?? [])).toEqual([
+      "five_hour",
+      "flex",
+      "line_break",
+      "cost",
+    ]);
+    // A hidden value next to it still gets one: the core drops it while the value is hidden.
+    const off = [hidden(newItem("cost")), newItem("five_hour")];
+    expect(kinds(addItem(off, "model", 0)?.items ?? [])).toEqual([
+      "(cost)",
+      "separator",
+      "model",
+      "separator",
+      "five_hour",
+    ]);
+  });
+
+  it("leaves separators out when the list is full", () => {
+    const full = [
+      newItem("cost"),
+      ...Array.from({ length: MAX_ITEMS - 2 }, () => newItem("space")),
+    ];
+    const added = addItem(full, "model", 0);
+    expect(added?.items.length).toBe(MAX_ITEMS);
+    expect(kinds(added?.items ?? []).slice(0, 2)).toEqual(["cost", "model"]);
+  });
+
+  it("adds and removes cards, keeping the last value shown", () => {
+    const list = items("five_hour", "line_break", "cost", "model");
+    const added = addLine(list) ?? [];
+    expect(lines(added).length).toBe(3);
+    expect(addLine(Array.from({ length: MAX_ITEMS }, () => newItem("space")))).toBeNull();
+    // The first card goes with the break that ends it.
+    expect(removeLine(list, 0)).toEqual({ items: [list[2], list[3]], start: 0, count: 2 });
+    // Another goes with the break before it.
+    const second = removeLine(list, 1);
+    expect(kinds(second?.items ?? [])).toEqual(["five_hour"]);
+    expect(second?.start).toBe(1);
+    expect(kinds(removeLine(added, 2)?.items ?? [])).toEqual(kinds(list));
+    // The only card, or one that takes the last shown value, stays.
+    expect(canRemoveLine(items("cost", "model"), 0)).toBe(false);
+    const last = [hidden(newItem("five_hour")), newItem("line_break"), newItem("cost")];
+    expect(canRemoveLine(last, 1)).toBe(false);
+    expect(canRemoveLine(last, 0)).toBe(true);
+    expect(removeLine(last, 1)).toBeNull();
+  });
+
+  it("moves an item between cards", () => {
+    const list = items("five_hour", "seven_day", "line_break", "cost", "line_break");
+    // To the end of the next card, the start of it and into the empty last one.
+    expect(kinds(moveToLine(list, 0, 1, Number.POSITIVE_INFINITY)?.items ?? [])).toEqual([
+      "seven_day",
+      "line_break",
+      "cost",
+      "five_hour",
+      "line_break",
+    ]);
+    expect(moveToLine(list, 0, 1, 0)?.index).toBe(2);
+    const empty = moveToLine(list, 3, 2, 0);
+    expect(kinds(empty?.items ?? [])).toEqual([
+      "five_hour",
+      "seven_day",
+      "line_break",
+      "line_break",
+      "cost",
+    ]);
+    expect(empty?.index).toBe(4);
+    expect(moveToLine(list, 2, 0, 0)).toBeNull();
+    expect(moveToLine(list, 0, 5, 0)).toBeNull();
+    // A drop counts the gap with the item in place in its own card.
+    expect(kinds(dropInto(list, 0, 0, 2)?.items ?? []).slice(0, 2)).toEqual([
+      "seven_day",
+      "five_hour",
+    ]);
+    expect(dropInto(list, 0, 0, 1)).toBeNull();
+    expect(dropInto(list, 3, 0, 0)?.index).toBe(0);
+    // Alt+arrows: a swap with the line break moves the item into the next card.
+    expect(placeOf(moveItem(list, 1, 2), 2)).toEqual({ line: 1, position: 0, count: 2 });
+  });
+
+  it("words what a flexible space does by the card's count", () => {
+    const one = items("cost", "flex", "model", "line_break", "flex", "five_hour", "flex");
+    expect(flexHintKey(one, 1)).toBe("statusline-flex-right");
+    expect(flexHintKey(one, 4)).toBe("statusline-flex-center");
+    const three = items("flex", "cost", "flex", "model", "flex");
+    expect(flexHintKey(three, 0)).toBe("statusline-flex-spread");
+    expect(flexHintKey([hidden(newItem("flex")), ...three.slice(1, 3)], 2)).toBe(
+      "statusline-flex-right",
+    );
+  });
+
+  it("applies a glyph to every separator and to new ones", () => {
+    const prefs: StatuslinePrefs = {
+      version: 2,
+      items: items("cost", "separator", "model", "separator", "custom_text"),
+      theme: "plain",
+      separator: "│",
+      color: "auto",
+      margin: 0,
+    };
+    const next = applySeparator(prefs, "·");
+    expect(next.separator).toBe("·");
+    expect(next.items.map((i) => i.text)).toEqual(["", "·", "", "·", ""]);
   });
 });
 
@@ -477,6 +651,12 @@ describe("statusline message keys", () => {
       ...COLOR_MODES.map(colorModeKey),
       ...SAMPLE_STATES.map(stateKey),
       ...PRESETS.flatMap((p) => [`statusline-preset-${p}`, `statusline-preset-${p}-hint`]),
+      ...[1, 2, 3].map((n) =>
+        flexHintKey(
+          Array.from({ length: n }, () => newItem("flex")),
+          0,
+        ),
+      ),
     ];
     const missing = keys.filter((k) => !new RegExp(`^${k} =`, "m").test(ftl));
     expect(missing).toEqual([]);

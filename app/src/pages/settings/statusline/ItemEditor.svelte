@@ -4,6 +4,7 @@
   are undone together.
 -->
 <script lang="ts">
+import Button from "../../../lib/components/Button.svelte";
 import IconButton from "../../../lib/components/IconButton.svelte";
 import Segmented from "../../../lib/components/Segmented.svelte";
 import Toggle from "../../../lib/components/Toggle.svelte";
@@ -21,6 +22,7 @@ import {
   MAX_LABEL,
   MAX_SEPARATOR,
   MAX_TEXT,
+  SPACE_WIDTHS,
 } from "../view";
 
 interface Props {
@@ -29,16 +31,21 @@ interface Props {
   count: number;
   info: StatuslineKind | undefined;
   absent: boolean;
+  /** A flexible space's effect in its line (`flexHintKey`); `null` on other kinds. */
+  flexHint: string | null;
   onchange: (patch: Partial<Item>, key: string | null) => void;
   onmove: (by: -1 | 1) => void;
+  /** Gives every separator, and the ones added later, this item's glyph. */
+  onapplyall: (glyph: string) => void;
 }
 
-let { item, index, count, info, absent, onchange, onmove }: Props = $props();
+let { item, index, count, info, absent, flexHint, onchange, onmove, onapplyall }: Props = $props();
 
 const formats = $derived(
   (info?.formats ?? []).map((f: Format) => ({ value: f, label: t(formatKey(f)) })),
 );
 const swatches = $derived<(AnsiColor | null)[]>([null, ...ANSI_COLORS]);
+const widths = $derived(SPACE_WIDTHS.map((n) => ({ value: n, label: String(n) })));
 
 let swatchGroup = $state<HTMLDivElement>();
 
@@ -124,7 +131,24 @@ function swatchKey(e: KeyboardEvent) {
         value={item.text}
         oninput={(e) => onchange({ text: e.currentTarget.value }, `text:${index}`)}
       />
+      <Button onclick={() => onapplyall(item.text.trim() === "" ? "│" : item.text)}>
+        {t("statusline-apply-all")}
+      </Button>
+      <span class="caption">{t("statusline-apply-all-hint")}</span>
     </div>
+  {:else if item.kind === "space"}
+    <div class="field">
+      <span class="label">{t("statusline-space-width")}</span>
+      <Segmented
+        label={t("statusline-space-width")}
+        value={item.width}
+        options={widths}
+        onchange={(width) => onchange({ width }, null)}
+      />
+      <span class="caption">{t("statusline-columns", { n: item.width })}</span>
+    </div>
+  {:else if item.kind === "flex" && flexHint}
+    <p class="note">{t(flexHint)}</p>
   {:else if item.kind === "custom_text"}
     <div class="field">
       <label class="label" for="sl-text">{t("statusline-text")}</label>

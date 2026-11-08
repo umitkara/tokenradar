@@ -1,8 +1,10 @@
 <!--
   The statusline as a terminal draws it: the core's painted spans on the `--term-*` palette,
   never wrapped. `columns` sets the terminal's width (a dashed edge marks it); a wider line
-  scrolls sideways. With `onpick`, a span selects its item, and hovering highlights the item's
-  spans here and its row in the list (`hovered` comes back from the list the same way).
+  scrolls sideways; `reserved` shades the columns at its right that the line keeps free (Claude
+  Code's and the user's margin, ADR-051). With `onpick`, a span selects its item, and hovering
+  highlights the item's spans here and its row in the list (`hovered` comes back from the list
+  the same way). Blank spans (spaces, flexible spaces) get a tint so they can be seen.
 -->
 <script lang="ts">
 import type { Span } from "../../../lib/ipc/bindings";
@@ -12,6 +14,8 @@ interface Props {
   lines: Span[][];
   label: string;
   columns?: number | null;
+  reserved?: number;
+  reservedLabel?: string;
   selected?: number | null;
   hovered?: number | null;
   onpick?: (item: number) => void;
@@ -22,6 +26,8 @@ let {
   lines,
   label,
   columns = null,
+  reserved = 0,
+  reservedLabel,
   selected = null,
   hovered = null,
   onpick,
@@ -32,6 +38,9 @@ function itemOf(e: Event): number | null {
   const el = (e.target as HTMLElement | null)?.closest<HTMLElement>("[data-item]");
   return el ? Number(el.dataset.item) : null;
 }
+
+/** A span of an item that draws only blanks: a space, a flexible space. */
+const blank = (span: Span) => span.item !== null && span.text.trim() === "";
 
 function click(e: MouseEvent) {
   const item = itemOf(e);
@@ -63,10 +72,17 @@ function over(e: MouseEvent) {
             class={spanClasses(span)}
             class:hl={span.item !== null && span.item === hovered}
             class:sel={span.item !== null && span.item === selected}
+            class:blank={blank(span)}
             data-item={span.item ?? undefined}>{span.text}</span
           >{/each}
       </div>
-    {/each}
+    {/each}{#if columns && reserved > 0}<div
+        class="reserved"
+        style:left="{columns - reserved}ch"
+        style:width="{reserved}ch"
+        title={reservedLabel}
+        aria-hidden="true"
+      ></div>{/if}
   </div>
 </div>
 
@@ -81,9 +97,24 @@ function over(e: MouseEvent) {
     font: 400 13px / 20px var(--font-term);
     user-select: text;
   }
+  /* Its own stacking context, so the shaded columns can sit under the text. */
   .screen {
+    position: relative;
+    isolation: isolate;
     width: max-content;
     white-space: pre;
+  }
+  /* The columns kept free at the right: faint diagonal hatching up to the edge. */
+  .reserved {
+    position: absolute;
+    z-index: -1;
+    top: calc(-1 * var(--space-2));
+    bottom: calc(-1 * var(--space-2));
+    background: repeating-linear-gradient(
+      -45deg,
+      #ffffff14 0 2px,
+      transparent 2px 6px
+    );
   }
   /* The terminal's right edge at `columns`. */
   .edge {
@@ -94,6 +125,7 @@ function over(e: MouseEvent) {
     background-position: right top;
   }
   .line {
+    position: relative;
     min-height: 20px;
   }
   .line span {
@@ -110,6 +142,13 @@ function over(e: MouseEvent) {
     text-decoration: underline;
     text-decoration-color: var(--term-fg);
     text-underline-offset: 4px;
+  }
+  /* Blanks have no text to underline or outline: a tint shows where they are. */
+  .blank.sel {
+    background-color: #ffffff17;
+  }
+  .blank.hl {
+    background-color: #ffffff26;
   }
 
   /* The paint's colors (render.rs `ansi`: ok cyan, warn yellow, crit red). */

@@ -1,6 +1,6 @@
 <!--
-  The statusline editor (Step 12j): a toolbar for the whole line, a terminal preview that stays
-  in view, the item list and the selected item's settings. Every change goes into the draft,
+  The statusline editor (Steps 12j, 12l): a toolbar for the whole line, a terminal preview that
+  stays in view, the items in one card per line and the selected item's settings. Every change goes into the draft,
   is drawn by the core at once and saved after a short pause; Undo walks back through this
   window's changes. Installing the bridge stays in Data sources.
 -->
@@ -8,6 +8,7 @@
 import { onMount, untrack } from "svelte";
 import Button from "../../lib/components/Button.svelte";
 import Segmented from "../../lib/components/Segmented.svelte";
+import Select from "../../lib/components/Select.svelte";
 import { t } from "../../lib/i18n/i18n.svelte";
 import {
   commands,
@@ -24,12 +25,19 @@ import ItemList from "./statusline/ItemList.svelte";
 import PresetDialog from "./statusline/PresetDialog.svelte";
 import TermPreview from "./statusline/TermPreview.svelte";
 import {
-  addItem,
+  addLine,
+  addToLine,
+  applySeparator,
   COLOR_MODES,
   colorModeKey,
-  MAX_SEPARATOR,
+  dropInto,
+  flexHintKey,
+  lines,
+  MARGINS,
   moveItem,
+  RESERVED_COLUMNS,
   removeItem,
+  removeLine,
   SAMPLE_STATES,
   selectionAfterRemove,
   stateKey,
@@ -54,6 +62,8 @@ let palette = $state<AddPalette>();
 let presetDialog = $state<PresetDialog>();
 let importDialog = $state<ImportDialog>();
 let copied = $state<string | null>(null);
+/** The card the palette adds to. */
+let paletteLine = $state(0);
 let copiedTimer: ReturnType<typeof setTimeout> | undefined;
 
 const draft = $derived(editor.draft);
@@ -68,6 +78,11 @@ const states = $derived(SAMPLE_STATES.map((v) => ({ value: v, label: t(stateKey(
 const widths = $derived(
   WIDTHS.map((v) => ({ value: v, label: t("statusline-columns", { n: v }) })),
 );
+const margins = $derived(
+  MARGINS.map((v) => ({ value: v, label: t("statusline-columns", { n: v }) })),
+);
+/** Whether the alignment note is worth showing: some line has a flexible space. */
+const flexed = $derived(items.some((i) => i.kind === "flex" && i.enabled));
 
 // The stored prefs become the draft unless the user's own changes are on their way.
 $effect(() => {
@@ -128,10 +143,43 @@ function remove(index: number) {
 }
 
 function add(kind: SegmentKind) {
-  const added = addItem(items, kind, selected, draft?.separator);
+  const added = addToLine(items, kind, paletteLine, selected, draft?.separator);
   if (!added) return;
   setItems(added.items);
   editor.selected = added.index;
+}
+
+function openPalette(line: number) {
+  paletteLine = line;
+  palette?.open();
+}
+
+function drop(from: number, line: number, slot: number): number | null {
+  const moved = dropInto(items, from, line, slot);
+  if (!moved) return null;
+  setItems(moved.items);
+  editor.selected = moved.index;
+  return moved.index;
+}
+
+function newLine() {
+  const next = addLine(items);
+  if (next) setItems(next);
+}
+
+function dropLine(line: number) {
+  const removed = removeLine(items, line);
+  if (!removed) return;
+  setItems(removed.items);
+  const { start, count } = removed;
+  if (selected === null || selected < start) return;
+  // The selection went with the card: the next line's first item, else the previous line's.
+  if (selected >= start + count) editor.selected = selected - count;
+  else {
+    const all = lines(removed.items);
+    const near = all[line]?.items[0] ?? all[line - 1]?.items.at(-1);
+    editor.selected = near ?? null;
+  }
 }
 
 function replace(prefs: StatuslinePrefs) {
@@ -196,18 +244,6 @@ function keydown(e: KeyboardEvent) {
           options={colorModes}
           onchange={(color) => set({ color })}
         />
-        {#if draft.theme === "plain"}
-          <label class="sep">
-            <span>{t("statusline-separator")}</span>
-            <input
-              type="text"
-              maxlength={MAX_SEPARATOR}
-              placeholder="␠"
-              value={draft.separator}
-              oninput={(e) => set({ separator: e.currentTarget.value }, "separator")}
-            />
-          </label>
-        {/if}
         <span class="spacer"></span>
         <Button onclick={() => presetDialog?.open("preset")}>{t("statusline-presets")}</Button>
         <Button onclick={exportLine}>{t("statusline-export")}</Button>
@@ -231,16 +267,28 @@ function keydown(e: KeyboardEvent) {
           options={widths}
           onchange={(w) => (editor.width = w)}
         />
+        <!-- Saved with the line, but next to the width: it narrows what the line may fill. -->
+        <label class="margin" title={t("statusline-margin-hint")}>
+          <span>{t("statusline-margin")}</span>
+          <Select
+            value={draft.margin}
+            options={margins}
+            onchange={(margin) => set({ margin })}
+          />
+        </label>
       </div>
       <TermPreview
         lines={editor.preview.lines}
         label={t("statusline-preview")}
         columns={editor.width}
+        reserved={RESERVED_COLUMNS + draft.margin}
+        reservedLabel={t("statusline-reserved", { n: RESERVED_COLUMNS + draft.margin })}
         selected={editor.selected}
         hovered={editor.hovered}
         onpick={(i) => (editor.selected = i)}
         onhover={(i) => (editor.hovered = i)}
       />
+      {#if flexed}<p class="caption">{t("statusline-align-note")}</p>{/if}
       {#if draft.theme !== "plain"}
         <p class="caption">{t("statusline-font-note")}</p>
       {/if}
@@ -257,9 +305,12 @@ function keydown(e: KeyboardEvent) {
           onselect={(i) => (editor.selected = i)}
           onhover={(i) => (editor.hovered = i)}
           onmove={move}
+          ondrop={drop}
           ontoggle={(i) => setItems(toggleHidden(items, i))}
           onremove={remove}
-          onadd={() => palette?.open()}
+          onadd={openPalette}
+          onaddline={newLine}
+          onremoveline={dropLine}
         />
       </div>
       <div class="col">
@@ -271,8 +322,10 @@ function keydown(e: KeyboardEvent) {
             count={items.length}
             info={editor.kind(item.kind)}
             absent={editor.preview.absent.includes(item.kind)}
+            flexHint={item.kind === "flex" ? flexHintKey(items, index) : null}
             onchange={(patch, key) => setItems(updateItem(items, index, patch), key)}
             onmove={(by) => move(index, index + by)}
+            onapplyall={(glyph) => draft && editor.change(applySeparator(draft, glyph))}
           />
         {:else}
           <p class="caption">{t("statusline-select-hint")}</p>
@@ -280,7 +333,13 @@ function keydown(e: KeyboardEvent) {
       </div>
     </div>
 
-    <AddPalette bind:this={palette} catalog={editor.catalog} {items} onadd={add} />
+    <AddPalette
+      bind:this={palette}
+      catalog={editor.catalog}
+      {items}
+      title={t("statusline-add-to-line", { n: paletteLine + 1 })}
+      onadd={add}
+    />
     <PresetDialog bind:this={presetDialog} presets={editor.presets} onapply={replace} />
     <ImportDialog bind:this={importDialog} onapply={replace} />
   {/if}
@@ -333,25 +392,15 @@ function keydown(e: KeyboardEvent) {
     text-decoration: underline;
     cursor: pointer;
   }
-  .sep {
+  .margin {
     display: inline-flex;
     align-items: center;
     gap: var(--space-1);
     color: var(--text-2);
   }
-  .sep input {
-    width: 44px;
-    min-height: 28px;
-    padding: 0 var(--space-1);
-    text-align: center;
-    border-radius: var(--radius-control);
-    border: 1px solid var(--stroke);
-    background: var(--surface-2);
-    color: var(--text-1);
-    font: 400 13px / 18px var(--font-term);
-  }
-  .sep input::placeholder {
-    color: var(--text-3);
+  /* "0 col" needs no more than this; the shared drop-down is sized for sentences. */
+  .margin :global(select) {
+    min-width: 0;
   }
   .preview {
     display: flex;
@@ -365,7 +414,9 @@ function keydown(e: KeyboardEvent) {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     gap: var(--space-4);
   }
+  /* Positioned: the list's screen-reader announcement stays inside the scrolled column. */
   .col {
+    position: relative;
     min-height: 0;
     overflow-x: hidden;
     overflow-y: auto;

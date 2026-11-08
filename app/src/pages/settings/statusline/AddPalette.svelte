@@ -1,5 +1,6 @@
 <!--
-  "Add item": every kind the core knows, in groups, with what it shows and a sample. A value
+  "Add item": every kind the core knows but the line break, in groups, with what it shows and a
+  sample; `title` names the line it adds to. A value
   item already in the line, a window the account does not have and a full list are offered
   but not addable, with the reason next to them.
 -->
@@ -12,10 +13,11 @@ import { groupKey, kindHintKey, kindKey, MAX_ITEMS, palette } from "../view";
 interface Props {
   catalog: StatuslineKind[];
   items: Item[];
+  title: string;
   onadd: (kind: SegmentKind) => void;
 }
 
-let { catalog, items, onadd }: Props = $props();
+let { catalog, items, title, onadd }: Props = $props();
 
 let dialog: HTMLDialogElement;
 const groups = $derived(palette(catalog, items));
@@ -32,7 +34,7 @@ function add(kind: SegmentKind) {
 </script>
 
 <dialog bind:this={dialog} aria-labelledby="sl-add-title">
-  <h2 id="sl-add-title">{t("statusline-add-title")}</h2>
+  <h2 id="sl-add-title">{title}</h2>
   {#if full}<p class="note">{t("statusline-add-full", { max: MAX_ITEMS })}</p>{/if}
   <div class="groups">
     {#each groups as group (group.group)}
