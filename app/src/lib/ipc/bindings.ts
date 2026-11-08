@@ -422,6 +422,8 @@ export type Item = {
 	pace: boolean,
 	/**  `custom_text`: the text. `separator`: the glyph. */
 	text: string,
+	/**  `space`: the columns, 1–[`MAX_SPACE`]. 1 on every other kind. */
+	width: number,
 };
 
 /**  Signals for the notifier (Step 11), which applies its own rules, hysteresis and quiet hours. */
@@ -640,7 +642,9 @@ export type Preset =
 /**  Limits and the session on the first line, the project on the second. */
 "detailed" | 
 /**  The 12c double layout: limits first, the session second. */
-"two_line" | "powerline";
+"two_line" | "powerline" | 
+/**  The limits at the left, the model, folder and branch at the right (ADR-051). */
+"split";
 
 export type Projection = {
 	/**  Percentage points per minute, never negative. */
@@ -702,7 +706,14 @@ export type SegmentKind = "five_hour" | "seven_day" |
 /**  Starts a new output line. */
 "line_break" | 
 /**  A fixed text of the user's choice. */
-"custom_text";
+"custom_text" | 
+/**  `width` blank columns. */
+"space" | 
+/**
+ *  Takes the columns the line leaves free: what follows goes to the right, or between two
+ *  of them to the middle (ADR-051).
+ */
+"flex";
 
 /**  Row id in `sessions`. */
 export type SessionId = number;
@@ -772,8 +783,8 @@ export type Span = {
 	/**  A Powerline block. */
 	bg: AnsiColor | null,
 	/**
-	 *  The index of the item in `StatuslinePrefs::items` the span belongs to; `None` for
-	 *  separators and joints between items.
+	 *  The index of the item in `StatuslinePrefs::items` the span belongs to (`space` and
+	 *  `flex` items too); `None` for the spaces and joints between items.
 	 */
 	item: number | null,
 };
@@ -823,11 +834,15 @@ restores_previous: boolean } | { outcome: "already_installed" } | { outcome: "no
 
 /**  What the line shows. */
 export type StatuslinePrefs = {
+	/**  Always [`PREFS_VERSION`] once read: what tells a migrated list from an older one. */
+	version: number,
 	items: Item[],
 	theme: Theme,
-	/**  Between two values in the plain theme; empty: a space. */
+	/**  The glyph of separators added from now on; older builds draw it between two values. */
 	separator: string,
 	color: ColorMode,
+	/**  Columns kept free at the right, past the ones Claude Code keeps (ADR-051). */
+	margin: number,
 };
 
 /**  A built-in starting point. */

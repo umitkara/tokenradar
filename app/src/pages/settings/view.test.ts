@@ -215,7 +215,7 @@ describe("updateUi", () => {
 });
 
 describe("statusline items", () => {
-  const items = (...k: SegmentKind[]) => k.map(newItem);
+  const items = (...k: SegmentKind[]) => k.map((kind) => newItem(kind));
   const kinds = (list: Item[]) => list.map((i) => (i.enabled ? i.kind : `(${i.kind})`));
 
   it("keeps the last value item visible", () => {
@@ -257,6 +257,16 @@ describe("statusline items", () => {
     expect(addItem(list, "separator", null)?.index).toBe(2);
     const full = Array.from({ length: MAX_ITEMS }, () => newItem("separator"));
     expect(canAdd(full, "separator")).toBe(false);
+  });
+
+  it("gives a new separator the toolbar's glyph and counts space and flex as layout", () => {
+    const list = items("cost");
+    expect(addItem(list, "separator", 0, "›")?.items[1]?.text).toBe("›");
+    // Blank: the core's default glyph.
+    expect(addItem(list, "separator", 0, " ")?.items[1]?.text).toBe("");
+    expect(newItem("custom_text", "›").text).toBe("");
+    expect(canAdd([...list, newItem("flex")], "flex")).toBe(true);
+    expect(canDrop([newItem("space"), ...list], 1)).toBe(false);
   });
 
   it("patches one item and picks the next selection after a removal", () => {
@@ -333,10 +343,12 @@ describe("statusline preview", () => {
 
 describe("statusline undo", () => {
   const prefs = (separator: string): StatuslinePrefs => ({
+    version: 2,
     items: [newItem("cost")],
     theme: "plain",
     separator,
     color: "auto",
+    margin: 0,
   });
 
   it("undoes step by step and joins quick edits of one field", () => {
@@ -431,6 +443,8 @@ describe("statusline message keys", () => {
     "separator",
     "line_break",
     "custom_text",
+    "space",
+    "flex",
   ];
   const FORMATS = [
     "bar",
@@ -447,7 +461,7 @@ describe("statusline message keys", () => {
     "basename",
     "home",
   ] as const;
-  const PRESETS = ["default", "minimal", "detailed", "two-line", "powerline"];
+  const PRESETS = ["default", "minimal", "detailed", "two-line", "powerline", "split"];
 
   it("has a message for every key the editor builds", () => {
     const ftl = readFileSync(

@@ -243,7 +243,7 @@ export function updateUi(u: UpdateView, now: number): UpdateUi {
 // UI from offering what the core would drop.
 
 /** The core's limits (statusline/line/prefs.rs). */
-export const MAX_ITEMS = 48;
+export const MAX_ITEMS = 64;
 export const MAX_LABEL = 16;
 export const MAX_TEXT = 32;
 export const MAX_SEPARATOR = 3;
@@ -277,7 +277,7 @@ export const ANSI_COLORS: readonly AnsiColor[] = [
   "bright_white",
 ];
 
-const LAYOUT: readonly SegmentKind[] = ["separator", "line_break", "custom_text"];
+const LAYOUT: readonly SegmentKind[] = ["separator", "line_break", "custom_text", "space", "flex"];
 
 /** Kinds whose warning and critical colors win over the user's color (ADR-049). */
 const THRESHOLD_COLORED: readonly SegmentKind[] = ["five_hour", "seven_day", "scoped", "context"];
@@ -300,8 +300,11 @@ export const isLayout = (kind: SegmentKind) => LAYOUT.includes(kind);
 export const hasThresholdColors = (kind: SegmentKind) => THRESHOLD_COLORED.includes(kind);
 export const isWindow = (kind: SegmentKind) => WINDOWS.includes(kind);
 
-/** A new item of `kind` with its defaults; the core fills in the format. */
-export function newItem(kind: SegmentKind): Item {
+/**
+ * A new item of `kind` with its defaults; the core fills in the format. A separator gets
+ * `separator`, the toolbar's glyph for new separators (ADR-051); blank: the core's default.
+ */
+export function newItem(kind: SegmentKind, separator = ""): Item {
   return {
     kind,
     enabled: true,
@@ -310,7 +313,8 @@ export function newItem(kind: SegmentKind): Item {
     color: null,
     reset: true,
     pace: true,
-    text: "",
+    text: kind === "separator" && separator.trim() !== "" ? separator : "",
+    width: 1,
   };
 }
 
@@ -371,11 +375,12 @@ export function addItem(
   items: readonly Item[],
   kind: SegmentKind,
   after: number | null,
+  separator = "",
 ): { items: Item[]; index: number } | null {
   if (!canAdd(items, kind)) return null;
   const index = after === null || after >= items.length ? items.length : after + 1;
   const list = [...items];
-  list.splice(index, 0, newItem(kind));
+  list.splice(index, 0, newItem(kind, separator));
   return { items: list, index };
 }
 

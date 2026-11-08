@@ -128,7 +128,7 @@ function remove(index: number) {
 }
 
 function add(kind: SegmentKind) {
-  const added = addItem(items, kind, selected);
+  const added = addItem(items, kind, selected, draft?.separator);
   if (!added) return;
   setItems(added.items);
   editor.selected = added.index;
