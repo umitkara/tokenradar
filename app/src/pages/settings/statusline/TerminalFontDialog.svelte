@@ -405,6 +405,7 @@ function shownFont(step: RestoreStep, after: boolean): string {
   }
   .progress progress {
     flex: 1;
+    accent-color: var(--accent);
   }
   .targets {
     list-style: none;

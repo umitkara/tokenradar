@@ -21,7 +21,7 @@ import { inTauri } from "../../lib/ipc/runtime";
 import { store } from "./state.svelte";
 import AddPalette from "./statusline/AddPalette.svelte";
 import { StatuslineEditor } from "./statusline/editor.svelte";
-import { previewFont } from "./statusline/font";
+import { canDraw, previewFont } from "./statusline/font";
 import ImportDialog from "./statusline/ImportDialog.svelte";
 import ItemEditor from "./statusline/ItemEditor.svelte";
 import ItemList from "./statusline/ItemList.svelte";
@@ -91,6 +91,8 @@ const margins = $derived(
 const nerdFont = $derived(fontView?.font ?? null);
 /** The preview draws with the installed Nerd Font, as the terminal will. */
 const termFont = $derived(previewFont(nerdFont));
+/** A font installed while TokenRadar runs reaches the preview only after a restart. */
+const drawsFont = $derived(nerdFont ? canDraw(nerdFont.family) : false);
 /** Whether the alignment note is worth showing: some line has a flexible space. */
 const flexed = $derived(items.some((i) => i.kind === "flex" && i.enabled));
 
@@ -256,7 +258,6 @@ function keydown(e: KeyboardEvent) {
           onchange={(color) => set({ color })}
         />
         <span class="spacer"></span>
-        <Button onclick={() => fontDialog?.open()}>{t("font-open")}</Button>
         <Button onclick={() => presetDialog?.open("preset")}>{t("statusline-presets")}</Button>
         <Button onclick={exportLine}>{t("statusline-export")}</Button>
         <Button onclick={() => importDialog?.open()}>{t("statusline-import")}</Button>
@@ -305,11 +306,17 @@ function keydown(e: KeyboardEvent) {
         onhover={(i) => (editor.hovered = i)}
       />
       {#if flexed}<p class="caption">{t("statusline-align-note")}</p>{/if}
-      {#if nerdFont}
-        <p class="caption">{t("font-preview-with", { family: nerdFont.family })}</p>
-      {:else if fontView && draft.theme !== "plain"}
+      <!-- The font helper lives with the preview it is about, reachable in every theme. -->
+      {#if fontView && !nerdFont && draft.theme !== "plain"}
         <p class="note">
           {t("statusline-font-note")}
+          <button type="button" class="link" onclick={() => fontDialog?.open()}>{t("font-open")}</button>
+        </p>
+      {:else}
+        <p class="caption">
+          {#if nerdFont}
+            {t(drawsFont ? "font-preview-with" : "font-preview-restart", { family: nerdFont.family })}
+          {/if}
           <button type="button" class="link" onclick={() => fontDialog?.open()}>{t("font-open")}</button>
         </p>
       {/if}

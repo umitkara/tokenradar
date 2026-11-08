@@ -55,6 +55,29 @@ export function previewFont(font: NerdFontView | null): string | null {
   return `${quoted}, "Cascadia Mono", Consolas, monospace`;
 }
 
+/** The width of `text` drawn in a CSS font list. */
+export type Measure = (fontList: string, text: string) => number;
+
+const canvasMeasure: Measure = (fontList, text) => {
+  const ctx = document.createElement("canvas").getContext("2d");
+  if (!ctx) return 0;
+  ctx.font = `20px ${fontList}`;
+  return ctx.measureText(text).width;
+};
+
+/**
+ * Whether this window can draw `family`. A browser sees only the fonts that were installed when
+ * it started, so a font installed meanwhile needs TokenRadar restarted before the preview shows
+ * it. Missing, both lists fall back and measure like the bare fallbacks.
+ */
+export function canDraw(family: string, measure: Measure = canvasMeasure): boolean {
+  const probe = "";
+  const quoted = `"${family.replaceAll('"', "")}"`;
+  const mono = measure(`${quoted}, monospace`, probe) !== measure("monospace", probe);
+  const serif = measure(`${quoted}, serif`, probe) !== measure("serif", probe);
+  return mono || serif;
+}
+
 /** The terminal a settings file belongs to. */
 export function targetTerminal(id: TargetId): TerminalKind {
   return id.startsWith("vscode") ? "vscode" : "windows_terminal";

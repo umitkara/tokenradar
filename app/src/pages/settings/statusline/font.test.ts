@@ -11,6 +11,7 @@ import type {
   TerminalKind,
 } from "../../../lib/ipc/bindings";
 import {
+  canDraw,
   canSelect,
   fontErrorKey,
   fontStatusKey,
@@ -62,6 +63,15 @@ describe("terminal font helper", () => {
     expect(previewFont({ ...FONT, family: 'A"B' })).toMatch(/^"AB", /);
   });
 
+  it("tells a font the window can draw from one it only knows by name", () => {
+    // Missing: the list measures like its fallback.
+    const missing = (list: string) => (list.includes("serif") ? 30 : 22);
+    expect(canDraw("X", missing)).toBe(false);
+    // Drawn: the family's own width, whatever the fallback.
+    const drawn = (list: string) => (list.startsWith('"X"') ? 23.4 : list === "serif" ? 30 : 22);
+    expect(canDraw("X", drawn)).toBe(true);
+  });
+
   it("maps settings files to their terminal", () => {
     expect(targetTerminal("vscode_insiders")).toBe("vscode");
     expect(targetTerminal("windows_terminal_unpackaged")).toBe("windows_terminal");
@@ -111,7 +121,9 @@ describe("terminal font helper", () => {
       ...["section-restore", "restore-body", "restore", "restore-intro", "restore-default"].map(
         (k) => `font-${k}`,
       ),
-      ...["restore-files", "restore-note", "confirm-restore", "restored"].map((k) => `font-${k}`),
+      ...["restore-files", "restore-note", "confirm-restore", "restored", "preview-restart"].map(
+        (k) => `font-${k}`,
+      ),
     ];
     for (const lang of ["en", "tr"]) {
       const text = ftl(lang);
