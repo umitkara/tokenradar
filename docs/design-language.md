@@ -102,7 +102,7 @@ Başlığın altında iki eşit düğmeli bir segment kontrolü: `Özet | Ayrın
 
 ### Segment kontrolü (ayarlar)
 
-`Segmented` bileşeni iki ila dört kısa seçenek içindir; açılır liste bunlar için kullanılmaz. `radiogroup` olarak çalışır: oklar seçimi değiştirir, `Tab` gruptan çıkar. Seçili düğme `--surface-2` zeminli ve kalındır, altında 2 px `--accent` çizgi vardır. Kullanıldığı yerler: statusline teması, renk modu, örnek durum, terminal genişliği ve öğe biçimi.
+`Segmented` bileşeni iki ila dört kısa seçenek içindir; açılır liste bunlar için kullanılmaz. `radiogroup` olarak çalışır: oklar seçimi değiştirir, `Tab` gruptan çıkar. Seçili düğme `--surface-2` zeminli ve kalındır, altında 2 px `--accent` çizgi vardır. Kullanıldığı yerler: statusline teması, renk modu, örnek durum, terminal genişliği, öğe biçimi, sıfırlanma biçimi, çubuk genişliği ve çubuk stili. Bir seçenek isteğe bağlı bir glif örneği taşıyabilir; örnek `--font-term` ile, metinden önce ve `aria-hidden` olarak çizilir (Adım 12m: çubuk stilleri `██░░░`, `▬▬▭▭▭`, `⣿⣿⣀⣀⣀`).
 
 ### Statusline düzenleyicisi (ayarlar, Adım 12j)
 
@@ -112,6 +112,7 @@ Başlığın altında iki eşit düğmeli bir segment kontrolü: `Özet | Ayrın
 - **Satır kartları (Adım 12l, ADR-052):** Her çıktı satırı `--surface-1` zeminli, `--radius-card` köşeli ve kenarlıklı bir karttır. Başlıkta "Satır N" (`--type-caption`, kalın) ve satırı silme düğmesi, altta kenarlıksız "+ Öğe ekle" bulunur. Kartların altında kesikli kenarlıklı "+ Satır ekle" yer alır. Boş kart, kesikli kenarlıklı bir yer tutucu gösterir ve sürüklenen öğeyi kabul eder.
 - **Düzen satırları:** Ayraç, boşluk, esnek boşluk ve gizli satır sonu satırları 30 px'tir (değer satırları 36 px). Adları `--type-caption` ve `--text-2` ile yazılır. Esnek boşluk `⟷` işaretini ve satırdaki etkisini ("Sonrası sağa yaslanır"), boşluk genişliğini, ayraç glifini gösterir.
 - **Önizlemede pay ve boşluklar:** Satırın boş bıraktığı sağ sütunlar (Claude Code'un 4 sütunu ve sağ pay) kenara kadar soluk çapraz taramayla gösterilir. Metni olmayan span'ler (boşluk, esnek boşluk) seçiliyken ve üzerine gelinince hafif beyaz bir tonla görünür olur.
+- **Çubuk ve sıfırlanma ayarları (Adım 12m, ADR-053):** Çubuk genişliği (4/8/12) ve stili yalnızca biçim `bar` iken görünür. Sıfırlanma biçimi (Geri sayım / Saat), sıfırlanma gösteriliyorsa limit pencerelerinde görünür. Stil örnekleri UI'da çizilmez; backend'in `bar_sample` çıktısıdır.
 
 ### Tray ikonu
 
@@ -188,7 +189,7 @@ Başlığın altında iki eşit düğmeli bir segment kontrolü: `Özet | Ayrın
 | Weekly limit | Haftalık limit | Kısa form: "7g" |
 | Resets in 1h 48m | 1 sa 48 dk sonra yenilenir | |
 | Resets Wed 10:59 | Çar 10:59'da yenilenir | `TR_SUFFIX` kullanılır |
-| Burn rate | Tüketim hızı | |
+| Burn rate | Tüketim hızı | Statusline'da `API $12.01/h` / `API $12.01/sa`; ilk 5 dakikada gösterilmez |
 | Projected | Öngörülen | |
 | Estimated | Tahmini | Her zaman "≈" ile birlikte |
 | Session | Oturum | |
@@ -216,6 +217,12 @@ Başlığın altında iki eşit düğmeli bir segment kontrolü: `Özet | Ayrın
 | Theme: Plain / Powerline / Rounded | Tema: Düz / Powerline / Yuvarlak | |
 | Preset | Şablon | Varsayılan, Sade, Ayrıntılı, İki satır, Powerline |
 | Export / Import | Dışa aktar / İçe aktar | `[statusline]` TOML metni; içe aktarma kaydetmeden önizler |
+| Daily budget | Günlük bütçe | Haftalık payın kalan günlere bölümü: `20%/day` / `%20/gün`; pencerenin kaynağını devralır, tahminse `≈` |
+| Cache ratio | Cache oranı | Son istekte cache'ten okunan girdi: `cache 82%` / `cache %82`; "cache" çevrilmez |
+| Session name / Output style | Oturum adı / Output style | "Output style" Claude Code'un terimi, çevrilmez |
+| Left / Tokens left | Kalan / Kalan token | Biçim adları; satırda `58% left` / `%58 kaldı`, `124k left` / `124k kaldı` |
+| Reset as: Countdown / Clock time | Sıfırlanma: Geri sayım / Saat | Saat biçimi yerel saattir: `Tue 04:20` / `Sal 04:20` |
+| Bar width / Bar style: Blocks / Thin / Dots | Çubuk genişliği / Çubuk stili: Blok / İnce / Nokta | |
 | (statusline labels) | `in` / `out` / `time` → `girdi` / `çıktı` / `süre` | Token ve süre öğelerinin varsayılan etiketleri; `ctx`, `api`, `git` her dilde aynı |
 
 **Türkçe yazım kuralları:**

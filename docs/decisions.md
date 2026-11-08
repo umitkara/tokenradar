@@ -961,3 +961,40 @@
 - **Alternatifler:**
   - Satırları veride ayrı listeler olarak tutmak (`lines: Item[][]`): TOML biçimi, göç ve geri alma değişirdi. Görünüm yeterli.
   - Satır silmede onay: geri alma zaten var.
+
+### ADR-053 — Statusline zenginleştirme: yeni öğeler, kalan biçimleri, saat olarak sıfırlanma, çubuk genişliği ve stili
+**Durum:** Kabul (2026-11-08, Adım 12m, kullanıcı kararlarıyla). ADR-049 ve ADR-051'i genişletir.
+- **Bağlam:**
+  - Doğrulanmış Ultra hesaplarında 5 saatlik pencere yok (ADR-041). Satırda haftalık pencereye hizmet eden bilgi azdı: günde ne kadar harcanabileceği, oturumun ne hızla tükettiği.
+  - Kullanıcı payload'dan gelen yeni öğeleri ve mevcut öğelere yeni biçimleri istedi; store ya da daemon'a bağlı öğeleri istemedi (2026-11-08).
+  - `output_style` ve `context_window.current_usage` belgede ayrıntılı değildi. Kod yazılmadan önce bir probla gözlendi (`docs/data-sources.md` S1, 2026-11-08). İkisi de vardı.
+- **Karar:**
+  - **Yeni öğeler:**
+    - `daily_budget` (Limit grubu): haftalık pencerede kalan payın kalan günlere bölümü, `20%/day` / `%20/gün`. `kalan_gün = max(1, ceil(resets_in / 1 gün))`. 10 ve üstünde tam sayı, altında tek ondalık. Pencerenin kaynağını ve yaşını devralır: tahminse `≈` alır ve soluk çizilir, eskiyse soluk çizilir. Renk: pay bittiyse kritik; değilse kullanılan yüzdenin eşiği, kullanım zaman çizgisinin önündeyse (ADR-044, `pace::warns`) en az uyarı. Pencere yoksa ya da sıfırlanma zamanı bilinmiyorsa gizlenir. Limitlerle birlikte en son düşer.
+    - `burn_rate`: `cost.total_cost_usd ÷ cost.total_duration_ms`, `API $12.01/h` / `API $12.01/sa`. İki ölçümden türetilir, `≈` almaz. Maliyet API fiyatıyla hesaplandığı için ADR-042'deki `API` işaretini taşır. İlk 5 dakikada gizlenir; o aralıktaki oran gürültüdür.
+    - `session_name`, `output_style`: payload'daki ad olduğu gibi gösterilir.
+    - `cache_ratio`: son istekte cache'ten okunan girdinin oranı, `cache 82%`. `cache_read / (input + cache_creation + cache_read)`; payda 0 ise gizlenir.
+  - **Türetilmiş değerler `Line` yöntemleridir** (`daily_budget`, `burn_rate`, `tokens_left`, `reset_clock`). `Facts` yalnızca payload'dan okunanları taşır (`cache_ratio` dahil). `render.rs` biçimlendirir, hesap yapmaz. Önizleme ve CLI aynı yöntemleri kullanır.
+  - **Yeni biçimler:**
+    - `remaining` (limitler ve bağlam): kalan yüzde, `58% left` / `%58 kaldı`. Renk eşikleri kullanılan yüzdeye göre kalır.
+    - `tokens_left` (bağlam): `context_window_size − kullanılan`; kullanılan, `current_usage`'ın girdi toplamıdır. Yoksa `used_percentage`'tan türetilir.
+  - **Yeni öğe alanları** (isteğe bağlı, yalnızca varsayılandan farklıysa yazılır):
+    - `reset_format = "countdown" | "clock"` (yalnızca `five_hour` ve `seven_day`). `clock` yerel gün ve saati gösterir: `Tue 04:20` / `Sal 04:20`. Gün kısaltmaları Fluent'tan gelir.
+    - `bar_width = 4 | 8 | 12`. Varsayılan 8.
+    - `bar_style = "blocks" | "thin" | "dots"`: `█░│`, `▬▭|`, `⣿⣀|`.
+    - Esnek okuma (ADR-042): bilinmeyen değer varsayılana döner; `bar_width` 4/8/12 dışındaysa 8 olur. Çubuğu olmayan öğede genişlik ve stil, pencere olmayan öğede `reset_format` varsayılana normalize edilir.
+  - **Yerel saat:** Windows'ta `SystemTimeToTzSpecificLocalTime` ile çevrilir (yaz saati dahil, saat dilimi veritabanı gerekmez). Testler sabit bir ofsetle (`Zone::Fixed`) çalışır. Windows dışında `clock` geri sayıma düşer; v0.1 yalnızca Windows'u destekliyor.
+  - **Glifler:** `▬▭`, `⣿⣀` ve `|` East Asian Width'te Ambiguous değildir; `unicode-width`'in `cjk` genişliği de 1'dir. Bunu bir test denetler (`unicode-width` `cjk` özelliği yalnızca dev-dependency'de açık). İşaret ince ve noktalı stilde `|`'dir, çünkü kutu çizgisi `│` Ambiguous genişliktedir. `blocks` stili bugünkü çıktı değişmesin diye `█░│`'yu korur.
+  - **Sığdırma:** Düşme sırasına "12 hücrelik çubuk 8'e iner" adımı, çubuğun düşmesinden önce girer. `clock` sıfırlanmalarla birlikte düşer.
+  - **Şablonlar:** Yeni öğeler yalnızca `detailed` şablonuna girer (`daily_budget`).
+  - **Düzenleyici:** Stil seçicinin seçenekleri backend'in çizdiği örneği (`bar_sample`) terminal fontuyla gösterir. Sıfırlanma biçimi seçicisi, öğe sıfırlanmayı gösteriyorsa görünür.
+- **Bedel:**
+  - CLI 18.432 B büyüdü; gecikmede ölçülebilir fark yok (`docs/perf/2026-11-08-statusline-enrichment.md`).
+  - `windows-sys`'e `Win32_System_Time` özelliği ve bir `unsafe` çağrı eklendi.
+  - Eski build'ler yeni öğeleri ve alanları okurken atlar. Eski bir build dosyayı yeniden yazarsa bunlar kaybolur (12i ve 12k ile aynı).
+  - `prompt_cache.hit_ratio` (oturum geneli) kullanılmadı; belgesiz bir alan.
+- **Alternatifler:**
+  - `daily_budget`'i bugünün kullanımıyla kıyaslamak: geçmiş ve store gerektirirdi, kapsam dışıydı.
+  - `jiff`'in saat dilimi veritabanını gömmek: CLI boyutu büyürdü; Windows API'si aynı sonucu verir.
+  - `●○` gibi daire glifleri: Ambiguous genişlikte, bazı terminallerde iki hücre kaplar.
+  - `space` öğesinin `width` alanını çubuk genişliği için yeniden kullanmak: anlamları farklı, esnek okuma karışırdı.

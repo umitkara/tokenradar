@@ -2,7 +2,7 @@
 
 | Sürüm | Bağımlılık | Tahmini süre | Durum |
 |---|---|---|---|
-| v0.1.x | 12l | 1–2 oturum | ⬜ |
+| v0.1.x | 12l | 1–2 oturum | ✅ |
 
 ## Amaç
 
@@ -94,14 +94,14 @@ Doğrulanmış Ultra hesaplarında 5 saatlik pencere yok (ADR-041). Bu yüzden �
 
 ## Görevler
 
-- [ ] Prob: kurulum, gözlem, geri dönüş; sonucun `data-sources.md`'ye yazılması.
-- [ ] Core: `SegmentKind`, `Format`, `Item` alanları, esnek okuma, yazma; testler.
-- [ ] Core: `Line`/`Facts` türetimleri (`daily_budget`, `burn_rate`, gözlenen alanlar); testler.
-- [ ] Render: yeni biçimler, çubuk genişliği ve stili, `clock`, `fit()` sırası; iki tema için testler.
-- [ ] Şablonlar ve örnek veri.
-- [ ] Bindings (`tauri-specta`) ve düzenleyici: palet, öğe editörü, Fluent.
-- [ ] İlk çalışan hâlin ekran görüntüsü kullanıcıya gösterilir ve onaylanır, ardından cila.
-- [ ] ADR-053 ve devir notu.
+- [x] Prob: kurulum, gözlem, geri dönüş; sonucun `data-sources.md`'ye yazılması.
+- [x] Core: `SegmentKind`, `Format`, `Item` alanları, esnek okuma, yazma; testler.
+- [x] Core: `Line`/`Facts` türetimleri (`daily_budget`, `burn_rate`, gözlenen alanlar); testler.
+- [x] Render: yeni biçimler, çubuk genişliği ve stili, `clock`, `fit()` sırası; iki tema için testler.
+- [x] Şablonlar ve örnek veri.
+- [x] Bindings (`tauri-specta`) ve düzenleyici: palet, öğe editörü, Fluent.
+- [x] İlk çalışan hâlin ekran görüntüsü kullanıcıya gösterilir ve onaylanır, ardından cila.
+- [x] ADR-053 ve devir notu.
 
 ## Teknik notlar ve tuzaklar
 
@@ -129,4 +129,49 @@ Doğrulanmış Ultra hesaplarında 5 saatlik pencere yok (ADR-041). Bu yüzden �
 
 ## Devir notu
 
-_Adım bitince doldurulur._
+**Tarih:** 2026-11-08 · **Karar:** ADR-053 · **Ölçüm:** `docs/perf/2026-11-08-statusline-enrichment.md` · **Ekran görüntüleri:** `img/12m-statusline-en.png` (açık tema, EN), `img/12m-statusline-tr-dark.png` (koyu tema, TR); ikisinde de yeni öğeler eklenmiş ve haftalık limit 12 hücre noktalı çubuk ve saat biçimiyle seçili
+
+### Yapılanlar
+- **Prob:** Kullanıcı onayıyla kuruldu (diff → onay → backup → atomic write), mevcut komutu zincirledi ve yalnızca anahtar yolu ile tipi kaydetti. `output_style.name` ve `context_window.current_usage.*` gözlendi; beş öğenin hepsi kaldı. `settings.json` backup'tan birebir geri döndü (SHA-256 aynı). Sonuç `docs/data-sources.md` S1'de.
+- **`payload.rs`:** `output_style.name` ve `context_window.current_usage` (girdi, cache yazma, cache okuma) eklendi; ikisi de `skip_serializing`, push ve spool biçimi değişmedi.
+- **`prefs.rs` (çekirdek):**
+  - Yeni türler: `daily_budget` (Limit grubu), `burn_rate`, `session_name`, `cache_ratio`, `output_style`.
+  - Yeni biçimler: `remaining` (limitler ve bağlam), `tokens_left` (bağlam).
+  - `ResetFormat`, `BarStyle` ve `BAR_WIDTHS`; `Item` alanları `reset_format`, `bar_width`, `bar_style`. Esnek okuma, normalize etme ve yalnızca varsayılandan farklı değerleri yazma.
+- **`line.rs`:** `Zone` (sistem ya da sabit ofset), `Clock`, `Budget`; `Line::daily_budget`, `burn_rate`, `tokens_left`, `reset_clock`. Windows'ta yerel saat `SystemTimeToTzSpecificLocalTime` ile (`windows-sys` `Win32_System_Time`). `Facts` oturum adı, output style, cache oranı ve kullanılan bağlamı taşıyor. Örnek veri yeni öğeleri dolduruyor.
+- **`render.rs`:** Yeni arm'lar ve biçimler, çubuk genişliği ve stili (`Look`), saat biçimi (Fluent gün kısaltmaları), `fit()`'te 12 → 8 hücre adımı. `bar_sample(style)` editör örnekleri için.
+- **Şablonlar:** `detailed` şablonuna `daily_budget` eklendi.
+- **Testler:** `tests/v12m.rs` (12 test): günlük bütçe hesabı ve sınırları (pencere yok, kalan 0, uyarı, eski veri, tahmin), tüketim hızı (5 dakika eşiği), payload türetimleri, kalan biçimleri, saat biçimi (EN/TR, sabit ofset, dar terminal), sistem saat dilimi, çubuk genişlikleri ve stilleri, genişten dara çubuk, glif genişliği (`width_cjk`), esnek okuma ve gidiş-dönüş, şablon ve örnekler. Mevcut 335 çekirdek testi değişmeden geçti; toplam 347.
+- **Uygulama:** `StatuslineKind` artık `reset_formats` ve `bar_styles` (stil + çekirdeğin çizdiği örnek) taşıyor; bindings yenilendi.
+- **Düzenleyici:** Biçim `bar` iken çubuk genişliği ve stil seçicileri, sıfırlanma açıksa limit pencerelerinde sıfırlanma biçimi seçicisi. `Segmented` seçenekleri isteğe bağlı bir glif örneği alıyor (`--font-term`).
+- **Fluent (EN/TR):** Öğe adları ve ipuçları, biçim adları, `left`/`kaldı`, `/day`/`/gün`, `/h`/`/sa`, `cache`, gün kısaltmaları, seçici etiketleri.
+- **`scripts/measure-statusline.ps1`:** Sentetik payload yeni alanları taşıyor.
+- **Dokümanlar:** ADR-053, data-sources S1 gözlemi, perf kaydı ve bütçe satırları, design-language (Segmented, düzenleyici, sözlük), CHANGELOG.
+
+### Sapmalar
+- **Saat biçimi yalnızca Windows'ta.** Windows dışında `clock` geri sayıma düşüyor; v0.1 yalnızca Windows'u destekliyor. Saat dilimi veritabanı gömülmedi (ADR-053).
+- **İnce ve noktalı stilde zaman işareti `|`.** `│` Ambiguous genişlikte; `blocks` bugünkü çıktıyı korumak için `│`'yu tutuyor.
+- **`daily_budget` yuvarlama:** 10 ve üstü tam sayı, altı tek ondalık (`9.4%/day`). Plan biçimi `%9/gün` diye örneklemişti.
+- **`StatuslineKind.reset_formats` bir liste,** plandaki gibi bir bayrak değil: dördüncü `bool` alanı clippy'nin `struct_excessive_bools` kuralına takıldı. Liste `formats` ve `bar_styles` ile aynı biçimde; seçenekler backend'den geliyor.
+- **Stil seçicinin glif örneği için `Segmented`'e `glyphs` seçeneği eklendi.** Örnekler UI fontunda çizilince ince stil kare gibi görünüyordu.
+- **Ölçümde kurulu uygulama kapatıldı** (kullanıcı onayıyla), ardından yeniden başlatıldı.
+- **Prob kurulmadan önceki kuru denemede** sentetik bir payload yanlışlıkla kurulu `tokenradar.exe`'ye gitti (kullanıcıya bildirildi). Store'da limit içermeyen bir oturum gözlemi kalmış olabilir; zararsız.
+
+### Doğrulama
+- `cargo fmt --check`, `cargo clippy --workspace --all-targets -- -D warnings` temiz; `cargo test --workspace` 455 test (çekirdek 347).
+- `pnpm -C app check`, `lint` ve `test` temiz (120 test).
+- Statusline ölçümü: açık p95 12,3–13,0 ms, kapalı p95 21,3–30,7 ms (bir koşuda tekrarlanmayan 62,2 ms), CLI 2.459.136 B (`main`'den +18.432 B). Hepsi bütçede.
+- Debug build, portable mod ve `TOKENRADAR_FAKE_LIMITS=panel:no-five-hour` ile CDP üzerinden (kurulu uygulama kapalıydı) yeni öğeler paletten eklendi; haftalık limitte 12 hücre, noktalı stil ve saat biçimi, bağlamda ince stil seçildi. Önizleme EN ve TR'de doğru çizdi. Ekran görüntüleri kullanıcıya gösterildi ve onaylandı.
+
+### Açık konular
+- **Gerçek satır yeni sürüme kadar değişmez.** Kurulu v0.1.0 CLI yeni öğeleri ve alanları atlıyor. Eski bir build dosyayı yeniden yazarsa bunlar kaybolur (12i ve 12k ile aynı).
+- **Ekran görüntüsünde görülen iki ayrıntı** (kullanıcı olduğu gibi bıraktı): seçili öğenin metinsiz boşluk span'i tonlu görünüyor (12l davranışı); noktalı stilin boş hücreleri (`⣀`) soluk duruyor.
+- **`prompt_cache.hit_ratio`** oturum geneli bir cache oranı sunuyor. Belgesiz; gerekirse ayrı bir öğe ya da `cache_ratio` biçimi olabilir.
+- **Varsayılan output style'ın adı doğrulanmadı** (prob değer kaydetmiyor); satır adı olduğu gibi gösteriyor.
+- **Bağlamın `fraction` biçimi `total_input_tokens` kullanıyor;** bu alan oturum boyunca birikimli olabilir. `current_usage` girdi toplamı daha doğru olabilir; gerçek bir oturumda kıyaslanmalı.
+- **Çubuk genişlikleri (`BAR_WIDTHS`) frontend'de tekrarlanıyor** (12l'deki sabitler gibi); çekirdek değeri yine kendisi sınırlıyor.
+- **12i ve 12l'den kalanlar sürüyor:** Powerline'da `▲` rengi, stdin'de UTF-8 BOM, gerçek Nerd Font ile görsel kontrol, sürüklerken otomatik kaydırma.
+
+### Sonraki adıma notlar
+- 12n (compact sayısı ve auto-compact limiti) aynı öğe modelini kullanır. Yeni öğe eklerken `SegmentKind::ALL`, `formats`, block rengi, `default_label`, Fluent anahtarları ve `view.test.ts`'deki `KINDS` listesi birlikte güncellenmeli.
+- 12n'nin store/daemon'a bağlı değerleri için `Line`'a yeni yöntemler eklenir; `render.rs` hesap yapmamalı.

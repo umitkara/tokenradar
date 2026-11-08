@@ -89,6 +89,22 @@ Claude Code, `settings.json` içindeki `statusLine.command` komutunu çalıştı
 - Bu yüzden `[statusline] color = "auto"` varsayılandır: `NO_COLOR` yalnızca kullanıcı kendisi verirse renkleri kapatır.
 - **Tuzak:** PowerShell 5.1 ile yazılmış bir ara komut stdin'i UTF-8 BOM ile aktarırsa, BOM'u tanımayan bir okuyucu JSON'u ayrıştıramaz. Kurulu v0.1.0 bu durumda "henüz limit verisi yok" dedi. TokenRadar'ın kendi kurulumu bu yoldan geçmez; zincirleme modunda önceki komut stdin'i doğrudan alır.
 
+**Payload şeması (gözlem, 2026-11-08, Adım 12m, ADR-053):**
+- Gerçek bir Claude Code oturumunda bir prob, mevcut TokenRadar komutunu zincirleyerek payload'ın yalnızca anahtar yollarını ve JSON tiplerini kaydetti. Değer, yol ya da sayı kaydedilmedi. Gözlemden sonra `settings.json` backup'tan birebir geri döndü (SHA-256 aynı).
+- Gözlenen yollar:
+  - Üst düzey: `session_id`, `session_name`, `prompt_id`, `transcript_path`, `cwd`, `version` (string); `fast_mode`, `exceeds_200k_tokens` (boolean).
+  - `model.id`, `model.display_name`; `effort.level`; `thinking.enabled`; `output_style.name` (string).
+  - `workspace.current_dir`, `workspace.project_dir`, `workspace.repo.{host,owner,name}` (string); `workspace.added_dirs` (array).
+  - `cost.total_cost_usd`, `cost.total_duration_ms`, `cost.total_api_duration_ms`, `cost.total_lines_added`, `cost.total_lines_removed` (number).
+  - `context_window.used_percentage`, `remaining_percentage`, `context_window_size`, `total_input_tokens`, `total_output_tokens` (number).
+  - `context_window.current_usage.{input_tokens, output_tokens, cache_creation_input_tokens, cache_read_input_tokens}` (number).
+  - `rate_limits.seven_day.{used_percentage, resets_at}` (number). Bu hesapta `five_hour` yoktu (ADR-041).
+  - `prompt_cache`: `requests`, `misses`, `hit_ratio`, `expires_at`, `cache_write_tokens`, `recache_tokens_if_cold`, `miss_recache_tokens`, `expected_rebuilds` (number); `ttl` (string); `warm`, `caching_observed` (boolean); `miss_causes` (object); `last_miss_at`, `last_miss_cause` (bu oturumda null).
+- 12m'de gözleme bağlı iki alan (`output_style.name`, `context_window.current_usage`) gözlendi; planlanan beş öğenin hepsi kaldı.
+- **Yalnızca satır için yeni okunanlar:** `output_style.name` ve `context_window.current_usage.{input_tokens, cache_creation_input_tokens, cache_read_input_tokens}`. 12i'deki alanlar gibi `skip_serializing` ile işaretlidir; push ve spool satırının biçimi değişmez.
+- **Cache oranı:** `cache_read / (input + cache_creation + cache_read)`, son istek için. `prompt_cache.hit_ratio` oturum geneli bir alternatif; belgesiz olduğu için bu adımda kullanılmadı.
+- Prob değer kaydetmediği için varsayılan stilin adı doğrulanmadı (büyük olasılıkla `default`). Satır adı olduğu gibi gösterir.
+
 ---
 
 ## S2 — OAuth usage API (tamamlayıcı, onaylı)
