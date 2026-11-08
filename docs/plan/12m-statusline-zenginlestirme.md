@@ -21,7 +21,7 @@ Doğrulanmış Ultra hesaplarında 5 saatlik pencere yok (ADR-041). Bu yüzden �
 ## Kullanıcıyla kararlaştırılanlar (2026-11-08)
 
 - **Kapsam:** A grubu (payload'dan gelen yeni öğeler) ve B grubu (mevcut öğelere yeni biçimler).
-- **Store ya da daemon'a bağlı öğeler bu adımda yok.** Bugünkü toplam maliyet, aktif oturum sayısı ve eğilim oku bu gruba girer. Hepsi her statusline çağrısına bir pipe turu ekler, `≈` taşır ve ölçüm gerektirir. Ayrı bir aday adım olarak (12n) tutulur.
+- **Store ya da daemon'a bağlı öğeler bu adımda yok.** Bugünkü toplam maliyet, aktif oturum sayısı ve eğilim oku istenmedi. Compact sayısı ve auto-compact limiti Adım 12n'dedir.
 - **Doğrulanmamış payload alanları önce gözlenir:** `context_window.current_usage` (cache oranı) ve `output_style`. Gözlem yapılmadan bu alanlar için kod yazılmaz.
 
 ## Kapsam
@@ -86,7 +86,8 @@ Doğrulanmış Ultra hesaplarında 5 saatlik pencere yok (ADR-041). Bu yüzden �
 
 ## Kapsam dışı
 
-- Store ya da daemon'a bağlı öğeler (aday adım 12n). Oturumdaki compact sayısı da bunlardan biri: veri payload'da değil, transcript'teki `compact_boundary` kayıtlarında (`data-sources.md` S3).
+- Store ya da daemon'a bağlı öğeler. Bugünkü maliyet, aktif oturum sayısı ve eğilim oku istenmedi.
+- Compact sayısı ve auto-compact limiti: Adım 12n.
 - Eğilim oku ve geçmiş gerektiren her şey.
 - Sürekli animasyon (ADR-019).
 - Kurulu sürümü güncellemek ya da sürüm çıkarmak.

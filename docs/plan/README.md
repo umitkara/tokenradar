@@ -56,7 +56,7 @@ Doğrulanmış Ultra hesaplarında 5 saatlik pencere kalktı (ADR-041). Bu adım
 | 12k | [Statusline düzen çekirdeği: ayraç öğeleri, boşluklar, hizalama](12k-statusline-duzen-cekirdek.md) | 12j | ✅ (2026-11-08, ADR-051). Açık: yeni sürüm gerekli |
 | 12l | [Statusline satır düzenleyicisi: satır kartları, boşluk ve ayraç öğeleri](12l-statusline-satir-duzenleyici.md) | 12k | ✅ (2026-11-08, ADR-052). Açık: yeni sürüm gerekli |
 | 12m | [Statusline zenginleştirme: yeni öğeler ve biçimler](12m-statusline-zenginlestirme.md) | 12l | ⬜ |
-| 12n | Store'a bağlı statusline öğeleri: compact sayısı ve auto-compact eşiği, bugünkü maliyet, aktif oturumlar (aday, plan dosyası yok) | 12m | ⬜ Aday; kapsam kullanıcıyla netleşecek |
+| 12n | [Statusline compact öğesi: oturumdaki compact sayısı ve auto-compact limiti](12n-statusline-compact.md) | 12m | ⬜ |
 
 ### v0.2 — Analitik ve Atıf
 
