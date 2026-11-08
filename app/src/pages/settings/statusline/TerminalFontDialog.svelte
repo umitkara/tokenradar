@@ -14,6 +14,7 @@ import {
   events,
   type FontChange,
   type FontError,
+  type RestoreStep,
   type TargetId,
   type TerminalFontView,
 } from "../../../lib/ipc/bindings";
@@ -51,6 +52,8 @@ let view = $state<TerminalFontView | null>(null);
 let asking = $state(false);
 let progress = $state<{ done: number; total: number } | null>(null);
 let plan = $state<ShownPlan | null>(null);
+/** The one-click restore's summary, waiting for its single confirmation. */
+let restore = $state<{ token: number; steps: RestoreStep[]; files: string[] } | null>(null);
 let busy = $state(false);
 let error = $state<string | null>(null);
 let notice = $state<string | null>(null);
@@ -63,6 +66,7 @@ export async function open() {
   notice = null;
   asking = false;
   plan = null;
+  restore = null;
   dialog.showModal();
   await reload();
 }
@@ -138,16 +142,48 @@ async function confirmPlan() {
   }
 }
 
+async function makeRestore() {
+  busy = true;
+  error = null;
+  notice = null;
+  const r = await commands.planFontRestore();
+  busy = false;
+  if (r.outcome === "unchanged") {
+    await reload();
+    return;
+  }
+  restore = { token: r.token, steps: r.steps, files: r.font_files };
+}
+
+async function confirmRestore() {
+  if (!restore) return;
+  busy = true;
+  error = null;
+  const r = await commands.applyFontRestore(restore.token);
+  busy = false;
+  restore = null;
+  if (r.status === "ok") notice = t("font-restored");
+  else fail(r.error);
+  await reload();
+}
+
 function backFromPlan() {
   plan = null;
+  restore = null;
   void commands.discardStatuslinePlan();
 }
 
 function closed() {
-  if (plan) void commands.discardStatuslinePlan();
+  if (plan || restore) void commands.discardStatuslinePlan();
   if (progress) void commands.cancelNerdFont();
   plan = null;
+  restore = null;
   asking = false;
+}
+
+function shownFont(step: RestoreStep, after: boolean): string {
+  const font = (after ? step.to : step.from) ?? "";
+  return after && step.to_default ? t("font-restore-default", { font }) : font;
 }
 </script>
 
@@ -160,6 +196,23 @@ function closed() {
     <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
     <pre class="diff" aria-label={t("statusline-diff")} tabindex="0">{#each plan.diff as line, i (i)}<span class={line.kind}>{line.text}</span>{/each}</pre>
     {#if plan.change === "select"}<p class="note">{t("font-restart-hint")}</p>{/if}
+  {:else if restore}
+    <p>{t("font-restore-intro")}</p>
+    <ul class="steps">
+      {#each restore.steps as step (step.target)}
+        <li>
+          <strong>{t(targetKey(step.target))}</strong>
+          <span>{shownFont(step, false)} → {shownFont(step, true)}</span>
+        </li>
+      {/each}
+      {#if restore.files.length > 0}
+        <li>
+          <strong>{t("font-restore-files", { count: restore.files.length })}</strong>
+          {#each restore.files as file (file)}<code>{file}</code>{/each}
+        </li>
+      {/if}
+    </ul>
+    <p class="note">{t("font-restore-note")}</p>
   {:else}
     <p class="intro">{t("font-intro")}</p>
     {#if view}
@@ -245,6 +298,16 @@ function closed() {
           <p class="note">{t("font-other-body", { family: font?.family ?? view.offer.family })}</p>
         </details>
       </section>
+
+      {#if view.can_restore}
+        <section aria-labelledby="font-sec-restore">
+          <h3 id="font-sec-restore">{t("font-section-restore")}</h3>
+          <p class="note">{t("font-restore-body")}</p>
+          <div class="actions start">
+            <Button disabled={busy} onclick={makeRestore}>{t("font-restore")}</Button>
+          </div>
+        </section>
+      {/if}
     {/if}
   {/if}
 
@@ -257,6 +320,9 @@ function closed() {
       <Button variant="primary" disabled={busy} onclick={confirmPlan}>
         {t(plan.change === "select" ? "font-confirm-select" : "font-confirm-undo")}
       </Button>
+    {:else if restore}
+      <Button onclick={backFromPlan}>{t("font-back")}</Button>
+      <Button variant="primary" disabled={busy} onclick={confirmRestore}>{t("font-confirm-restore")}</Button>
     {:else}
       <Button onclick={() => dialog.close()}>{t("settings-close")}</Button>
     {/if}
@@ -362,6 +428,24 @@ function closed() {
     padding: 1px var(--space-2);
     border-radius: var(--radius-pill);
     border: 1px solid var(--stroke);
+    color: var(--text-2);
+  }
+  .steps {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+  .steps li {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .steps code {
+    font: var(--type-caption);
+    font-family: var(--font-mono);
     color: var(--text-2);
   }
   details summary {

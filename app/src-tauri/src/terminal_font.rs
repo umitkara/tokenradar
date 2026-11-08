@@ -14,7 +14,9 @@ use tauri::{AppHandle, Manager};
 use tauri_specta::Event;
 use tokenradar_core::terminal_font::download::{self, DownloadError};
 use tokenradar_core::terminal_font::install::{self, InstallError};
-use tokenradar_core::terminal_font::terminals::{self, FontChange, TargetError, TargetState};
+use tokenradar_core::terminal_font::terminals::{
+    self, FontChange, FontPlan, TargetError, TargetState,
+};
 use tokenradar_core::terminal_font::{FontScan, NerdTier, TargetId, TerminalKind, fonts};
 
 use crate::core_bridge;
@@ -56,6 +58,41 @@ pub struct TerminalFontView {
     pub can_install: bool,
     /// A download is running.
     pub installing: bool,
+    /// Something TokenRadar did can be put back: a terminal setting or the installed font.
+    pub can_restore: bool,
+}
+
+/// One terminal's font before and after a restore.
+#[derive(Debug, Clone, Serialize, Type)]
+pub struct RestoreStep {
+    pub target: TargetId,
+    pub from: Option<String>,
+    pub to: Option<String>,
+    /// After the restore no font is set and the terminal's default applies.
+    pub to_default: bool,
+}
+
+/// Everything a restore will do, shown before anything changes.
+#[derive(Debug, Clone, Serialize, Type)]
+#[serde(tag = "outcome", rename_all = "snake_case")]
+pub enum RestorePlanView {
+    Ready {
+        /// Pass back to `apply_font_restore`; only this plan can be applied.
+        token: u32,
+        steps: Vec<RestoreStep>,
+        /// The font files that will be removed, by name.
+        font_files: Vec<String>,
+    },
+    /// Nothing of TokenRadar's is left.
+    Unchanged,
+}
+
+/// What a restore did.
+#[derive(Debug, Clone, Serialize, Type)]
+pub struct RestoreDone {
+    /// One per settings file written; each can be undone from its backup.
+    pub backups: Vec<String>,
+    pub removed_fonts: u32,
 }
 
 /// Download progress, sent to the settings window.
@@ -89,6 +126,8 @@ pub enum FontError {
     LegacySettings,
     ChangedMeanwhile,
     StalePlan,
+    /// A program still holds a font file open; the font stays installed.
+    FontInUse,
     Io {
         message: String,
     },
@@ -124,9 +163,33 @@ fn scan() -> FontScan {
     fonts::scan(&fonts::font_dirs(&env))
 }
 
+fn font_dir() -> Option<std::path::PathBuf> {
+    env("LOCALAPPDATA").map(|local| install::user_font_dir(std::path::Path::new(&local)))
+}
+
+/// The terminal settings TokenRadar's font is still in, ready to be put back. Files with a
+/// problem are skipped; the card shows the problem itself.
+fn restore_plans(scan: &FontScan) -> Vec<FontPlan> {
+    terminals::targets(&env)
+        .into_iter()
+        .filter_map(|(id, path)| {
+            terminals::plan_restore(id, &path, scan, download::FAMILY)
+                .ok()
+                .flatten()
+        })
+        .collect()
+}
+
+fn installed_fonts() -> Vec<std::path::PathBuf> {
+    font_dir()
+        .map(|d| install::installed(&d))
+        .unwrap_or_default()
+}
+
 pub fn view(app: &AppHandle) -> TerminalFontView {
     let scan = scan();
     let status = core_bridge::core_status(app);
+    let can_restore = !installed_fonts().is_empty() || !restore_plans(&scan).is_empty();
     TerminalFontView {
         font: scan.best().map(|f| NerdFontView {
             family: f.family.clone(),
@@ -151,6 +214,7 @@ pub fn view(app: &AppHandle) -> TerminalFontView {
         },
         can_install: cfg!(windows),
         installing: app.state::<FontJob>().busy.load(Ordering::Relaxed),
+        can_restore,
     }
 }
 
@@ -171,7 +235,7 @@ pub fn install(app: &AppHandle) -> Result<TerminalFontView, FontError> {
 }
 
 fn run_install(app: &AppHandle, job: &FontJob) -> Result<(), FontError> {
-    let local = env("LOCALAPPDATA").ok_or(FontError::Unsupported)?;
+    let dir = font_dir().ok_or(FontError::Unsupported)?;
     let mut last = u64::MAX;
     let mut progress = |done: u64, total: u64| {
         // About a hundred events for the whole download.
@@ -186,14 +250,19 @@ fn run_install(app: &AppHandle, job: &FontJob) -> Result<(), FontError> {
         }
     };
     let files = download::fetch(&mut progress, &job.cancel).map_err(download_error)?;
-    let dir = install::user_font_dir(std::path::Path::new(&local));
-    install::install(&files, &dir).map_err(|e| match e {
+    install::install(&files, &dir).map_err(install_error)?;
+    Ok(())
+}
+
+#[allow(clippy::needless_pass_by_value)] // used as `map_err(install_error)`
+fn install_error(e: InstallError) -> FontError {
+    match e {
         InstallError::Unsupported => FontError::Unsupported,
+        InstallError::InUse { .. } => FontError::FontInUse,
         other => FontError::Io {
             message: other.to_string(),
         },
-    })?;
-    Ok(())
+    }
 }
 
 pub fn cancel(app: &AppHandle) {
@@ -249,6 +318,66 @@ pub fn apply(app: &AppHandle, token: u32) -> Result<String, FontError> {
     let backup = plan.apply().map_err(target_error)?;
     tracing::info!(target = ?plan.id, change = ?plan.change, "terminal font settings changed");
     Ok(backup.display().to_string())
+}
+
+/// Plans the one-click restore: every terminal setting that still holds TokenRadar's font, then
+/// the font files it installed. The window shows the summary and one confirmation applies it.
+pub fn plan_restore(app: &AppHandle) -> RestorePlanView {
+    let scan = scan();
+    let plans = restore_plans(&scan);
+    let fonts = installed_fonts();
+    if plans.is_empty() && fonts.is_empty() {
+        return RestorePlanView::Unchanged;
+    }
+    let steps = plans
+        .iter()
+        .map(|plan| {
+            let (before, after) = plan.effect(&scan);
+            RestoreStep {
+                target: plan.id,
+                from: before.font,
+                to: after.font,
+                to_default: !after.written,
+            }
+        })
+        .collect();
+    let font_files = fonts
+        .iter()
+        .filter_map(|p| p.file_name().map(|n| n.to_string_lossy().into_owned()))
+        .collect();
+    let token = app
+        .state::<Pending>()
+        .show(Shown::Restore(plans, !fonts.is_empty()));
+    RestorePlanView::Ready {
+        token,
+        steps,
+        font_files,
+    }
+}
+
+/// Applies the restore the user confirmed. The settings go first, so no terminal is left
+/// pointing at a removed font; a failure stops there, and each written file has its backup.
+pub fn apply_restore(app: &AppHandle, token: u32) -> Result<RestoreDone, FontError> {
+    let Some(Shown::Restore(plans, fonts)) = app.state::<Pending>().take(token) else {
+        return Err(FontError::StalePlan);
+    };
+    let mut backups = Vec::with_capacity(plans.len());
+    for plan in &plans {
+        let backup = plan.apply().map_err(target_error)?;
+        tracing::info!(target = ?plan.id, "terminal font settings restored");
+        backups.push(backup.display().to_string());
+    }
+    let mut removed_fonts = 0;
+    if fonts {
+        let dir = font_dir().ok_or(FontError::Unsupported)?;
+        let removed = install::uninstall(&dir).map_err(install_error)?;
+        removed_fonts = u32::try_from(removed.len()).unwrap_or(u32::MAX);
+        tracing::info!(files = removed_fonts, "nerd font removed");
+    }
+    Ok(RestoreDone {
+        backups,
+        removed_fonts,
+    })
 }
 
 #[allow(clippy::needless_pass_by_value)] // used as `map_err(target_error)`

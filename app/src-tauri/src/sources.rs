@@ -198,6 +198,9 @@ pub(crate) enum Shown {
     Statusline(Plan),
     Mod(ModPlan),
     Font(FontPlan),
+    /// Everything back as before TokenRadar: the terminal settings it changed, then the font
+    /// files it installed (`true`).
+    Restore(Vec<FontPlan>, bool),
 }
 
 /// The plan last shown to the user. Managed by Tauri.

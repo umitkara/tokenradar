@@ -526,3 +526,16 @@ font-error-legacy-settings = Bu dosya Windows Terminal'in eski biçiminde. Hiçb
 font-error-changed-meanwhile = Dosya, diff gösterildikten sonra değişti. Hiçbir şey yazılmadı. Güncel değişiklik aşağıda.
 font-error-stale-plan = Bu değişiklik zaten uygulandı ya da yenisiyle değişti.
 font-error-io = Dosya okunamadı ya da yazılamadı.
+font-section-restore = Hepsini geri al
+font-restore-body = TokenRadar'ın değiştirdiği terminal fontlarını eski haline getirir ve kurduğu fontu kaldırır.
+font-restore = Eski haline getir…
+font-restore-intro = Bu işlem her şeyi TokenRadar'dan önceki haline getirir:
+font-restore-default = { $font } (terminalin varsayılanı)
+font-restore-files = Kurulan fontu kaldır ({ $count ->
+    [one] bir dosya
+   *[other] { $count } dosya
+}):
+font-restore-note = Her ayar dosyasının önce yedeği alınır. Fontu hâlâ kullanan bir terminal varsa onaylamadan önce kapatın.
+font-confirm-restore = Eski haline getir
+font-restored = Her şey eski haline döndü. Ayar dosyalarının yedekleri her dosyanın yanında duruyor.
+font-error-font-in-use = Font dosyası hâlâ bir programda açık, bu yüzden font kurulu kaldı. Terminal ayarları zaten geri alındı. Terminallerinizi kapatıp yeniden deneyin.

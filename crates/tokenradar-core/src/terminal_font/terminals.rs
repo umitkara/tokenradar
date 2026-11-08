@@ -156,6 +156,20 @@ pub struct TargetState {
 }
 
 pub fn read_state(id: TargetId, path: &Path, scan: &FontScan) -> TargetState {
+    let Ok(text) = std::fs::read_to_string(path) else {
+        let mut state = state_of(id, path, "", scan);
+        state.problem = Some(TargetProblem::Unreadable);
+        return state;
+    };
+    let mut state = state_of(id, path, &text, scan);
+    if state.problem.is_none() {
+        state.can_undo = undo_source(id, path, &text).is_some();
+    }
+    state
+}
+
+/// [`read_state`] of a given content, without looking for backups.
+fn state_of(id: TargetId, path: &Path, text: &str, scan: &FontScan) -> TargetState {
     let mut state = TargetState {
         id,
         path: path.display().to_string(),
@@ -166,11 +180,7 @@ pub fn read_state(id: TargetId, path: &Path, scan: &FontScan) -> TargetState {
         overrides: 0,
         can_undo: false,
     };
-    let Ok(text) = std::fs::read_to_string(path) else {
-        state.problem = Some(TargetProblem::Unreadable);
-        return state;
-    };
-    let Ok(doc) = jsonc::parse(&text) else {
+    let Ok(doc) = jsonc::parse(text) else {
         state.problem = Some(TargetProblem::Invalid);
         return state;
     };
@@ -200,7 +210,6 @@ pub fn read_state(id: TargetId, path: &Path, scan: &FontScan) -> TargetState {
     let font = in_effect(&list, scan);
     state.tier = scan.family(&font).map_or(NerdTier::None, |f| f.tier);
     state.font = Some(font);
-    state.can_undo = undo_source(id, path, &text).is_some();
     state
 }
 
@@ -264,6 +273,14 @@ impl FontPlan {
             &self.original,
             &self.updated,
             &self.path.display().to_string(),
+        )
+    }
+
+    /// The file before and after the plan, as the settings card shows them.
+    pub fn effect(&self, scan: &FontScan) -> (TargetState, TargetState) {
+        (
+            state_of(self.id, &self.path, &self.original, scan),
+            state_of(self.id, &self.path, &self.updated, scan),
         )
     }
 
@@ -362,6 +379,29 @@ pub fn plan_undo(id: TargetId, path: &Path) -> Result<Option<FontPlan>, TargetEr
         original: text,
         updated,
     }))
+}
+
+/// Plans the undo of a restore-everything: only while the key still starts with a Nerd Font
+/// (or with `ours`, the family TokenRadar installs, should it already be gone). A font the user
+/// picked themselves since then is theirs, and stays. `None`: nothing of TokenRadar's is left.
+pub fn plan_restore(
+    id: TargetId,
+    path: &Path,
+    scan: &FontScan,
+    ours: &str,
+) -> Result<Option<FontPlan>, TargetError> {
+    let text = read(path)?;
+    let doc = jsonc::parse(&text).map_err(map_err(path))?;
+    let value = id.key().iter().fold(&doc, |v, k| &v[*k]);
+    let Some(first) = non_empty(value).and_then(|list| families(list).next()) else {
+        return Ok(None);
+    };
+    let nerd = first.eq_ignore_ascii_case(ours)
+        || scan.family(first).is_some_and(|f| f.tier != NerdTier::None);
+    if !nerd {
+        return Ok(None);
+    }
+    plan_undo(id, path)
 }
 
 /// The file content an undo writes, when the newest backup holds a different font.
@@ -583,6 +623,46 @@ mod tests {
         assert_eq!(
             std::fs::read_to_string(&path).expect("read"),
             WT.replace("\"pwsh\"", "\"PowerShell 7\"")
+        );
+    }
+
+    #[test]
+    fn restore_reverts_only_what_is_still_tokenradars() {
+        let (_dir, path) = seeded("settings.json", WT);
+        let id = TargetId::WindowsTerminal;
+        assert!(
+            plan_restore(id, &path, &scan(), FAMILY)
+                .expect("plan")
+                .is_none()
+        );
+        plan_select(id, &path, FAMILY)
+            .expect("plan")
+            .expect("change")
+            .apply()
+            .expect("apply");
+        let plan = plan_restore(id, &path, &scan(), FAMILY)
+            .expect("plan")
+            .expect("restore");
+        let (before, after) = plan.effect(&scan());
+        assert_eq!(
+            (before.font.as_deref(), after.font.as_deref(), after.written),
+            (Some(FAMILY), Some("Cascadia Mono"), false)
+        );
+        // The font is gone from the scan already: the family name still marks the change.
+        let empty = FontScan { faces: vec![] };
+        assert!(
+            plan_restore(id, &path, &empty, FAMILY)
+                .expect("plan")
+                .is_some()
+        );
+        // The user picked another font since: theirs stays.
+        let text = std::fs::read_to_string(&path).expect("read");
+        std::fs::write(&path, text.replace(FAMILY, "Consolas")).expect("edit");
+        assert!(read_state(id, &path, &scan()).can_undo);
+        assert!(
+            plan_restore(id, &path, &scan(), FAMILY)
+                .expect("plan")
+                .is_none()
         );
     }
 

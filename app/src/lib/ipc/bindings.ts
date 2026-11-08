@@ -79,6 +79,13 @@ export const commands = {
 	planTerminalFont: (target: TargetId, change: FontChange) => typedError<FontPlanView, FontError>(__TAURI_INVOKE("plan_terminal_font", { target, change })),
 	/**  Applies the font plan the user confirmed; returns the backup's path. */
 	applyTerminalFont: (token: number) => typedError<string, FontError>(__TAURI_INVOKE("apply_terminal_font", { token })),
+	/**
+	 *  Plans putting everything back as before TokenRadar: the terminal settings it still holds
+	 *  and the font files it installed. Nothing changes until `apply_font_restore` gets the token.
+	 */
+	planFontRestore: () => __TAURI_INVOKE<RestorePlanView>("plan_font_restore"),
+	/**  Applies the restore the user confirmed. */
+	applyFontRestore: (token: number) => typedError<RestoreDone, FontError>(__TAURI_INVOKE("apply_font_restore", { token })),
 	/**  The user's explicit yes (or withdrawal) for the usage API, stamped with the text version. */
 	setApiConsent: (granted: boolean) => typedError<DataSourcesView, string>(__TAURI_INVOKE("set_api_consent", { granted })),
 	/**  Folder picker for the Claude Code directory; `false` when cancelled. */
@@ -375,7 +382,9 @@ export type FontError =
 /**  No Nerd Font is installed to select. */
 { error: "no_font" } | { error: "invalid_settings" } | 
 /**  Windows Terminal's old format: `profiles` is a list. */
-{ error: "legacy_settings" } | { error: "changed_meanwhile" } | { error: "stale_plan" } | { error: "io"; message: string };
+{ error: "legacy_settings" } | { error: "changed_meanwhile" } | { error: "stale_plan" } | 
+/**  A program still holds a font file open; the font stays installed. */
+{ error: "font_in_use" } | { error: "io"; message: string };
 
 /**  Download progress, sent to the settings window. */
 export type FontInstallProgress = {
@@ -779,6 +788,31 @@ export type ResetFormat =
 /**  `Mon 09:00`, local time. */
 "clock";
 
+/**  What a restore did. */
+export type RestoreDone = {
+	/**  One per settings file written; each can be undone from its backup. */
+	backups: string[],
+	removed_fonts: number,
+};
+
+/**  Everything a restore will do, shown before anything changes. */
+export type RestorePlanView = { outcome: "ready"; 
+/**  Pass back to `apply_font_restore`; only this plan can be applied. */
+token: number; steps: RestoreStep[]; 
+/**  The font files that will be removed, by name. */
+font_files: string[] } | 
+/**  Nothing of TokenRadar's is left. */
+{ outcome: "unchanged" };
+
+/**  One terminal's font before and after a restore. */
+export type RestoreStep = {
+	target: TargetId,
+	from: string | null,
+	to: string | null,
+	/**  After the restore no font is set and the terminal's default applies. */
+	to_default: boolean,
+};
+
 /**  Which rule produced a notice. */
 export type Rule = "threshold" | "projection" | 
 /**  The last projection warning, shortly before the limit is full. */
@@ -1040,6 +1074,8 @@ export type TerminalFontView = {
 	can_install: boolean,
 	/**  A download is running. */
 	installing: boolean,
+	/**  Something TokenRadar did can be put back: a terminal setting or the installed font. */
+	can_restore: boolean,
 };
 
 /**  The terminal a statusline call came from, told apart by its environment. */

@@ -547,3 +547,16 @@ font-error-legacy-settings = This file uses the old Windows Terminal format. Not
 font-error-changed-meanwhile = The file changed after the diff was shown. Nothing was written. Here is the current change.
 font-error-stale-plan = This change was already applied or replaced.
 font-error-io = The file could not be read or written.
+font-section-restore = Undo everything
+font-restore-body = Puts back the terminal fonts TokenRadar changed and removes the font it installed.
+font-restore = Restore previous state…
+font-restore-intro = This puts everything back as it was before TokenRadar:
+font-restore-default = { $font } (terminal default)
+font-restore-files = Remove the installed font ({ $count ->
+    [one] one file
+   *[other] { $count } files
+}):
+font-restore-note = Each settings file is backed up first. If a terminal still uses the font, close it before you confirm.
+font-confirm-restore = Restore
+font-restored = Everything is back as it was. The settings backups are next to each file.
+font-error-font-in-use = A program still has the font file open, so the font stays installed. The terminal settings are already restored. Close your terminals and try again.

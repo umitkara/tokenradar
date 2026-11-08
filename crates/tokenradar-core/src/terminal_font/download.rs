@@ -239,6 +239,14 @@ fn hex(bytes: &[u8]) -> String {
     })
 }
 
+/// Whether `bytes` are the pinned file `name`. A removal takes only such files as the ones
+/// TokenRadar installed; the same name with other bytes was put there by someone else.
+pub(crate) fn is_pinned(name: &str, bytes: &[u8]) -> bool {
+    FILES
+        .iter()
+        .any(|(n, sha)| *n == name && hex(&Sha256::digest(bytes)) == *sha)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

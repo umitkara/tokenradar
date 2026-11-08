@@ -88,6 +88,7 @@ describe("terminal font helper", () => {
       "legacy_settings",
       "changed_meanwhile",
       "stale_plan",
+      "font_in_use",
       "io",
     ];
     const targets: TargetId[] = [
@@ -107,6 +108,10 @@ describe("terminal font helper", () => {
       ...tiers.map((tier) => fontStatusKey(tier === "none" ? null : { ...FONT, tier })),
       ...tiers.map((tier) => `font-tier-${tier}`),
       ...problems.map((p) => `font-problem-${p}`),
+      ...["section-restore", "restore-body", "restore", "restore-intro", "restore-default"].map(
+        (k) => `font-${k}`,
+      ),
+      ...["restore-files", "restore-note", "confirm-restore", "restored"].map((k) => `font-${k}`),
     ];
     for (const lang of ["en", "tr"]) {
       const text = ftl(lang);

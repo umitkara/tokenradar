@@ -27,7 +27,9 @@ use crate::sources::{
     self, ClaudeModAction, ClaudeModPlanView, DataSourcesView, PickError, StatuslineAction,
     StatuslineError, StatuslinePlanView,
 };
-use crate::terminal_font::{self, FontError, FontPlanView, TerminalFontView};
+use crate::terminal_font::{
+    self, FontError, FontPlanView, RestoreDone, RestorePlanView, TerminalFontView,
+};
 use crate::tray_pin::{self, TrayPinState};
 use crate::updater::{self, UpdateChanged, UpdateView};
 use crate::{core_bridge, notify, onboarding, panel, tray};
@@ -82,6 +84,8 @@ pub fn builder() -> Builder<tauri::Wry> {
             cancel_nerd_font,
             plan_terminal_font,
             apply_terminal_font,
+            plan_font_restore,
+            apply_font_restore,
             set_api_consent,
             pick_claude_dir,
             reset_claude_dir,
@@ -412,6 +416,21 @@ async fn plan_terminal_font(
 #[specta::specta]
 async fn apply_terminal_font(app: AppHandle, token: u32) -> Result<String, FontError> {
     blocking(move || terminal_font::apply(&app, token)).await
+}
+
+/// Plans putting everything back as before TokenRadar: the terminal settings it still holds
+/// and the font files it installed. Nothing changes until `apply_font_restore` gets the token.
+#[tauri::command]
+#[specta::specta]
+async fn plan_font_restore(app: AppHandle) -> RestorePlanView {
+    blocking(move || terminal_font::plan_restore(&app)).await
+}
+
+/// Applies the restore the user confirmed.
+#[tauri::command]
+#[specta::specta]
+async fn apply_font_restore(app: AppHandle, token: u32) -> Result<RestoreDone, FontError> {
+    blocking(move || terminal_font::apply_restore(&app, token)).await
 }
 
 /// The user's explicit yes (or withdrawal) for the usage API, stamped with the text version.
