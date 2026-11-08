@@ -64,13 +64,17 @@ The line itself looks like this on an account without a 5-hour window:
 
 `│` on the bar and `⏱43%` mark how much of the window's time has passed, so you can see whether your use runs ahead of the clock. `API $4.12` is what the session would cost at API prices, not your bill.
 
-The line is a list of items you arrange in `config.toml` (a settings page for it is on the way). Besides the limits there are session items (context, cost, model, tokens, durations, lines changed, vim mode, agent, version, session id), project items (folder, project folder, git branch, read from `.git/HEAD` without running git) and layout items (line break, separator, custom text). Each item can have its own format, label and color; on limits the color is the one below 75 %, and the warning and critical colors always win.
+The line is a list of items you arrange in Settings → Statusline or in `config.toml`. Besides the limits there are session items (context, cost, model, tokens, durations, lines changed, vim mode, agent, version, session id), project items (folder, project folder, git branch, read from `.git/HEAD` without running git) and layout items (line break, separator, space, flexible space, custom text). Each item can have its own format, label and color; on limits the color is the one below 75 %, and the warning and critical colors always win.
+
+Separators are items too: the line draws what the list holds. A separator at the edge of a group, or next to an item with no value, is left out. A `flex` item fills the free width: items after one flex go to the right, and items between two go to the middle.
 
 ```toml
 [statusline]
+version = 2         # separators are items
 theme = "plain"     # plain | powerline | powerline_round (needs a Powerline font)
-separator = "│"
+separator = "│"     # the glyph of new separators
 color = "auto"      # auto (honours NO_COLOR) | always | never
+margin = 0          # free columns on the right, 0–8
 
 [[statusline.items]]
 kind = "seven_day"
@@ -78,14 +82,28 @@ format = "percent"  # bar | percent
 color = "bright_cyan"
 
 [[statusline.items]]
-kind = "line_break"
+kind = "separator"
+text = "│"
+
+[[statusline.items]]
+kind = "context"
+
+[[statusline.items]]
+kind = "flex"
 
 [[statusline.items]]
 kind = "git_branch"
 color = "green"
+
+[[statusline.items]]
+kind = "space"
+width = 2           # 1–8 columns
+
+[[statusline.items]]
+kind = "model"
 ```
 
-Without `items`, the 12c keys still work: `segments`, `layout = "single" | "double"`, `bar` and `pace`.
+Claude Code cuts the last four columns of the line, so TokenRadar leaves them free; `margin` adds more, which helps right after the window gets narrower. A table without `version` gets a separator between each two values when it is read, and looks as before. Without `items`, the 12c keys still work: `segments`, `layout = "single" | "double"`, `bar` and `pace`.
 
 ## Claude Code mod (experimental)
 

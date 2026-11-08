@@ -75,6 +75,14 @@ Claude Code, `settings.json` içindeki `statusLine.command` komutunu çalıştı
 - `skip_serializing` ile işaretlidir: push ve spool satırının biçimi değişmez, uygulama bu alanları görmez.
 - Git dalı payload'da yoksa CLI, `cwd`'den yukarı doğru `.git/HEAD` dosyasını okur (en fazla 32 dizin, en fazla 4 KiB). Yalnızca satırda `git_branch` öğesi açıksa okunur; git süreci çalıştırılmaz.
 
+**Genişlik ve kenarlar (gözlem, 2026-11-08, Adım 12k, ADR-051):**
+- Gerçek bir Claude Code oturumunda (Windows Terminal) iki pencere boyutunda prob satırları çizildi: 156 ve 120 sütun.
+- `COLUMNS` her çağrıda terminalin güncel genişliğini taşıyor.
+- Satır en fazla `COLUMNS − 4` sütun kaplıyor. Daha uzun satırın sonu `…` ile kesiliyor; satır sarmıyor.
+- Baştaki boşluklar kırpılıyor. Satır `ESC[0m` gibi görünmeyen bir diziyle başlarsa boşluklar korunuyor. Satır içindeki boşluklar korunuyor.
+- `⏱`, `▲` ve `≈` birer hücre kaplıyor; `unicode-width` de bunları 1 sayıyor.
+- Pencere küçültülünce, komut yeniden çalışana kadar eski satır kesik görünüyor. Sağa yaslı satır bu arada `…` ile kesilir. `margin` bu daralmaya pay bırakır.
+
 **Komutun ortamı ve renkler (gözlem, 2026-11-07, Adım 12i):**
 - Gerçek bir Claude Code oturumunda (Windows Terminal, komut PowerShell 5.1 üzerinden) komutun ortamında `NO_COLOR` ve `FORCE_COLOR` yoktu. `TERM=xterm-256color` idi, `COLORTERM` yoktu, `COLUMNS` terminal genişliğini taşıyordu.
 - ANSI ön plan (30–37, 90–97), arka plan (40–47, 100–107) ve soluk (2) kodlarının hepsi çizildi.

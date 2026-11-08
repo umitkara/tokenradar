@@ -854,7 +854,7 @@
   - Görünüm tercihini WebView'in `localStorage`'ında tutmak: ayarlar `config.toml`'da toplanıyor; WebView verisi silinince tercih de kaybolurdu.
 
 ### ADR-049 — Statusline v3: öğe modeli, biçim ve renk, Powerline, şablonlar
-**Durum:** Kabul (2026-11-08, Adım 12i, kullanıcı kararlarıyla). ADR-042'yi genişletir.
+**Durum:** Kabul (2026-11-08, Adım 12i, kullanıcı kararlarıyla). ADR-042'yi genişletir. Ayraç öğeleri, öğe sınırı ve düzen ADR-051 ile genişledi.
 - **Bağlam:**
   - Kullanıcı, statusline'ın `tylergraydev/claude-code-tool-manager` içindeki "Status Line Builder" kadar ayrıntılı özelleştirilebilmesini istedi: segment başına biçim, etiket ve renk; serbest düzen; daha fazla segment; Powerline teması.
   - Referans proje segment listesinden bir Python script üretip `~/.claude/statusline.py`'ye yazıyor ve bir topluluk galerisi sunuyor.
@@ -900,3 +900,43 @@
 - **Alternatifler:**
   - Açık "Kaydet" düğmesi: kullanıcı otomatik kaydı seçti.
   - HTML5 sürükle-bırak: WebView2'de sürükleme görüntüsü hareketli ve kontrol dışı. Pointer olayları ve statik bir çizgi kullanıldı.
+
+### ADR-051 — Statusline düzeni: ayraç öğeleri, boşluk ve esnek boşluk, sağ pay
+**Durum:** Kabul (2026-11-08, Adım 12k, kullanıcı kararlarıyla). ADR-049'u genişletir.
+- **Bağlam:**
+  - 12i'de `│` ayraçlarını render kendisi koyuyordu (`value_sep`). Ayraçlar listede görünmüyor ve tek tek kaldırılamıyordu.
+  - Kullanıcı sağa yaslama ve ortalama istedi. Bunun için satırın gerçek genişliğini ve Claude Code'un kenarlarda ne yaptığını bilmek gerekiyordu.
+  - **Gözlem** (2026-11-08, gerçek Claude Code, Windows Terminal, prob Git Bash üzerinden; `docs/data-sources.md` S1):
+    - `COLUMNS` her çalıştırmada güncel terminal genişliğini taşıyor.
+    - `COLUMNS-4` genişliğindeki satır tam sığıyor, `COLUMNS-3` ve daha genişi `…` ile kesiliyor.
+    - Satır başındaki boşluklar (NBSP dahil) kırpılıyor. Önlerine `ESC[0m` konunca korunuyorlar. Satır içindeki boşluk dizileri korunuyor.
+    - `⏱`, `▲` ve `≈` birer hücre kaplıyor.
+    - Pencere daralınca komut hemen yeniden çalışmıyor. Bir sonraki güncellemeye kadar eski satır `…` ile kesik görünüyor.
+- **Karar:**
+  - **Ayraçların hepsi öğedir (kullanıcı kararı).** Render yalnızca listedeki ayraçları çizer. Bir ayraç, aynı bölgede çizilen iki öğenin arasındaysa çizilir. Bölgenin başındaki ve sonundaki ayraçlar düşer, art arda gelenlerden yalnızca ilki kalır. Böylece değeri olmayan bir öğe (bu hesapta olmayan `five_hour` gibi) çift ayraç bırakmaz.
+  - **Göç:** `[statusline]` tablosu `version = 2` taşır. `version` yoksa (12c ve 12i biçimi) her satırda yan yana duran iki değer öğesinin arasına global `separator` glifiyle bir ayraç öğesi eklenir. Glif boşsa ya da yalnızca boşluksa, 12i'nin çizdiği aralık kadar bir `space` eklenir. Göç bir kez yapılır: kaydedilen dosyada `version = 2` bulunur. Şablonlar da aynı kuraldan geçer. `custom_text` göçte değer sayılmaz, çünkü 12i metnin yanına ayraç değil boşluk koyuyordu; görünen metin aynı kalır.
+  - **Global `separator` kalır.** Artık yeni eklenen ayraçların glifidir. Eski build'ler için yazılmaya devam eder; 12c anahtarlarının türetilmesi değişmez.
+  - **Birleştirme:** Yan yana iki öğe arasına tek boşluk konur. `space` (1–8 sütun, `width`) ve `flex` kendi genişliğini taşır, yanlarına ayrıca boşluk eklenmez.
+  - **Hizalama `flex` öğesiyle yapılır (kullanıcı kararı); öğe başına hiza ayarı yoktur.** `flex` satırı bölgelere ayırır:
+    - 1 `flex`: ondan sonrası sağa yaslanır.
+    - 2 `flex`: orta bölge satırın ortasına (`(W − w) / 2`) konur ve komşularından en az bir sütun uzakta tutulur.
+    - Daha fazlası: artan sütunlar eşit dağıtılır, kalan sondaki `flex`'e verilir.
+    - Genişlik bilinmiyorsa (`COLUMNS` yok) `flex` tek boşluktur.
+  - **Sığdırma:** Ölçümde her `flex` en az 1 sütun sayılır. Düşme sırası aynı kalır. Bir değer düşerken önündeki ayraç, metin ve `space` öğeleri de düşer. `flex` hiçbir zaman düşmez.
+  - **Sağ pay (kullanıcı kararı):** Satır en fazla `COLUMNS − 4 − margin` genişliğinde olur. 4 sütun sabittir (`CLAUDE_CODE_RESERVED`). `margin` 0–8 aralığında bir ek paydır ve varsayılanı 0'dır. Kullanıcı, daralma sonrası kesilmeyi gördükten sonra da varsayılanı 0'da bıraktı; bu davranış README'de anlatılır. Bu kural, `flex` içermeyen satırlarda da `COLUMNS-3` ile `COLUMNS` arasında kalan genişliklerdeki `…` kesilmesini düzeltir.
+  - **Baştaki boşluk (kullanıcı kararı):** Boşlukla başlayan bir satırın önüne `ESC[0m` konur. Bu, `color = "never"` modunda da yapılır: kod bir renk değil, zararsız bir sıfırlamadır.
+  - **Görüntü genişliği:** `chars().count()` yerine `unicode-width` (0.2, `cjk` özelliği kapalı) kullanılır. Gözlemde farklı genişlik çıkan glif olmadığı için istisna tablosu yoktur.
+  - **Powerline:** `flex`, blok zincirini kapatır: önce bitiş glifi, ardından arka plansız boşluk, sonra yeni zincir. Son `flex`'ten sonraki bölge sola bakan gliflerle çizilir (U+E0B2 ve ince U+E0B3; yuvarlak temada U+E0B6 ve U+E0B7). `space` zinciri kapatır ve arka plansız çizilir. `separator` atlanır. Renk kapalıyken plain temaya düşülür.
+  - **Span'ler:** `space` ve `flex` span'leri öğe indeksini taşır.
+  - **Sınırlar:** `MAX_ITEMS` 48'den 64'e çıktı, çünkü ayraçlar öğe sayısını yaklaşık ikiye katlıyor.
+  - **Yeni şablon:** `split`. Solda limitler, ardından `flex`, sağda model, cwd ve git dalı.
+- **Bedel:**
+  - CLI boyutu ve gecikme: `docs/perf/2026-11-08-statusline-layout.md`.
+  - Sağa yaslı bir satır terminalin genişliğini doldurur. Pencere daralınca, satır yeniden çizilene kadar sağdaki öğeler `…` arkasında kalır. Bu, Claude Code'un davranışıdır; `margin` küçük daralmalara pay bırakır.
+  - Eski CLI'lar (v0.1.0) `space` ve `flex`'i bilmez, kendi otomatik ayracıyla 12c anahtarlarını çizer.
+  - Araç çubuğundaki ayraç alanı artık mevcut ayraçları değiştirmiyor, yalnızca yeni eklenenlerin glifini belirliyor. Etiketi "Yeni ayraçlar" oldu. Ayraç başına düzenleme öğe editöründe.
+- **Alternatifler:**
+  - Öğe başına hiza (`align = "right"`): liste sırası ile hiza ayrı ayrı doğruluk kaynağı olurdu.
+  - Otomatik ayracı korumak ve yalnızca bastırma seçeneği eklemek: ayraçlar yine listede görünmez ve tek tek seçilemezdi.
+  - `flex`'i yalnızca dolgu olarak kullanmak (satır başında düşmesi): gözlem `ESC[0m`'ın baştaki boşluğu koruduğunu gösterdi.
+  - `margin`'i toplam pay (varsayılan 4) yapmak: kullanıcının Claude Code'un iç payını bilmesini gerektirirdi.

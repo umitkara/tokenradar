@@ -19,9 +19,11 @@ All notable changes to TokenRadar are recorded here. The format follows
 - The installer ships the Claude Code mod. Install or remove it from onboarding, Settings → Data sources or `tokenradar mod install|uninstall`: TokenRadar adds its folder to `env.CLAUDE_CODE_PLUGIN_DIRS` in Claude Code's `settings.json`, with a diff, confirmation and backup. Uninstalling TokenRadar takes it out again. Left at its default, the mod uses the CLI installed with the app.
 - Statusline v3: the line is a list of items, each with its own format, label and color. New items for tokens, durations, lines changed, vim mode, agent, version, session id, the folder, the project folder and the git branch (read from `.git/HEAD`, no git process), plus line breaks, separators and custom text. Powerline and rounded Powerline themes, `color = "auto" | "always" | "never"`, five built-in presets and TOML export/import of the `[statusline]` table. Existing configs draw the same line as before.
 - The tray panel has a second view, **Details**, next to the summary: each limit with its own source, projection and pace against the time gone, the weekly time strip, a usage chart against the time line, and the sessions with their API-equivalent cost and share bars. The panel opens on the view you chose last. The summary's bars gain the time mark.
+- Statusline layout: separators are items you can remove one by one, a `space` item adds 1–8 blank columns, and a `flex` item fills the free width so that what follows sits on the right, or in the middle between two. A new **Split** preset puts the limits on the left and the model, folder and branch on the right. `margin` keeps extra columns free on the right. Existing configs get their separators as items when read and look as before.
 
 ### Changed
 
+- The statusline leaves the last four columns free, which Claude Code cuts with `…`, and measures glyph widths per terminal cell.
 - The statusline drops the pie glyph; the bar takes its place. Without color (`NO_COLOR`) or in a narrow terminal the bar is left out.
 
 ### Fixed

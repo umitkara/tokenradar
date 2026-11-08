@@ -2,7 +2,7 @@
 
 | Sürüm | Bağımlılık | Tahmini süre | Durum |
 |---|---|---|---|
-| v0.1.x | 12j | 1-2 oturum | ⬜ |
+| v0.1.x | 12j | 1-2 oturum | ✅ (2026-11-08, ADR-051) |
 
 ## Amaç
 
@@ -160,15 +160,21 @@ width = 2                  # 1–8
 
 ## Görevler
 
-- [ ] Genişlik ve kenar gözlemi (kullanıcıyla); sonuçlar bu listeye yazılır.
-- [ ] `space` ve `flex` türleri, `Item::width`, `version`, `margin`, esnek okuma.
-- [ ] Ayraç göçü (12c, 12i biçimi, şablonlar) ve yazma.
-- [ ] `compose_plain` yeni birleştirme kuralı ve ayraç daraltma.
-- [ ] Bölgeler ve hizalama; `fit()` uyarlaması; görüntü genişliği.
-- [ ] Powerline bölgeleri.
-- [ ] `split` şablonu, katalog, IPC tipleri, binding'ler, frontend derlenme uyarlaması.
-- [ ] Fluent (EN/TR), ADR-051, dokümanlar.
-- [ ] Performans ölçümü (`main`'e karşı A/B) ve CLI boyut farkı, `docs/perf/` kaydı.
+- [x] Genişlik ve kenar gözlemi (kullanıcıyla); sonuçlar bu listeye yazılır.
+  - İki pencere boyutunda (156 ve 120 sütun) iki tur. `COLUMNS` güncel genişliği taşıyor.
+  - `COLUMNS − 4` tam sığıyor; daha genişi `…` ile kesiliyor, sarmıyor. Sağdaki bildirim alanıyla çakışma görülmedi.
+  - Baştaki boşluklar (NBSP dahil) kırpılıyor; `ESC[0m` ile korunuyor. Satır içi boşluklar korunuyor.
+  - `⏱`, `▲`, `≈` birer hücre. İstisna tablosu gerekmedi.
+  - Pencere küçülünce komut hemen yeniden çalışmıyor; eski satır bir sonraki güncellemeye kadar kesik görünüyor.
+  - Sonuç: sabit pay 4 + `margin` (varsayılan 0), tam `flex` ve baştaki boşluk için `ESC[0m` (kullanıcı kararları).
+- [x] `space` ve `flex` türleri, `Item::width`, `version`, `margin`, esnek okuma.
+- [x] Ayraç göçü (12c, 12i biçimi, şablonlar) ve yazma.
+- [x] `compose_plain` yeni birleştirme kuralı ve ayraç daraltma.
+- [x] Bölgeler ve hizalama; `fit()` uyarlaması; görüntü genişliği.
+- [x] Powerline bölgeleri.
+- [x] `split` şablonu, katalog, IPC tipleri, binding'ler, frontend derlenme uyarlaması.
+- [x] Fluent (EN/TR), ADR-051, dokümanlar.
+- [x] Performans ölçümü (`main`'e karşı A/B) ve CLI boyut farkı, `docs/perf/` kaydı.
 
 ## Teknik notlar ve tuzaklar
 
@@ -201,4 +207,52 @@ width = 2                  # 1–8
 
 ## Devir notu
 
-_(Oturum sonunda doldurulur: yapılanlar · sapmalar · açık konular · sonraki adıma notlar)_
+**Tarih:** 2026-11-08 · **Karar:** ADR-051 · **Ölçüm:** `docs/perf/2026-11-08-statusline-layout.md`
+
+### Yapılanlar
+- **Gözlem:** Prob, kullanıcı onayıyla settings.json akışından kuruldu (diff → onay → yedek → atomik yazma) ve gözlemden sonra yedekten geri döndü. Sonuçlar Görevler listesinde, `docs/data-sources.md` S1'de ve ADR-051'de.
+- **Model (`prefs.rs`):**
+  - `space` ve `flex` türleri (grup `Layout`, renksiz) ve `Item::width` (yalnızca `space`, 1–8).
+  - `version` (her zaman 2 yazılır) ve `margin` (0–8).
+  - `MAX_ITEMS` 64. `KNOWN_KEYS` ve esnek okuma güncellendi; okuma yine hiçbir zaman başarısız olmuyor.
+- **Göç:** `with_separators`, `version`'sız tabloda yan yana iki değer öğesinin arasına global glifle ayraç ekliyor; glif boşsa `space` ekliyor. `legacy()` (12c) ve şablonlar da bu yoldan geçiyor. Göç önce tekrarlanan değerleri ayıklıyor, böylece art arda ayraç oluşmuyor.
+- **Render (`render.rs`):**
+  - Öğeler arasına tek boşluk konuyor. Ayraçlar bölge sınırında ve art arda geldiklerinde daralıyor.
+  - `flex` bölgeleri ve `gaps()` dağıtımı (1, 2, 3+ flex). `fit()` her flex'i en az 1 sütun sayıyor; flex hiçbir zaman düşmüyor.
+  - `unicode-width` ile ölçüm. `CLAUDE_CODE_RESERVED = 4` + `margin` sağ pay.
+  - Satır boşlukla başlıyorsa önüne `ESC[0m` yazılıyor.
+  - Powerline bölgeleri: son bölge sola bakan gliflerle çiziliyor; `space` ve `flex` zinciri kapatıyor.
+  - `space` ve `flex` span'leri öğe indeksini taşıyor.
+- **Şablon `split`**, katalog (`SegmentKind::ALL` üzerinden kendiliğinden), binding'ler yeniden üretildi.
+- **Frontend:** derlenecek kadar uyarlandı. `newItem` `width` alanını dolduruyor ve ayraç glifini araç çubuğundan alıyor. `LAYOUT`'a `space` ve `flex` eklendi.
+- **Fluent:** `space`, `flex` ve `split` için ad ve ipucu anahtarları (EN/TR). `statusline-separator` etiketi "Yeni ayraçlar" oldu.
+- **Dokümanlar:** ADR-051 (ADR-049'a atıf eklendi), architecture §11 madde 10, data-sources S1, README `[statusline]` örneği, CHANGELOG, performance-budget.
+- **Testler:** `line/tests/layout.rs` 14 yeni test: göç (12c, 12i, çift ve boş glif), göçün bir kez yapılması, değersiz ve gizli öğeler, `space`, 1/2/3+ flex, dar satır, yalnızca düzen öğesi içeren satır, geniş glifler, Powerline bölgeleri, span indeksleri, `split`, dışa/içe aktarma ve `margin` sınırları. Eski render testleri görünen metni değiştirmeden geçiyor; dar terminal testleri artık payı hesaba katıyor (`cols()`).
+
+### Sapmalar
+- **`custom_text` göçte değer sayılmıyor** (plan: sayılır). 12i, özel metnin yanına ayraç değil boşluk koyuyordu; değer sayılsaydı göçten sonra satır değişirdi. Kabul kriteri (aynı görünen metin) bunu gerektirdi.
+- **Sağ pay iki parçalı:** sabit 4 sütun (Claude Code'un kestiği alan) ve `margin` (ek pay, varsayılan 0). Plan tek bir `margin` öngörüyordu; gözlemden sonra kullanıcı bu biçimi seçti. Pay, `flex` olmayan satırlarda da `…` kesilmesini düzeltiyor.
+- **Baştaki boşluk kırpılıyordu** (planın "dur" koşulu). Kullanıcıyla konuşuldu: `ESC[0m` ile tam `flex` seçildi.
+- **Araç çubuğundaki ayraç alanı** artık mevcut ayraçları değiştirmiyor, yalnızca yeni eklenenlerin glifini belirliyor.
+- **`cli.ftl` anahtarı gerekmedi.** Yeni metinler yalnızca ayarlar sayfasında.
+- **README'deki "settings page is on the way" ifadesi** düzeltildi. 12j'den kalmıştı; aynı paragraf zaten değişiyordu.
+
+### Doğrulama
+- `cargo fmt --check`, `cargo clippy --workspace --all-targets -- -D warnings` ve `cargo test --workspace` temiz (core 335, cli 25 test).
+- `pnpm -C app check`, `lint` ve `test` temiz (113 test).
+- **Görsel kontrol:** Core'u doğrudan çağıran geçici bir örnekle (commit'lenmedi) conhost'ta `COLUMNS=120/80/50`, plain ve Powerline, 1 ve 2 `flex`, renkli ve renksiz. Konumlar ve Powerline zincirleri beklendiği gibi. Nerd Font olmadığı için Powerline glifleri kutu görünüyor.
+- **Ölçüm:** `main`'e karşı A/B ve `-Config` ile Split koşuları. Kurulu uygulama kullanıcı onayıyla yaklaşık 3 dk kapatılıp yeniden açıldı. p95 bütçenin içinde; CLI +28,5 KiB (2,33 MiB).
+
+### Açık konular
+- **Gerçek satır yeni sürüme kadar değişmez.** Kurulu v0.1.0 CLI, `version`, `margin`, `space` ve `flex`'i bilmiyor. Kullanıcının `split` şablonunu gerçek Claude Code'da denemesi, yerel ya da yeni sürüm kurulduktan sonra yapılacak.
+- **Daralma sonrası kesilme:** Pencere küçülünce, komut yeniden çalışana kadar sağa yaslı satır `…` ile kesik görünüyor. Kullanıcı varsayılan `margin`'i 0'da bıraktı; README anlatıyor. Sürüm notunda da anlatılmalı.
+- **12j'nin CHANGELOG kaydı yok:** statusline düzenleyicisi Unreleased'da anılmıyor. 12l ya da sürüm hazırlığında eklenmeli.
+- **12i'den kalanlar sürüyor:** Powerline'da `▲` rengi, stdin'de UTF-8 BOM.
+- **Gerçek Nerd Font ile görsel kontrol yapılmadı.** Bu makinede yok.
+
+### Sonraki adıma notlar (12l)
+- `space` için genişlik editörü (1–8) ve `margin` ayarı için arayüz yok; ikisi de yalnızca TOML'dan ayarlanabiliyor.
+- Yeni bir değer eklenince araya otomatik ayraç girmesi (karar) henüz yok. `addItem` yalnızca ayracın glifini araç çubuğundan alıyor.
+- Önizlemede `flex` ve `space` span'leri `item` indeksini taşıyor; tıklanınca seçim yapılabilir. Boşluk span'leri görünmez olduğu için bir hover vurgusu gerekebilir.
+- Önizleme genişliği `Style.width` olarak terminal sütunu bekliyor; pay core'da düşülüyor. Önizleme, Claude Code'un kestiği 4 sütunu ayrıca göstermek isteyebilir.
+- `MAX_ITEMS` 64 oldu; frontend sabiti de 64.

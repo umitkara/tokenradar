@@ -32,8 +32,8 @@
 | Panel açılışı — soğuk (webview oluşturma dahil) | ≤ 500 ms. ADR-037 (önce 400 ms). v0.1.0: medyan 440 ms (`docs/perf/2026-10-28-v0.1.0.md`) |
 | Ana pencere açılışı — soğuk | ≤ 600 ms |
 | JSONL'e yeni satır yazılmasından UI/tray güncellemesine | ≤ 2 s (debounce dahil) |
-| `tokenradar statusline` (daemon açık) | p95 ≤ 30 ms. Adım 07: 13,3 ms (`docs/perf/2026-10-27-statusline.md`). Adım 12c: 12,0-13,4 ms (`docs/perf/2026-11-07-statusline-v2.md`). Adım 12i: 15,0-16,2 ms, main 13,8-14,9 ms aynı oturumda (`docs/perf/2026-11-08-statusline-v3.md`) |
-| `tokenradar statusline` (daemon kapalı, spool) | p95 ≤ 40 ms. Adım 07: 25,5 ms. Adım 12c: 25,0-26,9 ms |
+| `tokenradar statusline` (daemon açık) | p95 ≤ 30 ms. Adım 07: 13,3 ms (`docs/perf/2026-10-27-statusline.md`). Adım 12c: 12,0-13,4 ms (`docs/perf/2026-11-07-statusline-v2.md`). Adım 12i: 15,0-16,2 ms, main 13,8-14,9 ms aynı oturumda (`docs/perf/2026-11-08-statusline-v3.md`). Adım 12k: 12,6-12,8 ms, main 12,6-13,2 ms aynı oturumda; Split + `COLUMNS=120` 12,9-13,1 ms (`docs/perf/2026-11-08-statusline-layout.md`) |
+| `tokenradar statusline` (daemon kapalı, spool) | p95 ≤ 40 ms. Adım 07: 25,5 ms. Adım 12c: 25,0-26,9 ms. Adım 12i: 29,1-29,9 ms. Adım 12k: 23,5-25,5 ms, main 24,4-26,9 ms aynı oturumda |
 
 ## İndeksleme
 
@@ -49,7 +49,7 @@
 |---|---|
 | Installer (NSIS) | ≤ 12 MB |
 | `tokenradar-app.exe` | ≤ 15 MB. Adım 11b: 12,04 MiB |
-| `tokenradar.exe` (CLI) | ≤ 3 MB. Adım 07: 2,95 MiB. Adım 11b: doctor ile `--release` 3,14 MiB; `release-cli` profili (`opt-level = "s"`, ADR-034) ile 2,17 MiB. Adım 12c: 2,21 MiB. Adım 12i: 2,30 MiB |
+| `tokenradar.exe` (CLI) | ≤ 3 MB. Adım 07: 2,95 MiB. Adım 11b: doctor ile `--release` 3,14 MiB; `release-cli` profili (`opt-level = "s"`, ADR-034) ile 2,17 MiB. Adım 12c: 2,21 MiB. Adım 12i: 2,30 MiB. Adım 12k: 2,33 MiB (`unicode-width`, +28,5 KiB) |
 | Frontend bundle (panel sayfası, gzip) | ≤ 60 KB JS + ≤ 15 KB CSS |
 | Frontend bundle (ana pencere, gzip) | ≤ 180 KB JS |
 | Veritabanı büyümesi | ≤ 30 MB/ay (referans kullanım). Ham olaylar 90 gün sonra silinir, `usage_5m` kalıcıdır. |
