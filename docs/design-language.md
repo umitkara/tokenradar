@@ -223,6 +223,8 @@ Başlığın altında iki eşit düğmeli bir segment kontrolü: `Özet | Ayrın
 | Left / Tokens left | Kalan / Kalan token | Biçim adları; satırda `58% left` / `%58 kaldı`, `124k left` / `124k kaldı` |
 | Reset as: Countdown / Clock time | Sıfırlanma: Geri sayım / Saat | Saat biçimi yerel saattir: `Tue 04:20` / `Sal 04:20` |
 | Bar width / Bar style: Blocks / Thin / Dots | Çubuk genişliği / Çubuk stili: Blok / İnce / Nokta | |
+| Compactions / Total / Auto and manual | Compact sayısı / Toplam / Oto ve elle | Satırda `⟲2 auto 1 manual · 300k` / `⟲2 oto 1 elle · 300k`; "compact" çevrilmez. Bilinmeyen tetikleyici `other` / `diğer` |
+| Auto off | Oto kapalı | Auto-compact kapalıysa pencere yerine: `⟲3 · auto off` / `⟲3 · oto kapalı` |
 | (statusline labels) | `in` / `out` / `time` → `girdi` / `çıktı` / `süre` | Token ve süre öğelerinin varsayılan etiketleri; `ctx`, `api`, `git` her dilde aynı |
 
 **Türkçe yazım kuralları:**

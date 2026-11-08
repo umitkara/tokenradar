@@ -23,9 +23,11 @@ All notable changes to TokenRadar are recorded here. The format follows
 - The statusline has its own Settings page with a live terminal preview, automatic saving and undo. Lines are cards: add and remove lines, drag items between them, and set a space's width, a separator's glyph (or every separator's at once) and the right margin there. Adding a value next to another value puts a separator between them.
 - New statusline items: **daily budget** (what is left of the weekly limit per remaining day, `20%/day`), **burn rate** (the session's API-equivalent cost per hour, after five minutes), **cache ratio** (how much of the last request came from the prompt cache), the **session name** and the **output style**. The Detailed preset adds the daily budget.
 - Limits and the context window can show what is **left** (`58% left`); the context window also the **tokens left** (`124k left`). A limit can show its reset as a local **clock time** (`Tue 04:20`) instead of a countdown. Bars come in 4, 8 or 12 cells and in three styles (blocks, thin, dots); the editor shows a sample of each.
+- New statusline item **compactions**: how many times the session was compacted (`⟲3`, or `⟲2 auto 1 manual`), and the auto-compact window when you set one in Claude Code's settings or environment (`· 300k`, `· auto off`). The count needs the app running; without it, only the setting shows.
 
 ### Changed
 
+- **The database moves to schema v2.** On first start the app reads every transcript once more to pick up past compactions; this takes about as long as the first indexing. Version 0.1.0 cannot open a v2 database: to go back, delete the database and let 0.1.0 index again.
 - The statusline leaves the last four columns free, which Claude Code cuts with `…`, and measures glyph widths per terminal cell.
 - The statusline drops the pie glyph; the bar takes its place. Without color (`NO_COLOR`) or in a narrow terminal the bar is left out.
 

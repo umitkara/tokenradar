@@ -256,11 +256,16 @@ projects/
   - Her compact bir `type: "system"`, `subtype: "compact_boundary"` kaydı bırakır.
   - Kayıttaki `compactMetadata` alanları: `trigger` (`"manual"` ve `"auto"`, ikisi de gözlendi), `preTokens`, `postTokens`, `durationMs`, `cumulativeDroppedTokens`. Hepsi sayıdır ve içerik taşımaz.
   - Compact özeti ayrı bir mesaj kaydıdır. **Konuşma içeriğidir; asla parse edilmez.**
-- **Otomatik compact eşiği:**
+  - Kayıtta `uuid`, `sessionId`, `timestamp` ve `isSidechain` var. `--resume` ile açılan oturum, eski oturumun satırlarını (compact sınırları dahil) aynı `uuid` ile yeni dosyaya kopyalar (tuzak 11). Bu yüzden sayım `uuid` ile tekilleştirilir ve kayıt, kendi `sessionId`'sinin oturumuna sayılır, kopyalandığı dosyanın oturumuna değil (Adım 12n, ADR-054).
+  - Sidechain ve subagent dosyalarındaki compact sınırları ana oturumun sayısına girmez.
+- **Otomatik compact ayarı (belge doğrulaması 2026-11-08, Adım 12n):**
   - Transcript'te ve statusline payload'ında yok.
-  - Claude Code ayarlarında `autoCompactEnabled` (bool) ve `autoCompactWindow` (token) anahtarları var. Etkin değer, ayar hiyerarşisi birleştirilerek bulunur: managed > proje local > proje > kullanıcı, artı ortam değişkenleri.
-  - Tetiklenme pencerenin kendisinde olmaz. Gözlemde otomatik compact'ların `preTokens / autoCompactWindow` oranının medyanı ≈0,90 çıktı; Claude Code belgelenmemiş bir pay düşüyor.
-  - Gösterim: pencere config değeridir. Tetiklenme noktası tahmindir (`≈`). Son otomatik compact'ın `preTokens` değeri gözlenmiş eşik olarak kullanılabilir.
+  - Ayar anahtarları: `autoCompactEnabled` (bool), `autoCompactWindow` (token, 100k–1M ya da `"auto"`), `modelSettings.<model>.autoCompactWindow` (aynı dosyada üst düzey değeri ezer).
+  - Dosyalar, en yüksek öncelikten: managed (`%ProgramFiles%\ClaudeCode\managed-settings.d\*.json` ters alfabetik sırayla, sonra `managed-settings.json`), `<proje>/.claude/settings.local.json`, `<proje>/.claude/settings.json`, `<config>/settings.json`.
+  - Ortam değişkenleri: `DISABLE_AUTO_COMPACT=1` ve `DISABLE_COMPACT=1` otomatik compact'ı kapatır; `CLAUDE_CODE_AUTO_COMPACT_WINDOW` (`200000`, `200k`, `1M`) bütün pencere ayarlarını ezer. Ayar dosyalarının `env` blokları, statusline alt sürecinin ortamına zaten girer.
+  - Pencere modelin bağlam penceresiyle sınırlanır.
+  - TokenRadar'ın göremediği kaynaklar: kayıt defteri ve sunucu tarafı policy'ler, Claude Code'un `--autocompact` ve `--settings` bayrakları.
+  - Tetiklenme pencerenin kendisinde olmaz. Gözlemde otomatik compact'ların `preTokens / autoCompactWindow` oranının medyanı ≈0,90 çıktı; Claude Code belgelenmemiş bir pay düşüyor. **Bu oran gösterilmez** (kullanıcı kararı, ADR-054); gösterilen değer yalnızca config değeridir.
   - `~/.claude.json` içindeki `autoCompactOffer` ve `autoCompactWindowsCache` iç durumdur; kullanılmaz.
 
 

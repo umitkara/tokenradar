@@ -135,7 +135,7 @@ Sürümler uygulama anında güncel stable olarak seçilir ve lock dosyalarıyla
 
 **UI'da hesaplama yapılmaz.** Tauri komutları önceden agregasyonu yapılmış görünüm modelleri döner (`get_panel_snapshot`, `get_panel_detail`, `get_overview(range)`, `list_sessions(filter, page)` …). Frontend yalnızca çizer.
 
-## 6. Veri modeli (SQLite şeması v1)
+## 6. Veri modeli (SQLite şeması v2)
 
 Tüm zamanlar **UTC epoch milisaniye** (`INTEGER`) olarak saklanır. Para birimi **mikro-USD** (`INTEGER`) olarak tutulur.
 
@@ -151,6 +151,11 @@ Tüm zamanlar **UTC epoch milisaniye** (`INTEGER`) olarak saklanır. Para birimi
 > - Ana oturumlarda `root_id` NULL'dur; yalnızca subagent'larda ana oturumu gösterir. Ağaç toplamlarında `COALESCE(root_id, id)` kullanılır.
 > - `cwd`'si bilinmeyen projelerin `path_norm` değeri `unresolved:<dizin adı>` biçimindedir.
 > - Advisor tüketimi ayrı `usage_events` satırlarıdır (anahtar `from_ids_tagged(…, "advisor#<i>")`).
+>
+> Adım 12n'de eklenenler (şema v2, `0002_compact_events.sql`, ADR-054):
+> - `compact_events` tablosu ve `ix_sessions_uuid` indeksi.
+> - Migration bütün canlı dosyaların okuma konumunu sıfırlar; eski compact'lar bir sonraki taramada tam yeniden indekslemeyle gelir. Tekilleştirme ve saklama filigranı mevcut olayları korur.
+> - v2 veritabanını v0.1.0 açamaz (`SchemaTooNew`); migration geri alınmaz.
 
 ```sql
 CREATE TABLE accounts (
@@ -226,6 +231,14 @@ CREATE TABLE attributions (window_id INTEGER, root_session_id INTEGER,   -- NULL
 
 CREATE TABLE notification_log (id INTEGER PRIMARY KEY, rule TEXT, dedupe_key TEXT UNIQUE, fired_at INTEGER);
 CREATE TABLE kv (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+
+CREATE TABLE compact_events (                               -- v2: compact sınırları (saklama işi silmez)
+  uuid TEXT PRIMARY KEY,                                    -- kaydın uuid'si; --resume kopyaları tekilleşir
+  session_uuid TEXT NOT NULL,                               -- kaydın kendi sessionId'si
+  at INTEGER NOT NULL, trigger TEXT NOT NULL,               -- 'auto' | 'manual' | 'other'
+  pre_tokens INTEGER) WITHOUT ROWID;
+CREATE INDEX ix_compact_session ON compact_events (session_uuid);
+CREATE INDEX ix_sessions_uuid ON sessions (uuid);
 ```
 
 **Tekilleştirme UPSERT kuralı:**

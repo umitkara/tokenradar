@@ -998,3 +998,41 @@
   - `jiff`'in saat dilimi veritabanını gömmek: CLI boyutu büyürdü; Windows API'si aynı sonucu verir.
   - `●○` gibi daire glifleri: Ambiguous genişlikte, bazı terminallerde iki hücre kaplar.
   - `space` öğesinin `width` alanını çubuk genişliği için yeniden kullanmak: anlamları farklı, esnek okuma karışırdı.
+
+### ADR-054 — Statusline compact öğesi: compact sayısı, şema v2 ve auto-compact ayarının okunması
+**Durum:** Kabul (2026-11-08, Adım 12n, kullanıcı kararlarıyla). ADR-042 ve ADR-053'ü genişletir.
+- **Bağlam:**
+  - Kullanıcı, oturumdaki compact sayısını (oto ve elle ayrı) ve tanımlıysa auto-compact penceresini statusline'da görmek istedi. "Compact'a kalan" değeri önerildi, reddedildi (2026-11-08).
+  - Compact sınırları transcript'te `type: "system"`, `subtype: "compact_boundary"` kayıtlarıdır (`docs/data-sources.md` S3). İndeksleyici bunları şimdiye kadar atlıyordu; mevcut okuma konumları eski kayıtların ötesindeydi.
+  - Auto-compact ayarı transcript'te ve payload'da yok; Claude Code'un ayar dosyalarında ve ortamında.
+- **Karar:**
+  - **Veri:**
+    - Ön filtre `"compact_boundary"` arar. Seçici struct yalnızca `uuid`, `sessionId`, `timestamp`, `isSidechain`, `compactMetadata.trigger` ve `compactMetadata.preTokens` alanlarını okur. Özet mesajı ayrıştırılmaz.
+    - Kayıt yalnızca üst düzeyde `type == "system"` ve `subtype == "compact_boundary"` ise sayılır. Kelimenin başka bir yerde geçmesi yetmez.
+    - Sidechain kayıtları ve subagent dosyaları sayılmaz.
+    - `trigger` `auto` | `manual` dışında bir değerse `other` olarak saklanır. Toplama girer, `split` biçiminde ayrı gösterilir (`1 other` / `1 diğer`).
+  - **Store, şema v2** (`0002_compact_events.sql`):
+    - `compact_events (uuid PK, session_uuid, at, trigger, pre_tokens)` ve `ix_sessions_uuid`.
+    - **Sahiplik kaydın kendi `sessionId`'sidir**, kopyalandığı dosyanın oturumu değil. `--resume` kopyaları aynı `uuid` ile gelir ve `ON CONFLICT DO NOTHING` ile düşer. Dosya sahipliği seçilseydi sonuç, worker'ların hangi dosyayı önce bitirdiğine bağlı olurdu. `sessionId` yoksa dosya adı kullanılır; `uuid` yoksa satırın xxh3-128 hash'i.
+    - Sayım yalnızca oturum `kind = 'main'` olarak biliniyorsa döner. Bilinmiyorsa sayı yoktur (gösterilmez); biliniyor ama kayıt yoksa 0'dır.
+    - Saklama işi `compact_events`'i silmez (satırlar küçük, sayı oturum geneli).
+  - **Geriye dönük doldurma: migration bütün canlı dosyaların okuma konumunu sıfırlar** (kullanıcı kararı). Ayrı bir compact taraması tam yeniden indekslemeden hızlı değildi: 16,7–17,3 s'ye karşı 14,5 s, çünkü ikisinde de disk okuması baskın, indeksleme ise paralel (`docs/perf/2026-11-08-statusline-compact.md`). Tekilleştirme ve saklama filigranı mevcut olayları korur; yükseltilmiş DB'nin parmak izi tam indekslemeyle aynı.
+  - **IPC:** `SessionInfo.compacts: Option<CompactCount { auto, manual, other }>`, `#[serde(default)]`. Yeni pipe turu yok; değer `StatusGet` cevabında döner. Oturum cevabın listesinde yoksa yalnızca sayıyı taşıyan bir girdi eklenir. Eski uygulamadan gelen cevapta alan yoksa sayı bilinmiyor demektir.
+  - **Auto-compact ayarı (CLI, salt okunur):**
+    - Kaynaklar, belgelere göre (2026-11-08), en yüksek öncelikten: managed (`managed-settings.d/*.json` ters alfabetik, sonra `managed-settings.json`), `<proje>/.claude/settings.local.json`, `<proje>/.claude/settings.json`, `<config>/settings.json`. Proje kökü payload'ın `workspace.project_dir`'i, yoksa `cwd`. Config dizini transcript yolundan türetilir.
+    - Her dosyadan yalnızca `autoCompactEnabled`, `autoCompactWindow` ve `modelSettings` okunur. Dosya içinde modele özgü pencere üst düzey değeri ezer. 1 MiB'tan büyük ya da okunamayan dosya yok sayılır.
+    - Ortam: `DISABLE_AUTO_COMPACT` ya da `DISABLE_COMPACT` → kapalı; `CLAUDE_CODE_AUTO_COMPACT_WINDOW` her pencere ayarını ezer. Statusline Claude Code'un alt süreci olduğu için ayar dosyalarının `env` blokları zaten süreç ortamındadır; `env` blokları ayrıca okunmaz.
+    - Pencere 100k–1M dışındaysa yok sayılır, bağlam penceresiyle sınırlanır. `"auto"` değeri pencere yok demektir.
+    - Dosyalar yalnızca satırda `compact` öğesi varsa okunur.
+    - Gösterilen değer config değeridir; `≈` almaz. **Tetiklenme noktası (gözlenen ≈%90) gösterilmez**, varsayılan pencere tahmin edilmez.
+  - **Öğe `compact`** (Oturum grubu): `total` `⟲3 · 300k`, `split` `⟲2 oto 1 elle · 300k`. Kapalıysa `· oto kapalı`. Sayı 0 ise `⟲0`. Sayı bilinmiyorsa (uygulama kapalı) yalnızca ayar: `⟲ 300k`, `⟲ oto kapalı`. İkisi de yoksa öğe çizilmez. Dar terminalde önce pencere kısmı, sonra öğe düşer.
+- **Bedel:**
+  - **Şema v2 geri dönüşsüzdür.** Yeni sürüm DB'yi bir kez açınca v0.1.0 o DB'yi açamaz (`SchemaTooNew`). Eski sürüme dönmek için DB silinip yeniden indekslenmelidir. Sürüm notunda yazılmalı. Dev build'ler gerçek DB'ye karşı değil, yalnızca portable modda ya da geçici DB ile çalıştırılır.
+  - Yükseltmeden sonraki ilk açılış bir tam indeksleme kadar sürer (referans veri setinde ≈15 s, arka planda; RecentReady etkilenmez).
+  - Göremediğimiz kaynaklar: kayıt defteri ve sunucu tarafı managed policy'ler, Claude Code'un `--autocompact` ve `--settings` bayrakları, Bedrock/Vertex gibi sağlayıcılara özgü model id'leriyle `modelSettings` eşleşmesi. Bu durumlarda gösterilen değer gerçek davranıştan farklı olabilir.
+  - CLI 22.528 B büyüdü; indeksleyici CPU'su ≈%7 arttı, süre değişmedi.
+- **Alternatifler:**
+  - Yalnızca compact için hafif tarama: daha hızlı değildi, ikinci bir kod yolu ve durum gerektirirdi.
+  - Sahipliği dosyaya vermek: `--resume` kopyalarında sonuç belirsizdi.
+  - Ayar dosyalarının `env` bloklarını okumak: süreç ortamıyla aynı bilgiyi verir, `env` içinde başka gizli değerler bulunabilir.
+  - Pencerenin ≈%90'ını tetiklenme noktası diye göstermek: belgelenmemiş bir iç ayrıntı; kullanıcı istemedi.
