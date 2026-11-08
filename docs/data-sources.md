@@ -236,6 +236,11 @@ projects/
 - **`inference_geo`:** `global` veya `not_available`. `us` gözlemlenmedi (ADR-025 "Bedel").
 - **`requestId` eksikliği:** Çok az sayıda satırda (`< %0,01`) `requestId` yok. Anahtar `(message.id, "")` olarak üretilir. `message.id` eksik satır görülmedi; görülürse anahtar `uuid` hash'inden üretilir ve `fallback_keys` sayacı artar.
 - **`cwd`:** Her dosyada en az bir satırda `cwd` var. Yine de `cwd`'siz dosyalar için dizin adından `unresolved:<dizin>` yedeği uygulanır.
+- **Compact sınırı (gözlem 2026-11-08, yalnızca anahtar yapısı):**
+  - Her compact bir `type: "system"`, `subtype: "compact_boundary"` kaydı bırakır.
+  - Kayıttaki `compactMetadata` alanları: `trigger` (`"manual"` gözlendi; otomatik için `"auto"` bekleniyor, doğrulanmadı), `preTokens`, `postTokens`, `durationMs`, `cumulativeDroppedTokens`. Hepsi sayıdır ve içerik taşımaz.
+  - Compact özeti ayrı bir mesaj kaydıdır. **Konuşma içeriğidir; asla parse edilmez.**
+  - Otomatik compact eşiği transcript'te ve statusline payload'ında yok. Gösterilecekse kaynağı "tahmin" olur.
 
 
 ---

@@ -55,6 +55,8 @@ Doğrulanmış Ultra hesaplarında 5 saatlik pencere kalktı (ADR-041). Bu adım
 | 12j | [Statusline düzenleyicisi: ayrı ayarlar sayfası ve UX iyileştirmesi](12j-statusline-duzenleyici.md) | 12i | ✅ (2026-11-08, ADR-050). Açık: yeni sürüm gerekli |
 | 12k | [Statusline düzen çekirdeği: ayraç öğeleri, boşluklar, hizalama](12k-statusline-duzen-cekirdek.md) | 12j | ✅ (2026-11-08, ADR-051). Açık: yeni sürüm gerekli |
 | 12l | [Statusline satır düzenleyicisi: satır kartları, boşluk ve ayraç öğeleri](12l-statusline-satir-duzenleyici.md) | 12k | ✅ (2026-11-08, ADR-052). Açık: yeni sürüm gerekli |
+| 12m | [Statusline zenginleştirme: yeni öğeler ve biçimler](12m-statusline-zenginlestirme.md) | 12l | ⬜ |
+| 12n | Store'a bağlı statusline öğeleri: compact sayısı, bugünkü maliyet, aktif oturumlar (aday, plan dosyası yok) | 12m | ⬜ Aday; kapsam kullanıcıyla netleşecek |
 
 ### v0.2 — Analitik ve Atıf
 
