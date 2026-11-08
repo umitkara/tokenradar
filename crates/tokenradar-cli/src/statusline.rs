@@ -6,7 +6,7 @@
 //! loudly: a broken statusline is worse than a sparse one.
 
 use std::io::{Read, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::sync::mpsc;
 use std::time::Duration;
@@ -17,6 +17,7 @@ use tokenradar_core::ipc::{
     Client, Hello, MAX_MESSAGE_BYTES, Op, PROTOCOL_VERSION, Request, StatusQuery, StatusReply,
     with_deadline,
 };
+use tokenradar_core::statusline::auto_compact::{self, Locations};
 use tokenradar_core::statusline::git;
 use tokenradar_core::statusline::line::{self, Line, SegmentKind, StatuslinePrefs, Style};
 use tokenradar_core::statusline::shell::Shell;
@@ -46,6 +47,37 @@ pub struct Deps<'a> {
     pub style: Style,
     /// `[statusline]` from `config.toml`.
     pub prefs: StatuslinePrefs,
+    /// Where the `compact` item reads Claude Code's auto-compact setting.
+    pub compact: CompactSources,
+}
+
+/// The places outside the payload that the auto-compact setting comes from; tests point
+/// them at temporary directories.
+pub struct CompactSources {
+    pub managed_dir: Option<PathBuf>,
+    /// The user settings' directory when the transcript path does not name one.
+    pub config_dir: Option<PathBuf>,
+    pub env: fn(&str) -> Option<String>,
+}
+
+impl CompactSources {
+    pub fn system() -> Self {
+        Self {
+            managed_dir: Locations::system_managed_dir(),
+            config_dir: default_config_dir(),
+            env: |key| std::env::var(key).ok(),
+        }
+    }
+}
+
+/// `<config>/projects/<dir>/<session>.jsonl` → `<config>`.
+fn config_dir_of(transcript: &str) -> Option<PathBuf> {
+    let projects = Path::new(transcript).parent()?.parent()?;
+    projects
+        .file_name()
+        .is_some_and(|n| n.eq_ignore_ascii_case("projects"))
+        .then(|| projects.parent().map(Path::to_path_buf))
+        .flatten()
 }
 
 /// The lines to print for `input` (Claude Code's stdin).
@@ -71,6 +103,29 @@ pub fn respond(input: Option<&[u8]>, deps: &Deps<'_>) -> String {
     if line.facts.git_branch.is_none() && deps.prefs.shows(SegmentKind::GitBranch) {
         let dir = line.facts.cwd.as_deref().map(std::path::Path::new);
         line.facts.git_branch = dir.and_then(git::branch);
+    }
+    // Settings files are read only when the line shows the `compact` item.
+    if deps.prefs.shows(SegmentKind::Compact) {
+        let facts = &line.facts;
+        let locations = Locations {
+            managed_dir: deps.compact.managed_dir.clone(),
+            project_dir: facts
+                .project_dir
+                .as_deref()
+                .or(facts.cwd.as_deref())
+                .map(PathBuf::from),
+            config_dir: payload
+                .as_ref()
+                .and_then(|p| p.transcript_path.as_deref())
+                .and_then(config_dir_of)
+                .or_else(|| deps.compact.config_dir.clone()),
+        };
+        line.auto_compact = auto_compact::resolve(
+            &locations.files(),
+            deps.compact.env,
+            facts.model_id.as_deref(),
+            facts.context_size,
+        );
     }
     let ours = line::render(deps.l10n, &line, &deps.prefs, deps.style);
     let Some((chained, position)) = chained else {

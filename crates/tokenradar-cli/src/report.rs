@@ -434,6 +434,7 @@ mod tests {
             share_percent: Some(9.0),
             cost_usd: 1.5,
             tokens_per_min: 0.0,
+            compacts: None,
         }];
         s.statusline_last_seen = Some(Timestamp::from_millis(now.as_millis() - 120_000));
         s

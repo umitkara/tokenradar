@@ -371,7 +371,11 @@ export type Format =
 /**  Limits and the context window: the percentage left, `58% left`. */
 "remaining" | 
 /**  The context window: the tokens left, `185k left`. */
-"tokens_left";
+"tokens_left" | 
+/**  Compactions: the total, `⟲3`. */
+"total" | 
+/**  Compactions: automatic and manual apart, `⟲2 auto 1 manual`. */
+"split";
 
 export type Freshness = 
 /**  Under 10 minutes old. */
@@ -741,6 +745,8 @@ export type SegmentKind = "five_hour" | "seven_day" |
 "burn_rate" | "session_name" | 
 /**  The share of the last request's input read from the prompt cache. */
 "cache_ratio" | "output_style" | 
+/**  How many times the session was compacted and the auto-compact window (Step 12n). */
+"compact" | 
 /**  A separator glyph of the user's choice. */
 "separator" | 
 /**  Starts a new output line. */

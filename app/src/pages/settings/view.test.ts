@@ -623,6 +623,7 @@ describe("statusline message keys", () => {
     "session_name",
     "cache_ratio",
     "output_style",
+    "compact",
     "separator",
     "line_break",
     "custom_text",
@@ -645,6 +646,8 @@ describe("statusline message keys", () => {
     "home",
     "remaining",
     "tokens_left",
+    "total",
+    "split",
   ] as const;
   const PRESETS = ["default", "minimal", "detailed", "two-line", "powerline", "split"];
 

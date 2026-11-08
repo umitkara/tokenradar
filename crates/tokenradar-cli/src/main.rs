@@ -69,6 +69,7 @@ fn run(ctx: &Context, command: Command) -> ExitCode {
                 chain_timeout: statusline::CHAIN_TIMEOUT,
                 style: render::style_from_env(ctx.config.statusline.color),
                 prefs: ctx.config.statusline.clone(),
+                compact: statusline::CompactSources::system(),
             };
             let out = statusline::respond(input.as_deref(), &deps);
             let mut stdout = std::io::stdout().lock();

@@ -34,6 +34,11 @@ fn deps<'a>(l10n: &'a Localizer, pipe: &str, spool: &Path) -> Deps<'a> {
             width: None,
         },
         prefs: StatuslinePrefs::default(),
+        compact: CompactSources {
+            managed_dir: None,
+            config_dir: None,
+            env: |_| None,
+        },
     }
 }
 
@@ -109,6 +114,11 @@ impl Handler for App {
             share_percent: Some(9.0),
             cost_usd: 0.0,
             tokens_per_min: 0.0,
+            compacts: Some(tokenradar_core::ipc::CompactCount {
+                auto: 2,
+                manual: 1,
+                other: 0,
+            }),
         });
         r
     }
@@ -149,6 +159,91 @@ fn with_the_app_the_reading_is_pushed_and_the_line_is_enriched() {
         0,
         "nothing spooled while the app runs"
     );
+    drop(stop);
+    server.join().expect("server");
+}
+
+/// A payload whose transcript lives in `config`, so the user settings are read from there.
+fn compact_input(config: &Path) -> Vec<u8> {
+    let transcript = config.join("projects").join("C--p").join("s1.jsonl");
+    let transcript = serde_json::to_string(&transcript).expect("path");
+    format!(
+        r#"{{"session_id":"s1","transcript_path":{transcript},"model":{{"id":"claude-opus-5-5"}}}}"#
+    )
+    .into_bytes()
+}
+
+fn compact_deps<'a>(l10n: &'a Localizer, pipe: &str, spool: &Path, split: bool) -> Deps<'a> {
+    use tokenradar_core::statusline::line::{Format, Item, SegmentKind};
+    let mut d = deps(l10n, pipe, spool);
+    let mut item = Item::new(SegmentKind::Compact);
+    if split {
+        item.format = Some(Format::Split);
+    }
+    d.prefs.items = vec![item];
+    d
+}
+
+#[test]
+fn without_the_app_the_compact_item_shows_the_setting_alone() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let config = tmp.path().join("claude");
+    std::fs::create_dir_all(&config).expect("mkdir");
+    let l10n = Localizer::new(Locale::En, &[Domain::Cli]);
+    let d = compact_deps(&l10n, &unique_pipe(), &tmp.path().join("spool"), false);
+    let input = compact_input(&config);
+
+    // No setting and no count: nothing to show.
+    let out = respond(Some(&input), &d);
+    assert!(!out.contains('⟲'), "{out}");
+
+    std::fs::write(
+        config.join("settings.json"),
+        r#"{"autoCompactWindow": 300000}"#,
+    )
+    .expect("settings");
+    assert_eq!(respond(Some(&input), &d), "⟲ 300k");
+    std::fs::write(
+        config.join("settings.json"),
+        r#"{"autoCompactEnabled": false}"#,
+    )
+    .expect("settings");
+    assert_eq!(respond(Some(&input), &d), "⟲ auto off");
+}
+
+#[test]
+fn with_the_app_the_compact_item_shows_the_count_and_the_setting() {
+    use tokenradar_core::ipc::server::{ServerConfig, run, stop_channel};
+
+    let pipe = unique_pipe();
+    let handler: Arc<dyn Handler> = Arc::new(App {
+        pushes: std::sync::Mutex::new(0),
+    });
+    let (stop, stop_rx) = stop_channel();
+    let (ready_tx, ready_rx) = mpsc::channel();
+    let config = ServerConfig::new(pipe.clone(), "test".into());
+    let server = std::thread::spawn(move || {
+        run(&config, handler, stop_rx, move |r| {
+            let _ = ready_tx.send(r.is_ok());
+        });
+    });
+    assert!(ready_rx.recv().expect("ready"));
+
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let claude = tmp.path().join("claude");
+    std::fs::create_dir_all(&claude).expect("mkdir");
+    let l10n = Localizer::new(Locale::Tr, &[Domain::Cli]);
+    let input = compact_input(&claude);
+    let total = compact_deps(&l10n, &pipe, tmp.path(), false);
+    assert_eq!(respond(Some(&input), &total), "⟲3");
+    std::fs::write(
+        claude.join("settings.json"),
+        r#"{"modelSettings": {"claude-opus-5-5": {"autoCompactWindow": 350000}}}"#,
+    )
+    .expect("settings");
+    assert_eq!(respond(Some(&input), &total), "⟲3 · 350k");
+    let split = compact_deps(&l10n, &pipe, tmp.path(), true);
+    assert_eq!(respond(Some(&input), &split), "⟲2 oto 1 elle · 350k");
     drop(stop);
     server.join().expect("server");
 }
