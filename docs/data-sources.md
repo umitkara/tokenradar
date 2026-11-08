@@ -238,9 +238,14 @@ projects/
 - **`cwd`:** Her dosyada en az bir satırda `cwd` var. Yine de `cwd`'siz dosyalar için dizin adından `unresolved:<dizin>` yedeği uygulanır.
 - **Compact sınırı (gözlem 2026-11-08, yalnızca anahtar yapısı):**
   - Her compact bir `type: "system"`, `subtype: "compact_boundary"` kaydı bırakır.
-  - Kayıttaki `compactMetadata` alanları: `trigger` (`"manual"` gözlendi; otomatik için `"auto"` bekleniyor, doğrulanmadı), `preTokens`, `postTokens`, `durationMs`, `cumulativeDroppedTokens`. Hepsi sayıdır ve içerik taşımaz.
+  - Kayıttaki `compactMetadata` alanları: `trigger` (`"manual"` ve `"auto"`, ikisi de gözlendi), `preTokens`, `postTokens`, `durationMs`, `cumulativeDroppedTokens`. Hepsi sayıdır ve içerik taşımaz.
   - Compact özeti ayrı bir mesaj kaydıdır. **Konuşma içeriğidir; asla parse edilmez.**
-  - Otomatik compact eşiği transcript'te ve statusline payload'ında yok. Gösterilecekse kaynağı "tahmin" olur.
+- **Otomatik compact eşiği:**
+  - Transcript'te ve statusline payload'ında yok.
+  - Claude Code ayarlarında `autoCompactEnabled` (bool) ve `autoCompactWindow` (token) anahtarları var. Etkin değer, ayar hiyerarşisi birleştirilerek bulunur: managed > proje local > proje > kullanıcı, artı ortam değişkenleri.
+  - Tetiklenme pencerenin kendisinde olmaz. Gözlemde otomatik compact'ların `preTokens / autoCompactWindow` oranının medyanı ≈0,90 çıktı; Claude Code belgelenmemiş bir pay düşüyor.
+  - Gösterim: pencere config değeridir. Tetiklenme noktası tahmindir (`≈`). Son otomatik compact'ın `preTokens` değeri gözlenmiş eşik olarak kullanılabilir.
+  - `~/.claude.json` içindeki `autoCompactOffer` ve `autoCompactWindowsCache` iç durumdur; kullanılmaz.
 
 
 ---
