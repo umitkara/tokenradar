@@ -11,8 +11,11 @@
 //!
 //! [[statusline.items]]
 //! kind = "seven_day"
-//! format = "bar"         # bar | percent
+//! format = "bar"         # bar | percent | remaining
 //! color = "cyan"         # limits: the color below the warning threshold only
+//! reset_format = "clock" # countdown | clock (local time of the reset)
+//! bar_width = 12         # 4 | 8 | 12
+//! bar_style = "dots"     # blocks | thin | dots
 //!
 //! [[statusline.items]]
 //! kind = "separator"
@@ -65,6 +68,14 @@ pub enum SegmentKind {
     Cwd,
     ProjectDir,
     GitBranch,
+    /// The weekly window's room left per day until its reset (Step 12m).
+    DailyBudget,
+    /// The session's API-priced cost per hour.
+    BurnRate,
+    SessionName,
+    /// The share of the last request's input read from the prompt cache.
+    CacheRatio,
+    OutputStyle,
     /// A separator glyph of the user's choice.
     Separator,
     /// Starts a new output line.
@@ -116,6 +127,35 @@ pub enum Format {
     Basename,
     /// The path with the home folder as `~`.
     Home,
+    /// Limits and the context window: the percentage left, `58% left`.
+    Remaining,
+    /// The context window: the tokens left, `185k left`.
+    TokensLeft,
+}
+
+/// How a limit shows its reset (Step 12m).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "snake_case")]
+pub enum ResetFormat {
+    /// `3d4h`.
+    #[default]
+    Countdown,
+    /// `Mon 09:00`, local time.
+    Clock,
+}
+
+/// The glyphs of a bar (Step 12m). The new styles use only glyphs that take one cell in every
+/// terminal: none of them is East Asian "Ambiguous".
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "snake_case")]
+pub enum BarStyle {
+    /// `███░░░░░`.
+    #[default]
+    Blocks,
+    /// `▬▬▬▭▭▭▭▭`.
+    Thin,
+    /// `⣿⣿⣿⣀⣀⣀⣀⣀`.
+    Dots,
 }
 
 /// The 16 terminal colors. The terminal's own palette decides what they look like.
@@ -177,9 +217,11 @@ pub const MAX_MARGIN: u8 = 8;
 /// it (or with 1) gets them inserted where the older builds drew them by themselves.
 pub const PREFS_VERSION: u8 = 2;
 pub const DEFAULT_SEPARATOR: &str = "│";
+/// The bar widths offered, in cells; the first is the default.
+pub const BAR_WIDTHS: [u8; 3] = [8, 4, 12];
 
 impl SegmentKind {
-    pub const ALL: [Self; 24] = [
+    pub const ALL: [Self; 29] = [
         Self::FiveHour,
         Self::SevenDay,
         Self::Scoped,
@@ -199,6 +241,11 @@ impl SegmentKind {
         Self::Cwd,
         Self::ProjectDir,
         Self::GitBranch,
+        Self::DailyBudget,
+        Self::BurnRate,
+        Self::SessionName,
+        Self::CacheRatio,
+        Self::OutputStyle,
         Self::Separator,
         Self::LineBreak,
         Self::CustomText,
@@ -227,6 +274,11 @@ impl SegmentKind {
             Self::Cwd => "cwd",
             Self::ProjectDir => "project_dir",
             Self::GitBranch => "git_branch",
+            Self::DailyBudget => "daily_budget",
+            Self::BurnRate => "burn_rate",
+            Self::SessionName => "session_name",
+            Self::CacheRatio => "cache_ratio",
+            Self::OutputStyle => "output_style",
             Self::Separator => "separator",
             Self::LineBreak => "line_break",
             Self::CustomText => "custom_text",
@@ -239,9 +291,22 @@ impl SegmentKind {
         Self::ALL.into_iter().find(|k| k.as_str() == s)
     }
 
-    /// A limit window. Limits are dropped last when the terminal is narrow.
+    /// A limit window, or a value of one. Limits are dropped last when the terminal is narrow.
     pub const fn is_limit(self) -> bool {
-        matches!(self, Self::FiveHour | Self::SevenDay | Self::Scoped)
+        matches!(
+            self,
+            Self::FiveHour | Self::SevenDay | Self::Scoped | Self::DailyBudget
+        )
+    }
+
+    /// The limit windows with a reset countdown and a time mark.
+    pub const fn is_window(self) -> bool {
+        matches!(self, Self::FiveHour | Self::SevenDay)
+    }
+
+    /// Whether one of its formats draws a bar.
+    pub fn has_bar(self) -> bool {
+        self.formats().contains(&Format::Bar)
     }
 
     /// An item that only arranges the line and shows no value.
@@ -273,7 +338,7 @@ impl SegmentKind {
 
     pub const fn group(self) -> Group {
         match self {
-            Self::FiveHour | Self::SevenDay | Self::Scoped => Group::Limit,
+            Self::FiveHour | Self::SevenDay | Self::Scoped | Self::DailyBudget => Group::Limit,
             Self::Cwd | Self::ProjectDir | Self::GitBranch => Group::Project,
             Self::Separator | Self::LineBreak | Self::CustomText | Self::Space | Self::Flex => {
                 Group::Layout
@@ -285,8 +350,15 @@ impl SegmentKind {
     /// The formats this kind accepts; the first is the default. Empty: one way to show it.
     pub const fn formats(self) -> &'static [Format] {
         match self {
-            Self::FiveHour | Self::SevenDay => &[Format::Bar, Format::Percent],
-            Self::Context => &[Format::Percent, Format::Bar, Format::Fraction],
+            Self::FiveHour | Self::SevenDay => &[Format::Bar, Format::Percent, Format::Remaining],
+            Self::Scoped => &[Format::Percent, Format::Remaining],
+            Self::Context => &[
+                Format::Percent,
+                Format::Bar,
+                Format::Fraction,
+                Format::Remaining,
+                Format::TokensLeft,
+            ],
             Self::Cost => &[Format::TwoDecimals, Format::FourDecimals],
             Self::Model | Self::SessionId => &[Format::Short, Format::Full],
             Self::TokensIn | Self::TokensOut => &[Format::Compact, Format::Full],
@@ -315,10 +387,13 @@ impl SegmentKind {
     /// The block color in the Powerline themes when the user picked none.
     pub const fn block_color(self) -> AnsiColor {
         match self {
-            Self::FiveHour | Self::SevenDay | Self::Scoped => AnsiColor::Cyan,
+            Self::FiveHour | Self::SevenDay | Self::Scoped | Self::DailyBudget => AnsiColor::Cyan,
             Self::Context | Self::Model | Self::Cwd | Self::ProjectDir => AnsiColor::Blue,
-            Self::SessionShare | Self::TokensIn | Self::TokensOut => AnsiColor::Magenta,
-            Self::Cost | Self::LinesChanged | Self::GitBranch => AnsiColor::Green,
+            Self::SessionShare | Self::TokensIn | Self::TokensOut | Self::CacheRatio => {
+                AnsiColor::Magenta
+            }
+            Self::Cost | Self::BurnRate | Self::LinesChanged | Self::GitBranch => AnsiColor::Green,
+            Self::SessionName | Self::OutputStyle => AnsiColor::BrightBlue,
             Self::VimMode => AnsiColor::Yellow,
             Self::AgentName => AnsiColor::BrightCyan,
             _ => AnsiColor::Gray,
@@ -327,7 +402,7 @@ impl SegmentKind {
 }
 
 impl Format {
-    pub const ALL: [Self; 13] = [
+    pub const ALL: [Self; 15] = [
         Self::Bar,
         Self::Percent,
         Self::Fraction,
@@ -341,6 +416,8 @@ impl Format {
         Self::Net,
         Self::Basename,
         Self::Home,
+        Self::Remaining,
+        Self::TokensLeft,
     ];
 
     pub const fn as_str(self) -> &'static str {
@@ -358,11 +435,56 @@ impl Format {
             Self::Net => "net",
             Self::Basename => "basename",
             Self::Home => "home",
+            Self::Remaining => "remaining",
+            Self::TokensLeft => "tokens_left",
         }
     }
 
     pub fn parse(s: &str) -> Option<Self> {
         Self::ALL.into_iter().find(|f| f.as_str() == s)
+    }
+}
+
+impl ResetFormat {
+    pub const ALL: [Self; 2] = [Self::Countdown, Self::Clock];
+
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Countdown => "countdown",
+            Self::Clock => "clock",
+        }
+    }
+
+    fn parse(s: &str) -> Option<Self> {
+        [Self::Countdown, Self::Clock]
+            .into_iter()
+            .find(|f| f.as_str() == s)
+    }
+}
+
+impl BarStyle {
+    pub const ALL: [Self; 3] = [Self::Blocks, Self::Thin, Self::Dots];
+
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Blocks => "blocks",
+            Self::Thin => "thin",
+            Self::Dots => "dots",
+        }
+    }
+
+    fn parse(s: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|b| b.as_str() == s)
+    }
+
+    /// The full cell, the empty cell and the time mark. The blocks were observed in Claude
+    /// Code (ADR-044); the other two keep to glyphs that are not "Ambiguous" (Step 12m).
+    pub const fn glyphs(self) -> (char, char, char) {
+        match self {
+            Self::Blocks => ('█', '░', '│'),
+            Self::Thin => ('▬', '▭', '|'),
+            Self::Dots => ('⣿', '⣀', '|'),
+        }
     }
 }
 
@@ -534,6 +656,11 @@ pub struct Item {
     pub text: String,
     /// `space`: the columns, 1–[`MAX_SPACE`]. 1 on every other kind.
     pub width: u8,
+    /// Limit windows: the reset as a countdown or a local time (Step 12m).
+    pub reset_format: ResetFormat,
+    /// Kinds with a bar: its cells, one of [`BAR_WIDTHS`]; 8 on every other kind.
+    pub bar_width: u8,
+    pub bar_style: BarStyle,
 }
 
 impl Item {
@@ -551,6 +678,9 @@ impl Item {
                 _ => String::new(),
             },
             width: 1,
+            reset_format: ResetFormat::Countdown,
+            bar_width: BAR_WIDTHS[0],
+            bar_style: BarStyle::Blocks,
         }
     }
 
@@ -599,14 +729,21 @@ impl Item {
             }
             _ => String::new(),
         };
-        if !matches!(self.kind, SegmentKind::FiveHour | SegmentKind::SevenDay) {
+        if !self.kind.is_window() {
             self.reset = true;
             self.pace = true;
+            self.reset_format = ResetFormat::Countdown;
         }
         self.width = match self.kind {
             SegmentKind::Space => self.width.clamp(1, MAX_SPACE),
             _ => 1,
         };
+        if !self.kind.has_bar() || !BAR_WIDTHS.contains(&self.bar_width) {
+            self.bar_width = BAR_WIDTHS[0];
+        }
+        if !self.kind.has_bar() {
+            self.bar_style = BarStyle::Blocks;
+        }
         self
     }
 
@@ -831,6 +968,15 @@ impl StatuslinePrefs {
             if i.kind == SegmentKind::Space && i.width != 1 {
                 t["width"] = value(i64::from(i.width));
             }
+            if i.reset_format != ResetFormat::Countdown {
+                t["reset_format"] = value(i.reset_format.as_str());
+            }
+            if i.bar_width != BAR_WIDTHS[0] {
+                t["bar_width"] = value(i64::from(i.bar_width));
+            }
+            if i.bar_style != BarStyle::Blocks {
+                t["bar_style"] = value(i.bar_style.as_str());
+            }
             items.push(t);
         }
         table["items"] = TomlItem::ArrayOfTables(items);
@@ -934,6 +1080,9 @@ impl<'de> Deserialize<'de> for StatuslinePrefs {
             pace: Option<Lax<bool>>,
             text: Option<Lax<String>>,
             width: Option<Lax<i64>>,
+            reset_format: Option<Lax<String>>,
+            bar_width: Option<Lax<i64>>,
+            bar_style: Option<Lax<String>>,
         }
         #[derive(Default, Deserialize)]
         #[serde(default)]
@@ -971,6 +1120,16 @@ impl<'de> Deserialize<'de> for StatuslinePrefs {
                     }
                     if let Some(width) = lax(r.width) {
                         item.width = small(width, MAX_SPACE);
+                    }
+                    if let Some(f) = lax(r.reset_format).as_deref().and_then(ResetFormat::parse) {
+                        item.reset_format = f;
+                    }
+                    // Anything but 4, 8 or 12 falls back to 8 in `normalized`.
+                    if let Some(w) = lax(r.bar_width) {
+                        item.bar_width = u8::try_from(w).unwrap_or(0);
+                    }
+                    if let Some(b) = lax(r.bar_style).as_deref().and_then(BarStyle::parse) {
+                        item.bar_style = b;
                     }
                     Some(item)
                 })

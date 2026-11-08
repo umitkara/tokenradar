@@ -27,6 +27,25 @@ sl-duration = { DUR($ms, "compact") }
 sl-number = { NUM($n, 0) }
 sl-thousands = { NUM($n, $d) }k
 sl-millions = { NUM($n, $d) }M
+# Adım 12m. Bir limitin ya da bağlam penceresinin kalanı.
+sl-remaining = { PCT($pct) } kaldı
+# $n önceden biçimlendirilmiş bir sayı (`185k`).
+sl-tokens-left = { $n } kaldı
+# Haftalık pencerede kalan payın sıfırlanmaya kadar güne düşen kısmı.
+sl-daily-budget = { PCT($pct) }/gün
+# Oturumun API fiyatlarıyla saatlik maliyeti; `API` işareti kalmalı.
+sl-burn-rate = API ${ NUM($usd, 2) }/sa
+# Son istekte girdinin önbellekten okunan payı. `cache` kısa formu kalır.
+sl-label-cache = cache
+# Sıfırlanma yerel saatle: `Pzt 09:00`.
+sl-reset-clock = { $day } { $time }
+sl-weekday-mon = Pzt
+sl-weekday-tue = Sal
+sl-weekday-wed = Çar
+sl-weekday-thu = Per
+sl-weekday-fri = Cum
+sl-weekday-sat = Cmt
+sl-weekday-sun = Paz
 sl-no-limits = henüz limit verisi yok
 
 ## Tablolar

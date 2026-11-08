@@ -65,6 +65,7 @@ impl Preset {
                     Item::new(K::FiveHour),
                     Item::new(K::SevenDay),
                     Item::new(K::Scoped),
+                    Item::new(K::DailyBudget),
                     Item::new(K::Context).with_format(Format::Bar),
                     Item::new(K::SessionShare),
                     Item::new(K::Cost),

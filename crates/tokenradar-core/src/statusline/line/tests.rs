@@ -203,12 +203,12 @@ fn colors_follow_the_thresholds() {
 
 #[test]
 fn the_bar_fills_in_eighths_and_any_use_shows() {
-    assert_eq!(render::bar_cells(0.0), 0);
-    assert_eq!(render::bar_cells(0.1), 1);
-    assert_eq!(render::bar_cells(12.5), 1);
-    assert_eq!(render::bar_cells(41.0), 4);
-    assert_eq!(render::bar_cells(99.9), 8);
-    assert_eq!(render::bar_cells(140.0), 8);
+    assert_eq!(render::bar_cells(0.0, 8), 0);
+    assert_eq!(render::bar_cells(0.1, 8), 1);
+    assert_eq!(render::bar_cells(12.5, 8), 1);
+    assert_eq!(render::bar_cells(41.0, 8), 4);
+    assert_eq!(render::bar_cells(99.9, 8), 8);
+    assert_eq!(render::bar_cells(140.0, 8), 8);
 }
 
 #[test]
@@ -466,10 +466,10 @@ fn elapsed_time_comes_from_the_reset_and_the_window_length() {
 
 #[test]
 fn the_time_mark_sits_between_cells_and_the_text_follows_the_value() {
-    assert_eq!(render::mark_at(0.0), 0);
-    assert_eq!(render::mark_at(43.0), 3);
-    assert_eq!(render::mark_at(44.0), 4);
-    assert_eq!(render::mark_at(100.0), 8);
+    assert_eq!(render::mark_at(0.0, 8), 0);
+    assert_eq!(render::mark_at(43.0, 8), 3);
+    assert_eq!(render::mark_at(44.0, 8), 4);
+    assert_eq!(render::mark_at(100.0, 8), 8);
 
     let p = StatuslinePrefs::legacy(&[SegmentKind::SevenDay], Layout::Single, true, true);
     let mut line = weekly_only();
@@ -536,4 +536,5 @@ fn the_payload_window_gets_its_elapsed_time() {
 }
 
 mod layout;
+mod v12m;
 mod v3;

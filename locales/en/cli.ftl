@@ -27,6 +27,25 @@ sl-duration = { DUR($ms, "compact") }
 sl-number = { NUM($n, 0) }
 sl-thousands = { NUM($n, $d) }k
 sl-millions = { NUM($n, $d) }M
+# Step 12m. What is left of a limit or the context window.
+sl-remaining = { PCT($pct) } left
+# $n is a count already formatted (`185k`).
+sl-tokens-left = { $n } left
+# The weekly window's room left per day until its reset.
+sl-daily-budget = { PCT($pct) }/day
+# The session's API-priced cost per hour; keep the `API` mark.
+sl-burn-rate = API ${ NUM($usd, 2) }/h
+# The share of the last request's input read from the prompt cache.
+sl-label-cache = cache
+# A reset as a local time: `Mon 09:00`.
+sl-reset-clock = { $day } { $time }
+sl-weekday-mon = Mon
+sl-weekday-tue = Tue
+sl-weekday-wed = Wed
+sl-weekday-thu = Thu
+sl-weekday-fri = Fri
+sl-weekday-sat = Sat
+sl-weekday-sun = Sun
 sl-no-limits = no limit data yet
 
 ## Tables

@@ -20,20 +20,21 @@ use specta::Type;
 use super::payload::{RateWindow, StatuslinePayload};
 use crate::domain::{Scope, Source, Timestamp};
 use crate::ipc::{LimitInfo, StatusReply};
-use crate::limits::{FRESH_MS, SESSION_WINDOW_MS, WEEK_MS};
+use crate::limits::{FRESH_MS, SESSION_WINDOW_MS, Severity, WEEK_MS};
 
 mod prefs;
 mod presets;
 mod render;
 
 pub use prefs::{
-    AnsiColor, ColorMode, DEFAULT_SEGMENTS, DEFAULT_SEPARATOR, Format, Group, Imported, Item,
-    Layout, MAX_ITEMS, MAX_LABEL, MAX_MARGIN, MAX_SEPARATOR, MAX_SPACE, MAX_TEXT, PREFS_VERSION,
-    SegmentKind, StatuslinePrefs, Theme, clean,
+    AnsiColor, BAR_WIDTHS, BarStyle, ColorMode, DEFAULT_SEGMENTS, DEFAULT_SEPARATOR, Format, Group,
+    Imported, Item, Layout, MAX_ITEMS, MAX_LABEL, MAX_MARGIN, MAX_SEPARATOR, MAX_SPACE, MAX_TEXT,
+    PREFS_VERSION, ResetFormat, SegmentKind, StatuslinePrefs, Theme, clean,
 };
 pub use presets::Preset;
 pub use render::{
-    CLAUDE_CODE_RESERVED, Paint, Span, Style, default_label, display_width, render, spans, to_ansi,
+    CLAUDE_CODE_RESERVED, Paint, Span, Style, bar_sample, default_label, display_width, render,
+    spans, to_ansi,
 };
 
 /// A value with where it came from and when.
@@ -101,7 +102,44 @@ pub struct Line {
     /// The rest of the payload's metadata, for the items added in Step 12i. All of it comes
     /// from the payload Claude Code just sent, so it is always current.
     pub facts: Facts,
+    /// Where the local time of a reset comes from (`reset_format = "clock"`).
+    pub zone: Zone,
 }
+
+/// The time zone a reset's wall-clock time is shown in.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum Zone {
+    /// The system's, with its daylight saving rules for the reset's date. Only on Windows for
+    /// now; elsewhere the reset stays a countdown rather than show UTC as local time.
+    #[default]
+    System,
+    /// A fixed offset east of UTC, in minutes: for tests.
+    Fixed(i32),
+}
+
+/// A wall-clock time; `weekday` 0 is Monday.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Clock {
+    pub weekday: u8,
+    pub hour: u8,
+    pub minute: u8,
+}
+
+/// The weekly window's room left per day (`daily_budget`): it keeps the window's source.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Budget {
+    /// Percentage points per day.
+    pub per_day: f64,
+    /// Critical with nothing left; past the window's thresholds, or running ahead of the time
+    /// line (ADR-044, ADR-045), what the window has.
+    pub severity: Severity,
+    pub source: Source,
+    pub observed_at: Timestamp,
+}
+
+/// A burn rate is noise in a session's first minutes.
+pub const BURN_RATE_MIN_MS: u64 = 5 * 60_000;
+const DAY_MS: i64 = 24 * 60 * 60_000;
 
 /// Session and project metadata from the payload.
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -127,6 +165,13 @@ pub struct Facts {
     pub git_branch: Option<String>,
     /// The home folder, for paths shown with `~`.
     pub home: Option<String>,
+    /// Step 12m: `session_name` and `output_style.name`.
+    pub session_name: Option<String>,
+    pub output_style: Option<String>,
+    /// The share of the last request's input read from the cache, 0–100 %.
+    pub cache_ratio: Option<f64>,
+    /// The last request's input tokens with the cache: what the context window holds now.
+    pub context_used: Option<u64>,
 }
 
 /// The state the settings preview draws its sample in.
@@ -154,6 +199,7 @@ impl Line {
             cost: None,
             model: None,
             facts: Facts::default(),
+            zone: Zone::System,
         }
     }
 
@@ -215,6 +261,77 @@ impl Line {
                 .filter(|name| !name.is_empty())
                 .map(|name| Reading::now(name.to_owned(), Source::Statusline, now)),
             facts: payload.map(facts).unwrap_or_default(),
+            zone: Zone::System,
+        }
+    }
+
+    /// The weekly window's room left, shared out over the days to its reset: at least one day,
+    /// a started day counting whole. `None` without a weekly window or its reset time.
+    pub fn daily_budget(&self) -> Option<Budget> {
+        let w = self.seven_day.as_ref()?;
+        let resets_in = w.resets_in.filter(|ms| *ms > 0)?;
+        let left = (100.0 - w.percent).max(0.0);
+        let days = (resets_in + DAY_MS - 1) / DAY_MS;
+        #[allow(clippy::cast_precision_loss)] // at most a few days
+        let per_day = left / days.max(1) as f64;
+        let ahead = w
+            .elapsed
+            .is_some_and(|e| crate::limits::pace::warns(w.percent, e));
+        let severity = if left <= 0.0 {
+            Severity::Crit
+        } else {
+            match Severity::of(w.percent) {
+                Severity::Ok if ahead => Severity::Warn,
+                s => s,
+            }
+        };
+        Some(Budget {
+            per_day,
+            severity,
+            source: w.source,
+            observed_at: w.observed_at,
+        })
+    }
+
+    /// The session's API-priced cost per hour: two measurements, so not an estimate. `None`
+    /// in the first [`BURN_RATE_MIN_MS`].
+    pub fn burn_rate(&self) -> Option<Reading<f64>> {
+        let cost = self.cost.as_ref()?;
+        let ms = self
+            .facts
+            .duration_ms
+            .filter(|ms| *ms >= BURN_RATE_MIN_MS)?;
+        #[allow(clippy::cast_precision_loss)] // durations are far below 2^52 ms
+        let hours = ms as f64 / 3_600_000.0;
+        Some(Reading {
+            value: cost.value / hours,
+            source: cost.source,
+            observed_at: cost.observed_at,
+        })
+    }
+
+    /// The tokens the context window has left: from the last request's counts, else from the
+    /// used percentage.
+    pub fn tokens_left(&self) -> Option<u64> {
+        let size = self.facts.context_size?;
+        if let Some(used) = self.facts.context_used {
+            return Some(size.saturating_sub(used));
+        }
+        let used = self.context.as_ref()?.value.clamp(0.0, 100.0);
+        #[allow(
+            clippy::cast_possible_truncation,
+            clippy::cast_sign_loss,
+            clippy::cast_precision_loss
+        )]
+        Some((size as f64 * (100.0 - used) / 100.0).round() as u64)
+    }
+
+    /// The local time `resets_in` ms from now; `None` where the zone is unknown.
+    pub fn reset_clock(&self, resets_in: i64) -> Option<Clock> {
+        let at = self.at.as_millis().checked_add(resets_in)?;
+        match self.zone {
+            Zone::Fixed(minutes) => utc_clock(at + i64::from(minutes) * 60_000),
+            Zone::System => system_clock(at),
         }
     }
 
@@ -298,7 +415,12 @@ impl Line {
                 project_dir: Some("/home/ada/projects/alpha".into()),
                 git_branch: Some("main".into()),
                 home: Some("/home/ada".into()),
+                session_name: Some("refactor parser".into()),
+                output_style: Some("Explanatory".into()),
+                cache_ratio: Some(88.8),
+                context_used: Some(76_000),
             },
+            zone: Zone::System,
         }
     }
 }
@@ -311,6 +433,18 @@ fn facts(p: &StatuslinePayload) -> Facts {
     let cost = p.cost.as_ref();
     let ctx = p.context_window.as_ref();
     let workspace = p.workspace.as_ref();
+    // The last request's input: fresh, written to the cache, read from it.
+    let usage = ctx.and_then(|c| c.current_usage.as_ref()).and_then(|u| {
+        let (fresh, written, read) = (
+            count(u.input_tokens),
+            count(u.cache_creation_input_tokens),
+            count(u.cache_read_input_tokens),
+        );
+        if fresh.is_none() && written.is_none() && read.is_none() {
+            return None;
+        }
+        Some((fresh.unwrap_or(0), written.unwrap_or(0), read.unwrap_or(0)))
+    });
     Facts {
         model_id: text(p.model.as_ref().and_then(|m| m.id.as_ref())),
         tokens_in: count(ctx.and_then(|c| c.total_input_tokens)),
@@ -340,7 +474,74 @@ fn facts(p: &StatuslinePayload) -> Facts {
             .or_else(|_| std::env::var("HOME"))
             .ok()
             .filter(|h| !h.is_empty()),
+        session_name: text(p.session_name.as_ref()),
+        output_style: text(p.output_style.as_ref().and_then(|o| o.name.as_ref())),
+        cache_ratio: usage.and_then(|(fresh, written, read)| {
+            let all = fresh + written + read;
+            #[allow(clippy::cast_precision_loss)] // token counts are far below 2^52
+            (all > 0).then(|| read as f64 / all as f64 * 100.0)
+        }),
+        context_used: usage.map(|(fresh, written, read)| fresh + written + read),
     }
+}
+
+/// The wall-clock time of `ms` since the epoch, read as UTC.
+fn utc_clock(ms: i64) -> Option<Clock> {
+    let dt = jiff::Timestamp::from_millisecond(ms)
+        .ok()?
+        .to_zoned(jiff::tz::TimeZone::UTC)
+        .datetime();
+    Some(Clock {
+        weekday: u8::try_from(dt.weekday().to_monday_zero_offset()).ok()?,
+        hour: u8::try_from(dt.hour()).ok()?,
+        minute: u8::try_from(dt.minute()).ok()?,
+    })
+}
+
+/// The local time of `ms` since the epoch, with the zone's rules for that date.
+#[cfg(windows)]
+#[allow(unsafe_code)]
+fn system_clock(ms: i64) -> Option<Clock> {
+    use windows_sys::Win32::Foundation::SYSTEMTIME;
+    use windows_sys::Win32::System::Time::SystemTimeToTzSpecificLocalTime;
+    let utc = jiff::Timestamp::from_millisecond(ms)
+        .ok()?
+        .to_zoned(jiff::tz::TimeZone::UTC)
+        .datetime();
+    let part = |n: i8| u16::try_from(n).ok();
+    let st = SYSTEMTIME {
+        wYear: u16::try_from(utc.year()).ok()?,
+        wMonth: part(utc.month())?,
+        wDayOfWeek: 0,
+        wDay: part(utc.day())?,
+        wHour: part(utc.hour())?,
+        wMinute: part(utc.minute())?,
+        wSecond: part(utc.second())?,
+        wMilliseconds: 0,
+    };
+    let mut local = st;
+    // SAFETY: a null zone is the current one; both pointers are to valid SYSTEMTIMEs.
+    let ok =
+        unsafe { SystemTimeToTzSpecificLocalTime(std::ptr::null(), &raw const st, &raw mut local) };
+    if ok == 0 {
+        return None;
+    }
+    let date = jiff::civil::Date::new(
+        i16::try_from(local.wYear).ok()?,
+        i8::try_from(local.wMonth).ok()?,
+        i8::try_from(local.wDay).ok()?,
+    )
+    .ok()?;
+    Some(Clock {
+        weekday: u8::try_from(date.weekday().to_monday_zero_offset()).ok()?,
+        hour: u8::try_from(local.wHour).ok()?,
+        minute: u8::try_from(local.wMinute).ok()?,
+    })
+}
+
+#[cfg(not(windows))]
+fn system_clock(_ms: i64) -> Option<Clock> {
+    None
 }
 
 fn until(at: Option<Timestamp>, now: Timestamp) -> Option<i64> {

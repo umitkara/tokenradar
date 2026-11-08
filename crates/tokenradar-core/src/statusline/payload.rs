@@ -41,6 +41,15 @@ pub struct StatuslinePayload {
     pub agent: Option<AgentInfo>,
     #[serde(default, skip_serializing)]
     pub worktree: Option<WorktreeInfo>,
+    /// Step 12m, observed 2026-11-08: the output style's name only.
+    #[serde(default, skip_serializing)]
+    pub output_style: Option<OutputStyleInfo>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+pub struct OutputStyleInfo {
+    #[serde(default)]
+    pub name: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Deserialize)]
@@ -106,6 +115,20 @@ pub struct ContextInfo {
     pub total_output_tokens: Option<f64>,
     #[serde(default, skip_serializing)]
     pub context_window_size: Option<f64>,
+    /// The last request's token counts (Step 12m, observed 2026-11-08); for the line only.
+    #[serde(default, skip_serializing)]
+    pub current_usage: Option<CurrentUsage>,
+}
+
+/// `context_window.current_usage`: counts only. `output_tokens` is not read.
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+pub struct CurrentUsage {
+    #[serde(default)]
+    pub input_tokens: Option<f64>,
+    #[serde(default)]
+    pub cache_creation_input_tokens: Option<f64>,
+    #[serde(default)]
+    pub cache_read_input_tokens: Option<f64>,
 }
 
 /// Each window can be missing on its own: Claude Code drops a window once its `resets_at` passed.

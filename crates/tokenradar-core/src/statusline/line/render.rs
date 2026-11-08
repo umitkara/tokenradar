@@ -6,11 +6,12 @@
 //!
 //! 1. session and project items, from the end of the user's list (with the separators and
 //!    texts right before them);
-//! 2. the bar (with its time mark);
-//! 3. the elapsed time (`⏱43%`);
-//! 4. the projection (`▲38m`);
-//! 5. the reset countdowns;
-//! 6. limit items from the end, keeping the first; then the remaining texts.
+//! 2. a 12-cell bar becomes an 8-cell one;
+//! 3. the bar (with its time mark);
+//! 4. the elapsed time (`⏱43%`);
+//! 5. the projection (`▲38m`);
+//! 6. the resets, countdowns and clock times alike;
+//! 7. limit items from the end, keeping the first; then the remaining texts.
 //!
 //! Colors (ADR-049): an item's own color replaces the automatic one, but on limits and the
 //! context window only below the warning threshold: the warning and critical colors, and the
@@ -29,15 +30,14 @@ use specta::Type;
 use tokenradar_i18n::{Arg, Localizer};
 use unicode_width::UnicodeWidthStr;
 
-use super::{AnsiColor, Format, Item, Line, Reading, SegmentKind, StatuslinePrefs, Theme, Window};
+use super::{
+    AnsiColor, BarStyle, Format, Item, Line, Reading, ResetFormat, SegmentKind, StatuslinePrefs,
+    Theme, Window,
+};
 use crate::limits::Severity;
 
-/// Cells in the bar; each stands for 12.5 %.
+/// Cells in a bar when it has to narrow (and by default); each stands for 12.5 %.
 const BAR_CELLS: usize = 8;
-const BAR_FULL: char = '█';
-const BAR_EMPTY: char = '░';
-/// Where the window's time stands, between two cells (ADR-044).
-const BAR_MARK: char = '│';
 
 /// Columns Claude Code keeps free at the right of the statusline: a line wider than
 /// `COLUMNS - 4` is cut with `…` there (observed 2026-11-08, ADR-051).
@@ -106,6 +106,8 @@ pub struct Style {
 #[derive(Clone, Copy)]
 #[allow(clippy::struct_excessive_bools)] // one switch per part of a segment
 struct Detail {
+    /// A bar wider than [`BAR_CELLS`] keeps its width.
+    wide: bool,
     bar: bool,
     pace: bool,
     eta: bool,
@@ -113,11 +115,40 @@ struct Detail {
 }
 
 const COMPACT: Detail = Detail {
+    wide: false,
     bar: false,
     pace: false,
     eta: false,
     resets: false,
 };
+
+/// How an item draws a limit window: its format and its bar.
+#[derive(Clone, Copy)]
+struct Look {
+    remaining: bool,
+    clock: bool,
+    cells: usize,
+    style: BarStyle,
+}
+
+impl Look {
+    const PLAIN: Self = Self {
+        remaining: false,
+        clock: false,
+        cells: BAR_CELLS,
+        style: BarStyle::Blocks,
+    };
+
+    fn of(item: &Item, d: Detail) -> Self {
+        let cells = usize::from(item.bar_width);
+        Self {
+            remaining: item.format == Some(Format::Remaining),
+            clock: item.reset_format == ResetFormat::Clock,
+            cells: if d.wide { cells } else { cells.min(BAR_CELLS) },
+            style: item.bar_style,
+        }
+    }
+}
 
 struct Ctx<'a> {
     l: &'a Localizer,
@@ -184,6 +215,7 @@ pub fn spans(l: &Localizer, line: &Line, prefs: &StatuslinePrefs, style: Style) 
 /// least one of them. Empty when none of the items has a value to show.
 fn fit(ctx: &Ctx<'_>, indices: &[usize], width: Option<usize>) -> Vec<Span> {
     let mut d = Detail {
+        wide: true,
         bar: true,
         pace: true,
         eta: true,
@@ -212,6 +244,8 @@ fn fit(ctx: &Ctx<'_>, indices: &[usize], width: Option<usize>) -> Vec<Span> {
             })
         {
             drop_at(ctx, &mut idx, p);
+        } else if d.wide && wide_bars(ctx, &idx) {
+            d.wide = false;
         } else if d.bar {
             d.bar = false;
         } else if d.pace {
@@ -230,6 +264,14 @@ fn fit(ctx: &Ctx<'_>, indices: &[usize], width: Option<usize>) -> Vec<Span> {
             return place(ctx, &idx, regions, width);
         }
     }
+}
+
+/// Whether one of the items at `idx` draws a bar wider than [`BAR_CELLS`].
+fn wide_bars(ctx: &Ctx<'_>, idx: &[usize]) -> bool {
+    idx.iter().any(|&i| {
+        let item = &ctx.items[i];
+        item.format == Some(Format::Bar) && usize::from(item.bar_width) > BAR_CELLS
+    })
 }
 
 /// Layout items a narrow line may give up; a `flex` always stays.
@@ -517,6 +559,12 @@ fn severity(ctx: &Ctx<'_>, kind: SegmentKind) -> Option<Severity> {
             .as_ref()
             .filter(|r| !line.is_stale(r.observed_at))
             .map(|r| Severity::of(r.value)),
+        SegmentKind::DailyBudget => line
+            .daily_budget()
+            .filter(|b| {
+                b.source != crate::domain::Source::Estimate && !line.is_stale(b.observed_at)
+            })
+            .map(|b| b.severity),
         _ => None,
     }
 }
@@ -540,6 +588,7 @@ pub fn default_label(l: &Localizer, kind: SegmentKind) -> String {
         SegmentKind::Duration => "sl-label-duration",
         SegmentKind::ApiDuration => "sl-label-api-duration",
         SegmentKind::GitBranch => "sl-label-git",
+        SegmentKind::CacheRatio => "sl-label-cache",
         _ => return String::new(),
     };
     l.msg(key)
@@ -576,13 +625,14 @@ fn piece(ctx: &Ctx<'_>, i: usize, d: Detail) -> Option<Vec<Span>> {
                 SegmentKind::FiveHour => line.five_hour.as_ref(),
                 _ => line.seven_day.as_ref(),
             }?;
+            let look = Look::of(item, d);
             let d = Detail {
                 bar: d.bar && ctx.bars() && item.format == Some(Format::Bar),
                 pace: d.pace && item.pace,
-                eta: d.eta,
                 resets: d.resets && item.reset,
+                ..d
             };
-            Some(window(l, line, &lbl(), w, d))
+            Some(window(l, line, &lbl(), w, d, look))
         }
         SegmentKind::Scoped => {
             let mut out = Vec::new();
@@ -595,7 +645,11 @@ fn piece(ctx: &Ctx<'_>, i: usize, d: Detail) -> Option<Vec<Span>> {
                     out.push(value_sep(ctx));
                 }
                 // Compact: the label and the percentage, no bar, no countdown.
-                out.extend(window(l, line, &s.label, &s.window, COMPACT));
+                let look = Look {
+                    remaining: item.format == Some(Format::Remaining),
+                    ..Look::PLAIN
+                };
+                out.extend(window(l, line, &s.label, &s.window, COMPACT, look));
             }
             (!line.scoped.is_empty()).then_some(out)
         }
@@ -606,11 +660,12 @@ fn piece(ctx: &Ctx<'_>, i: usize, d: Detail) -> Option<Vec<Span>> {
             let pct = l.fmt("sl-percent", &[("pct", Arg::Num(r.value))]);
             Some(match item.format {
                 Some(Format::Bar) if d.bar && ctx.bars() => {
+                    let look = Look::of(item, d);
                     let mut out = Vec::new();
                     if !label.is_empty() {
                         out.push(span(format!("{label} "), paint));
                     }
-                    out.extend(bar(r.value, None, paint));
+                    out.extend(bar(r.value, None, paint, look));
                     out.push(span(" ", Paint::Plain));
                     out.push(span(pct, paint));
                     out
@@ -621,6 +676,16 @@ fn piece(ctx: &Ctx<'_>, i: usize, d: Detail) -> Option<Vec<Span>> {
                     let used = count(l, facts.tokens_in.unwrap_or(0), Format::Compact);
                     let size = count(l, facts.context_size.unwrap_or(0), Format::Compact);
                     vec![span(labeled(&label, &format!("{used}/{size}")), paint)]
+                }
+                Some(Format::Remaining) => {
+                    let left = (100.0 - r.value).max(0.0);
+                    let text = l.fmt("sl-remaining", &[("pct", Arg::Num(left))]);
+                    vec![span(labeled(&label, &text), paint)]
+                }
+                Some(Format::TokensLeft) if line.tokens_left().is_some() => {
+                    let left = count(l, line.tokens_left().unwrap_or(0), Format::Compact);
+                    let text = l.fmt("sl-tokens-left", &[("n", Arg::Str(&left))]);
+                    vec![span(labeled(&label, &text), paint)]
                 }
                 _ => vec![span(labeled(&label, &pct), paint)],
             })
@@ -711,6 +776,41 @@ fn piece(ctx: &Ctx<'_>, i: usize, d: Detail) -> Option<Vec<Span>> {
             plain(labeled(&lbl(), &text))
         }
         SegmentKind::GitBranch => plain(labeled(&lbl(), facts.git_branch.as_ref()?)),
+        SegmentKind::DailyBudget => {
+            let budget = line.daily_budget()?;
+            let estimated = budget.source == crate::domain::Source::Estimate;
+            let paint = if estimated || line.is_stale(budget.observed_at) {
+                Paint::Dim
+            } else {
+                Paint::of(budget.severity)
+            };
+            // Whole points from 10 up, one decimal below: `9%/day` reads better than `9.4%`.
+            let per_day = if budget.per_day >= 10.0 {
+                budget.per_day.round()
+            } else {
+                (budget.per_day * 10.0).round() / 10.0
+            };
+            let mark = if estimated { "≈" } else { "" };
+            let text = l.fmt("sl-daily-budget", &[("pct", Arg::Num(per_day))]);
+            Some(vec![span(labeled(&lbl(), &format!("{mark}{text}")), paint)])
+        }
+        SegmentKind::BurnRate => line.burn_rate().map(|r| {
+            // Derived from the API-priced cost: the `API` mark stays (ADR-042).
+            let text = l.fmt("sl-burn-rate", &[("usd", Arg::Num(r.value))]);
+            vec![span(
+                labeled(&lbl(), &text),
+                value_paint(line, &r, Paint::Plain),
+            )]
+        }),
+        SegmentKind::SessionName => plain(labeled(&lbl(), facts.session_name.as_ref()?)),
+        SegmentKind::OutputStyle => plain(labeled(&lbl(), facts.output_style.as_ref()?)),
+        SegmentKind::CacheRatio => {
+            let pct = facts.cache_ratio?;
+            plain(labeled(
+                &lbl(),
+                &l.fmt("sl-percent", &[("pct", Arg::Num(pct.round()))]),
+            ))
+        }
         SegmentKind::Separator => Some(vec![span(
             item.text.clone(),
             if item.color.is_some() {
@@ -741,8 +841,9 @@ fn value_paint<T>(line: &Line, r: &Reading<T>, paint: Paint) -> Paint {
     }
 }
 
-/// `7d ███│░░░░░ 41% ⏱43% · 3d4h ▲38m`.
-fn window(l: &Localizer, line: &Line, label: &str, w: &Window, d: Detail) -> Vec<Span> {
+/// `7d ███│░░░░░ 41% ⏱43% · 3d4h ▲38m`. With `look.remaining` the percentage is what is
+/// left (`59% left`), the colors still follow what is used.
+fn window(l: &Localizer, line: &Line, label: &str, w: &Window, d: Detail, look: Look) -> Vec<Span> {
     let dim = w.estimated() || line.is_stale(w.observed_at);
     let paint = if dim {
         Paint::Dim
@@ -758,11 +859,16 @@ fn window(l: &Localizer, line: &Line, label: &str, w: &Window, d: Detail) -> Vec
     }
     let elapsed = w.elapsed.filter(|_| d.pace);
     if d.bar {
-        out.extend(bar(w.percent, elapsed, paint));
+        out.extend(bar(w.percent, elapsed, paint, look));
         out.push(span(" ", Paint::Plain));
     }
     out.push(span(
-        l.fmt("sl-percent", &[("pct", Arg::Num(w.percent))]),
+        if look.remaining {
+            let left = (100.0 - w.percent).max(0.0);
+            l.fmt("sl-remaining", &[("pct", Arg::Num(left))])
+        } else {
+            l.fmt("sl-percent", &[("pct", Arg::Num(w.percent))])
+        },
         paint,
     ));
     if let Some(pct) = elapsed {
@@ -773,11 +879,23 @@ fn window(l: &Localizer, line: &Line, label: &str, w: &Window, d: Detail) -> Vec
         ));
     }
     if let Some(ms) = w.resets_in.filter(|_| d.resets) {
+        let clock = look.clock.then(|| line.reset_clock(ms)).flatten();
+        let text = match clock {
+            Some(c) => l.fmt(
+                "sl-reset-clock",
+                &[
+                    (
+                        "day",
+                        Arg::Str(&l.msg(WEEKDAYS[usize::from(c.weekday % 7)])),
+                    ),
+                    ("time", Arg::Str(&format!("{:02}:{:02}", c.hour, c.minute))),
+                ],
+            ),
+            // Without a known zone the countdown stands in: never UTC passed off as local.
+            None => l.fmt("sl-resets-in", &[("ms", ms_arg_i(ms))]),
+        };
         out.push(span(" · ", Paint::Dim));
-        out.push(span(
-            l.fmt("sl-resets-in", &[("ms", ms_arg_i(ms))]),
-            if dim { Paint::Dim } else { Paint::Plain },
-        ));
+        out.push(span(text, if dim { Paint::Dim } else { Paint::Plain }));
     }
     if let Some(ms) = w.eta.filter(|_| d.eta) {
         out.push(span(" ", Paint::Plain));
@@ -789,20 +907,38 @@ fn window(l: &Localizer, line: &Line, label: &str, w: &Window, d: Detail) -> Vec
     out
 }
 
+/// A short bar in `style` for the editor's style picker: two of five cells full.
+pub fn bar_sample(style: BarStyle) -> String {
+    let (full, empty, _) = style.glyphs();
+    [full, full, empty, empty, empty].iter().collect()
+}
+
+/// The weekday names, Monday first.
+const WEEKDAYS: [&str; 7] = [
+    "sl-weekday-mon",
+    "sl-weekday-tue",
+    "sl-weekday-wed",
+    "sl-weekday-thu",
+    "sl-weekday-fri",
+    "sl-weekday-sat",
+    "sl-weekday-sun",
+];
+
 /// The bar's cells, with the time mark between two of them when `elapsed` is known.
-fn bar(percent: f64, elapsed: Option<f64>, paint: Paint) -> Vec<Span> {
-    let full = bar_cells(percent);
-    let mut cells: Vec<(char, Paint)> = (0..BAR_CELLS)
+fn bar(percent: f64, elapsed: Option<f64>, paint: Paint, look: Look) -> Vec<Span> {
+    let (full_glyph, empty_glyph, mark) = look.style.glyphs();
+    let full = bar_cells(percent, look.cells);
+    let mut cells: Vec<(char, Paint)> = (0..look.cells)
         .map(|i| {
             if i < full {
-                (BAR_FULL, paint)
+                (full_glyph, paint)
             } else {
-                (BAR_EMPTY, Paint::Dim)
+                (empty_glyph, Paint::Dim)
             }
         })
         .collect();
     if let Some(pct) = elapsed {
-        cells.insert(mark_at(pct), (BAR_MARK, Paint::Plain));
+        cells.insert(mark_at(pct, look.cells), (mark, Paint::Plain));
     }
     let mut out: Vec<Span> = Vec::new();
     for (c, p) in cells {
@@ -815,26 +951,26 @@ fn bar(percent: f64, elapsed: Option<f64>, paint: Paint) -> Vec<Span> {
     out
 }
 
-/// The cell boundary nearest to `elapsed`: 0 before the first cell, 8 after the last.
+/// The cell boundary nearest to `elapsed`: 0 before the first of `n` cells, `n` after the last.
 #[allow(
     clippy::cast_possible_truncation,
     clippy::cast_sign_loss,
     clippy::cast_precision_loss
 )]
-pub(super) fn mark_at(elapsed: f64) -> usize {
-    let at = (elapsed.clamp(0.0, 100.0) / 100.0 * BAR_CELLS as f64).round();
-    (at as usize).min(BAR_CELLS)
+pub(super) fn mark_at(elapsed: f64, n: usize) -> usize {
+    let at = (elapsed.clamp(0.0, 100.0) / 100.0 * n as f64).round();
+    (at as usize).min(n)
 }
 
-/// Filled cells: any use shows at least one, only 100 % fills all.
+/// Filled cells of `n`: any use shows at least one, only 100 % fills all.
 #[allow(
     clippy::cast_possible_truncation,
     clippy::cast_sign_loss,
     clippy::cast_precision_loss
 )]
-pub(super) fn bar_cells(percent: f64) -> usize {
-    let cells = (percent.clamp(0.0, 100.0) / 100.0 * BAR_CELLS as f64).ceil();
-    (cells as usize).min(BAR_CELLS)
+pub(super) fn bar_cells(percent: f64, n: usize) -> usize {
+    let cells = (percent.clamp(0.0, 100.0) / 100.0 * n as f64).ceil();
+    (cells as usize).min(n)
 }
 
 /// A count: `15.5k`, `76k`, `1.2M` (compact) or every digit with grouping (full).
