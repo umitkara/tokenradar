@@ -8,7 +8,7 @@ sl-percent = { PCT($pct) }
 sl-resets-in = { DUR($ms, "compact") }
 sl-eta = ▲{ DUR($ms, "compact") }
 # Pencerenin zaman olarak ne kadarının geçtiği (kullanım değil, saat).
-sl-elapsed = ⏱{ PCT($pct) }
+sl-elapsed = { $mark }{ PCT($pct) }
 sl-session-share = ≈{ PCT($pct) } bu oturum
 # Bağlam penceresinin doluluğu. `ctx` kısa formu her dilde aynı kalır.
 sl-label-context = ctx
@@ -46,12 +46,12 @@ sl-weekday-thu = Per
 sl-weekday-fri = Cum
 sl-weekday-sat = Cmt
 sl-weekday-sun = Paz
-sl-compact-total = ⟲{ NUM($n, 0) }
-sl-compact-split = ⟲{ NUM($auto, 0) } oto { NUM($manual, 0) } elle
+sl-compact-total = { $mark }{ NUM($n, 0) }
+sl-compact-split = { $mark }{ NUM($auto, 0) } oto { NUM($manual, 0) } elle
 sl-compact-other = { NUM($n, 0) } diğer
 sl-compact-off = oto kapalı
 sl-compact-with-limit = { $count } · { $limit }
-sl-compact-limit-only = ⟲ { $limit }
+sl-compact-limit-only = { $mark } { $limit }
 sl-no-limits = henüz limit verisi yok
 
 ## Tablolar

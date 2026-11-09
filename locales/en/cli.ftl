@@ -7,8 +7,9 @@ sl-label-seven-day = 7d
 sl-percent = { PCT($pct) }
 sl-resets-in = { DUR($ms, "compact") }
 sl-eta = ▲{ DUR($ms, "compact") }
-# How much of the window's time has passed (clock time, not usage).
-sl-elapsed = ⏱{ PCT($pct) }
+# How much of the window's time has passed (clock time, not usage). $mark is a symbol
+# (`⏱`, or an hourglass icon), the same in every language.
+sl-elapsed = { $mark }{ PCT($pct) }
 sl-session-share = ≈{ PCT($pct) } this session
 # How full the context window is. `ctx` stays as the short form in every language.
 sl-label-context = ctx
@@ -46,9 +47,10 @@ sl-weekday-thu = Thu
 sl-weekday-fri = Fri
 sl-weekday-sat = Sat
 sl-weekday-sun = Sun
-# Step 12n. How many times the session was compacted.
-sl-compact-total = ⟲{ NUM($n, 0) }
-sl-compact-split = ⟲{ NUM($auto, 0) } auto { NUM($manual, 0) } manual
+# Step 12n. How many times the session was compacted. $mark is a symbol (`⟲`, or a fold
+# icon), the same in every language.
+sl-compact-total = { $mark }{ NUM($n, 0) }
+sl-compact-split = { $mark }{ NUM($auto, 0) } auto { NUM($manual, 0) } manual
 # Compactions with a trigger this version does not know.
 sl-compact-other = { NUM($n, 0) } other
 # Auto-compact is turned off in Claude Code's settings.
@@ -56,7 +58,7 @@ sl-compact-off = auto off
 # $count and $limit are already formatted (`⟲3`, `300k`).
 sl-compact-with-limit = { $count } · { $limit }
 # The setting alone, while the count is not known.
-sl-compact-limit-only = ⟲ { $limit }
+sl-compact-limit-only = { $mark } { $limit }
 sl-no-limits = no limit data yet
 
 ## Tables

@@ -17,7 +17,11 @@
 //! context window only below the warning threshold: the warning and critical colors, and the
 //! dim drawing of estimates and stale values, always win. Without color the Powerline themes
 //! fall back to the plain one and the bar is left out. The Powerline blocks leave the bar out
-//! too: drawn in the block's text color, its full and empty cells look alike.
+//! too: drawn in the block's text color, its full and empty cells look alike. The capsule is
+//! the exception (Step 12p): its cells differ in shape, so it is drawn in a block as well.
+//!
+//! Labels (Step 12p): an item's own label, else its symbol in the chosen icon set, else the
+//! localized words. A label of only spaces shows nothing, not even a symbol.
 //!
 //! Layout (ADR-051): only the separators in the list are drawn, and only between two items
 //! that are drawn in the same region; two neighbouring items are joined by one space, `space`
@@ -31,8 +35,8 @@ use tokenradar_i18n::{Arg, Localizer};
 use unicode_width::UnicodeWidthStr;
 
 use super::{
-    AnsiColor, BarStyle, Format, Item, Line, Reading, ResetFormat, SegmentKind, StatuslinePrefs,
-    Theme, Window,
+    AnsiColor, BarStyle, Format, IconSet, Item, Line, Reading, ResetFormat, SegmentKind,
+    StatuslinePrefs, Theme, Window,
 };
 use crate::limits::Severity;
 use crate::statusline::auto_compact::AutoCompact;
@@ -133,6 +137,8 @@ struct Look {
     clock: bool,
     cells: usize,
     style: BarStyle,
+    /// Drawn in a Powerline block: every cell takes the block's text color.
+    block: bool,
 }
 
 impl Look {
@@ -141,15 +147,17 @@ impl Look {
         clock: false,
         cells: BAR_CELLS,
         style: BarStyle::Blocks,
+        block: false,
     };
 
-    fn of(item: &Item, d: Detail) -> Self {
+    fn of(ctx: &Ctx<'_>, item: &Item, d: Detail) -> Self {
         let cells = usize::from(item.bar_width);
         Self {
             remaining: item.format == Some(Format::Remaining),
             clock: item.reset_format == ResetFormat::Clock,
             cells: if d.wide { cells } else { cells.min(BAR_CELLS) },
             style: item.bar_style,
+            block: ctx.theme != Theme::Plain,
         }
     }
 }
@@ -161,6 +169,7 @@ struct Ctx<'a> {
     separator: &'a str,
     color: bool,
     theme: Theme,
+    icons: IconSet,
 }
 
 impl Ctx<'_> {
@@ -168,9 +177,10 @@ impl Ctx<'_> {
         self.items[i].kind
     }
 
-    /// Whether bars are drawn: only in color, and only on the plain theme.
-    fn bars(&self) -> bool {
-        self.color && self.theme == Theme::Plain
+    /// Whether a bar in `style` is drawn: only in color, and only on the plain theme, except
+    /// the capsule, which reads in a Powerline block's single color too (Step 12p).
+    fn bars(&self, style: BarStyle) -> bool {
+        self.color && (self.theme == Theme::Plain || style == BarStyle::Capsule)
     }
 }
 
@@ -192,6 +202,7 @@ pub fn spans(l: &Localizer, line: &Line, prefs: &StatuslinePrefs, style: Style) 
         } else {
             Theme::Plain
         },
+        icons: prefs.icons,
     };
     let mut groups: Vec<Vec<usize>> = vec![Vec::new()];
     for (i, item) in prefs.items.iter().enumerate().filter(|(_, i)| i.enabled) {
@@ -433,11 +444,17 @@ fn compose_plain(ctx: &Ctx<'_>, idx: &[usize], d: Detail) -> Vec<Span> {
             out.push(span(" ", Paint::Plain));
         }
         out.extend(spans.into_iter().map(|mut s| {
-            if let Some(c) = item.color
-                && matches!(s.paint, Paint::Ok | Paint::Plain)
-                && !s.text.trim().is_empty()
-            {
-                s.fg = Some(c);
+            if let Some(c) = item.color {
+                if s.bg.is_some() {
+                    // A solid bar's fill takes the user's color below the warning threshold;
+                    // the time mark on it keeps a color that shows.
+                    if s.paint == Paint::Ok {
+                        s.bg = Some(c);
+                        s.fg = s.fg.map(|_| c.contrast());
+                    }
+                } else if matches!(s.paint, Paint::Ok | Paint::Plain) && !s.text.trim().is_empty() {
+                    s.fg = Some(c);
+                }
             }
             s.item = Some(tag(i));
             s
@@ -609,10 +626,18 @@ pub fn default_label(l: &Localizer, kind: SegmentKind) -> String {
     l.msg(key)
 }
 
-/// The item's label: the user's, or the default. Only spaces: no label.
-fn label(l: &Localizer, item: &Item) -> String {
+/// The label an item shows when the user gave none, in icon set `icons`: the set's symbol, or
+/// the words when it has none (Step 12p).
+pub fn shown_label(l: &Localizer, kind: SegmentKind, icons: IconSet) -> String {
+    kind.icon(icons)
+        .map_or_else(|| default_label(l, kind), str::to_owned)
+}
+
+/// The item's label: the user's, else the icon set's symbol, else the words. Only spaces: no
+/// label, and no symbol either.
+fn label(ctx: &Ctx<'_>, item: &Item) -> String {
     if item.label.is_empty() {
-        default_label(l, item.kind)
+        shown_label(ctx.l, item.kind, ctx.icons)
     } else {
         item.label.trim().to_owned()
     }
@@ -633,21 +658,21 @@ fn piece(ctx: &Ctx<'_>, i: usize, d: Detail) -> Option<Vec<Span>> {
     let (l, line, item) = (ctx.l, ctx.line, &ctx.items[i]);
     let facts = &line.facts;
     let plain = |text: String| Some(vec![span(text, Paint::Plain)]);
-    let lbl = || label(l, item);
+    let lbl = || label(ctx, item);
     match item.kind {
         SegmentKind::FiveHour | SegmentKind::SevenDay => {
             let w = match item.kind {
                 SegmentKind::FiveHour => line.five_hour.as_ref(),
                 _ => line.seven_day.as_ref(),
             }?;
-            let look = Look::of(item, d);
+            let look = Look::of(ctx, item, d);
             let d = Detail {
-                bar: d.bar && ctx.bars() && item.format == Some(Format::Bar),
+                bar: d.bar && ctx.bars(item.bar_style) && item.format == Some(Format::Bar),
                 pace: d.pace && item.pace,
                 resets: d.resets && item.reset,
                 ..d
             };
-            Some(window(l, line, &lbl(), w, d, look))
+            Some(window(ctx, &lbl(), w, d, look))
         }
         SegmentKind::Scoped => {
             let mut out = Vec::new();
@@ -664,7 +689,7 @@ fn piece(ctx: &Ctx<'_>, i: usize, d: Detail) -> Option<Vec<Span>> {
                     remaining: item.format == Some(Format::Remaining),
                     ..Look::PLAIN
                 };
-                out.extend(window(l, line, &s.label, &s.window, COMPACT, look));
+                out.extend(window(ctx, &s.label, &s.window, COMPACT, look));
             }
             (!line.scoped.is_empty()).then_some(out)
         }
@@ -674,8 +699,8 @@ fn piece(ctx: &Ctx<'_>, i: usize, d: Detail) -> Option<Vec<Span>> {
             let label = lbl();
             let pct = l.fmt("sl-percent", &[("pct", Arg::Num(r.value))]);
             Some(match item.format {
-                Some(Format::Bar) if d.bar && ctx.bars() => {
-                    let look = Look::of(item, d);
+                Some(Format::Bar) if d.bar && ctx.bars(item.bar_style) => {
+                    let look = Look::of(ctx, item, d);
                     let mut out = Vec::new();
                     if !label.is_empty() {
                         out.push(span(format!("{label} "), paint));
@@ -827,7 +852,7 @@ fn piece(ctx: &Ctx<'_>, i: usize, d: Detail) -> Option<Vec<Span>> {
             ))
         }
         SegmentKind::Compact => {
-            let text = compact(l, line, item.format, d.compact_limit)?;
+            let text = compact(l, line, item.format, d.compact_limit, ctx.icons)?;
             plain(labeled(&lbl(), &text))
         }
         SegmentKind::Separator => Some(vec![span(
@@ -862,7 +887,8 @@ fn value_paint<T>(line: &Line, r: &Reading<T>, paint: Paint) -> Paint {
 
 /// `7d ███│░░░░░ 41% ⏱43% · 3d4h ▲38m`. With `look.remaining` the percentage is what is
 /// left (`59% left`), the colors still follow what is used.
-fn window(l: &Localizer, line: &Line, label: &str, w: &Window, d: Detail, look: Look) -> Vec<Span> {
+fn window(ctx: &Ctx<'_>, label: &str, w: &Window, d: Detail, look: Look) -> Vec<Span> {
+    let (l, line) = (ctx.l, ctx.line);
     let dim = w.estimated() || line.is_stale(w.observed_at);
     let paint = if dim {
         Paint::Dim
@@ -893,7 +919,13 @@ fn window(l: &Localizer, line: &Line, label: &str, w: &Window, d: Detail, look: 
     if let Some(pct) = elapsed {
         out.push(span(" ", Paint::Plain));
         out.push(span(
-            l.fmt("sl-elapsed", &[("pct", Arg::Num(pct))]),
+            l.fmt(
+                "sl-elapsed",
+                &[
+                    ("mark", Arg::Str(ctx.icons.elapsed_mark())),
+                    ("pct", Arg::Num(pct)),
+                ],
+            ),
             if dim { Paint::Dim } else { Paint::Plain },
         ));
     }
@@ -926,10 +958,15 @@ fn window(l: &Localizer, line: &Line, label: &str, w: &Window, d: Detail, look: 
     out
 }
 
-/// A short bar in `style` for the editor's style picker: two of five cells full.
-pub fn bar_sample(style: BarStyle) -> String {
-    let (full, empty, _) = style.glyphs();
-    [full, full, empty, empty, empty].iter().collect()
+/// A short bar in `style` for the editor's style picker: two of five cells full, as drawn
+/// below the warning threshold (the solid style needs its backgrounds).
+pub fn bar_sample(style: BarStyle) -> Vec<Span> {
+    let look = Look {
+        cells: 5,
+        style,
+        ..Look::PLAIN
+    };
+    bar(40.0, None, Paint::Ok, look)
 }
 
 /// The weekday names, Monday first.
@@ -943,28 +980,82 @@ const WEEKDAYS: [&str; 7] = [
     "sl-weekday-sun",
 ];
 
-/// The bar's cells, with the time mark between two of them when `elapsed` is known.
+/// The background of a solid bar's full cells, by paint; the empty ones are [`SOLID_EMPTY`].
+const fn solid_fill(paint: Paint) -> AnsiColor {
+    match paint {
+        Paint::Ok => AnsiColor::Cyan,
+        Paint::Warn => AnsiColor::Yellow,
+        Paint::Crit => AnsiColor::Red,
+        // An estimate or a stale value: light grey, still told apart from the empty cells.
+        Paint::Plain | Paint::Dim => AnsiColor::White,
+    }
+}
+
+const SOLID_EMPTY: AnsiColor = AnsiColor::Gray;
+
+/// The bar's cells. When `elapsed` is known the time mark goes between two cells, or in the
+/// capsule and solid styles takes the cell the time falls in, so that the frame and the fill
+/// stay whole (Step 12p): a bright capsule cell, a `|` on a solid one. In a Powerline block
+/// (only the capsule is drawn there) every cell takes the block's text color and the mark the
+/// muted one.
 fn bar(percent: f64, elapsed: Option<f64>, paint: Paint, look: Look) -> Vec<Span> {
-    let (full_glyph, empty_glyph, mark) = look.style.glyphs();
-    let full = bar_cells(percent, look.cells);
-    let mut cells: Vec<(char, Paint)> = (0..look.cells)
+    let (n, style) = (look.cells, look.style);
+    let full = bar_cells(percent, n);
+    let in_cell = elapsed
+        .filter(|_| style.marks_in_cell())
+        .map(|e| mark_cell(e, n));
+    let mut cells: Vec<Span> = (0..n)
         .map(|i| {
-            if i < full {
-                (full_glyph, paint)
-            } else {
-                (empty_glyph, Paint::Dim)
+            let filled = i < full;
+            let mark = in_cell == Some(i);
+            if style == BarStyle::Solid {
+                let bg = if filled {
+                    solid_fill(paint)
+                } else {
+                    SOLID_EMPTY
+                };
+                let p = if filled { paint } else { Paint::Plain };
+                let (text, fg) = if mark {
+                    ("|", Some(bg.contrast()))
+                } else {
+                    (" ", None)
+                };
+                return Span {
+                    fg,
+                    bg: Some(bg),
+                    ..span(text, p)
+                };
             }
+            // The mark stands out: bright on the line, muted in a block. In a block every other
+            // cell takes the block's text color, its shape tells full from empty.
+            let p = if mark {
+                if look.block { Paint::Dim } else { Paint::Plain }
+            } else if filled || look.block {
+                paint
+            } else {
+                Paint::Dim
+            };
+            span(style.cell(i, n, filled).to_string(), p)
         })
         .collect();
-    if let Some(pct) = elapsed {
-        cells.insert(mark_at(pct, look.cells), (mark, Paint::Plain));
+    if let Some(pct) = elapsed.filter(|_| !style.marks_in_cell()) {
+        let (_, _, mark) = style.glyphs();
+        cells.insert(mark_at(pct, n), span(mark.to_string(), Paint::Plain));
     }
     let mut out: Vec<Span> = Vec::new();
-    for (c, p) in cells {
+    for cell in cells {
         match out.last_mut() {
-            // Runs of one glyph: the filled and the empty part stay separate spans.
-            Some(last) if last.paint == p && last.text.ends_with(c) => last.text.push(c),
-            _ => out.push(span(c.to_string(), p)),
+            // Runs of one glyph: the filled and the empty part stay separate spans. The
+            // capsule's ends join their neighbours.
+            Some(last)
+                if last.paint == cell.paint
+                    && last.fg == cell.fg
+                    && last.bg == cell.bg
+                    && (style == BarStyle::Capsule || last.text.ends_with(cell.text.as_str())) =>
+            {
+                last.text.push_str(&cell.text);
+            }
+            _ => out.push(cell),
         }
     }
     out
@@ -979,6 +1070,17 @@ fn bar(percent: f64, elapsed: Option<f64>, paint: Paint, look: Look) -> Vec<Span
 pub(super) fn mark_at(elapsed: f64, n: usize) -> usize {
     let at = (elapsed.clamp(0.0, 100.0) / 100.0 * n as f64).round();
     (at as usize).min(n)
+}
+
+/// The cell of `n` that `elapsed` falls in: the capsule and solid styles mark a cell.
+#[allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    clippy::cast_precision_loss
+)]
+pub(super) fn mark_cell(elapsed: f64, n: usize) -> usize {
+    let at = (elapsed.clamp(0.0, 100.0) / 100.0 * n as f64).floor();
+    (at as usize).min(n.saturating_sub(1))
 }
 
 /// Filled cells of `n`: any use shows at least one, only 100 % fills all.
@@ -1017,12 +1119,20 @@ fn count(l: &Localizer, n: u64, format: Format) -> String {
 /// `⟲3 · 300k`, `⟲2 auto 1 manual · auto off`. Without a count (the app is not running, or
 /// the session is not indexed yet) only the setting shows, and the other way round; with
 /// neither, nothing. `limit` false leaves the setting out (a narrow terminal).
-fn compact(l: &Localizer, line: &Line, format: Option<Format>, limit: bool) -> Option<String> {
+fn compact(
+    l: &Localizer,
+    line: &Line,
+    format: Option<Format>,
+    limit: bool,
+    icons: IconSet,
+) -> Option<String> {
+    let mark = Arg::Str(icons.compact_mark());
     let counted = line.compacts.map(|c| match format {
         Some(Format::Split) => {
             let mut text = l.fmt(
                 "sl-compact-split",
                 &[
+                    ("mark", mark),
                     ("auto", Arg::Num(f64::from(c.auto))),
                     ("manual", Arg::Num(f64::from(c.manual))),
                 ],
@@ -1033,7 +1143,10 @@ fn compact(l: &Localizer, line: &Line, format: Option<Format>, limit: bool) -> O
             }
             text
         }
-        _ => l.fmt("sl-compact-total", &[("n", Arg::Num(f64::from(c.total())))]),
+        _ => l.fmt(
+            "sl-compact-total",
+            &[("mark", mark), ("n", Arg::Num(f64::from(c.total())))],
+        ),
     });
     let setting = line
         .auto_compact
@@ -1048,7 +1161,10 @@ fn compact(l: &Localizer, line: &Line, format: Option<Format>, limit: bool) -> O
             &[("count", Arg::Str(&c)), ("limit", Arg::Str(&s))],
         )),
         (Some(c), None) => Some(c),
-        (None, Some(s)) => Some(l.fmt("sl-compact-limit-only", &[("limit", Arg::Str(&s))])),
+        (None, Some(s)) => Some(l.fmt(
+            "sl-compact-limit-only",
+            &[("mark", mark), ("limit", Arg::Str(&s))],
+        )),
         (None, None) => None,
     }
 }

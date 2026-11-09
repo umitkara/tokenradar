@@ -28,14 +28,15 @@ mod presets;
 mod render;
 
 pub use prefs::{
-    AnsiColor, BAR_WIDTHS, BarStyle, ColorMode, DEFAULT_SEGMENTS, DEFAULT_SEPARATOR, Format, Group,
-    Imported, Item, Layout, MAX_ITEMS, MAX_LABEL, MAX_MARGIN, MAX_SEPARATOR, MAX_SPACE, MAX_TEXT,
-    PREFS_VERSION, ResetFormat, SegmentKind, StatuslinePrefs, Theme, clean,
+    AnsiColor, BAR_WIDTHS, BarStyle, CAPSULE, ColorMode, DEFAULT_SEGMENTS, DEFAULT_SEPARATOR,
+    Format, Group, IconSet, Imported, Item, Layout, MAX_ITEMS, MAX_LABEL, MAX_MARGIN,
+    MAX_SEPARATOR, MAX_SPACE, MAX_TEXT, PREFS_VERSION, ResetFormat, SegmentKind, StatuslinePrefs,
+    Theme, clean,
 };
 pub use presets::Preset;
 pub use render::{
     CLAUDE_CODE_RESERVED, Paint, Span, Style, bar_sample, default_label, display_width, render,
-    spans, to_ansi,
+    shown_label, spans, to_ansi,
 };
 
 /// A value with where it came from and when.

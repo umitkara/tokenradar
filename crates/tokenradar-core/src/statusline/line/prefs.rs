@@ -8,6 +8,7 @@
 //! separator = "│"        # the glyph of new separators; older builds draw it between values
 //! color = "auto"         # auto (follows NO_COLOR) | always | never
 //! margin = 0             # columns kept free at the right, 0–8
+//! icons = "text"         # text | unicode | nerd: what stands for an item's label
 //!
 //! [[statusline.items]]
 //! kind = "seven_day"
@@ -15,7 +16,7 @@
 //! color = "cyan"         # limits: the color below the warning threshold only
 //! reset_format = "clock" # countdown | clock (local time of the reset)
 //! bar_width = 12         # 4 | 8 | 12
-//! bar_style = "dots"     # blocks | thin | dots
+//! bar_style = "dots"     # blocks | thin | dots | capsule | solid
 //!
 //! [[statusline.items]]
 //! kind = "separator"
@@ -150,8 +151,8 @@ pub enum ResetFormat {
     Clock,
 }
 
-/// The glyphs of a bar (Step 12m). The new styles use only glyphs that take one cell in every
-/// terminal: none of them is East Asian "Ambiguous".
+/// The glyphs of a bar (Step 12m). `thin` and `dots` use only glyphs that take one cell in every
+/// terminal: none of them is East Asian "Ambiguous". `capsule` needs Nerd Fonts 3.4 (Step 12p).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "snake_case")]
 pub enum BarStyle {
@@ -162,6 +163,26 @@ pub enum BarStyle {
     Thin,
     /// `⣿⣿⣿⣀⣀⣀⣀⣀`.
     Dots,
+    /// A framed capsule of the Nerd Font progress glyphs (U+EE00–EE05). Full and empty cells
+    /// differ in shape, so it reads in one color too and is drawn in Powerline blocks.
+    Capsule,
+    /// Blank cells on a background color: no glyph, so no font and no width risk. Not drawn in
+    /// Powerline blocks, whose background it would fight.
+    Solid,
+}
+
+/// What stands for an item's label (Step 12p): the localized words, a few Unicode symbols, or
+/// Nerd Font icons (Octicons). Symbols do not depend on the language.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "snake_case")]
+pub enum IconSet {
+    /// `git main`, `ctx 42%`.
+    #[default]
+    Text,
+    /// `⎇ main`; kinds without a strong symbol keep their words.
+    Unicode,
+    /// Octicons from the Nerd Font, also for values that have no label in words.
+    Nerd,
 }
 
 /// The 16 terminal colors. The terminal's own palette decides what they look like.
@@ -393,6 +414,48 @@ impl SegmentKind {
         !matches!(self, Self::LineBreak | Self::Space | Self::Flex)
     }
 
+    /// The symbol that stands for the label in `set`; `None`: the words (or nothing). The
+    /// Unicode ones are not "Ambiguous" in width; the Nerd ones are Octicons, all in the BMP
+    /// Private Use Area and in Nerd Fonts 3.0 (Step 12p).
+    pub const fn icon(self, set: IconSet) -> Option<&'static str> {
+        match set {
+            IconSet::Text => None,
+            IconSet::Unicode => match self {
+                Self::TokensIn => Some("\u{21E1}"),   // ⇡ sent
+                Self::TokensOut => Some("\u{21E3}"),  // ⇣ received
+                Self::Duration => Some("\u{25F7}"),   // ◷
+                Self::GitBranch => Some("\u{2387}"),  // ⎇
+                Self::ProjectDir => Some("\u{2302}"), // ⌂
+                Self::Cwd => Some("\u{203A}"),        // ›
+                Self::SessionId => Some("#"),
+                _ => None,
+            },
+            IconSet::Nerd => match self {
+                Self::FiveHour => Some("\u{F43A}"),     // oct-clock
+                Self::SevenDay => Some("\u{F455}"),     // oct-calendar
+                Self::Context => Some("\u{F51E}"),      // oct-stack
+                Self::TokensIn => Some("\u{F431}"),     // oct-arrow_up
+                Self::TokensOut => Some("\u{F433}"),    // oct-arrow_down
+                Self::Duration => Some("\u{F520}"),     // oct-stopwatch
+                Self::ApiDuration => Some("\u{F4AC}"),  // oct-cloud
+                Self::CacheRatio => Some("\u{F49B}"),   // oct-cache
+                Self::GitBranch => Some("\u{F418}"),    // oct-git_branch
+                Self::ProjectDir => Some("\u{F401}"),   // oct-repo
+                Self::Cwd => Some("\u{F413}"),          // oct-file_directory
+                Self::SessionId => Some("\u{F4DF}"),    // oct-hash
+                Self::Model => Some("\u{F4BC}"),        // oct-cpu
+                Self::Version => Some("\u{F412}"),      // oct-tag
+                Self::AgentName => Some("\u{F477}"),    // oct-hubot
+                Self::SessionName => Some("\u{F4F6}"),  // oct-note
+                Self::OutputStyle => Some("\u{F48F}"),  // oct-paintbrush
+                Self::LinesChanged => Some("\u{F440}"), // oct-diff
+                Self::DailyBudget => Some("\u{F4DE}"),  // oct-goal
+                Self::BurnRate => Some("\u{F490}"),     // oct-flame; the `API` mark stays
+                _ => None,
+            },
+        }
+    }
+
     /// The block color in the Powerline themes when the user picked none.
     pub const fn block_color(self) -> AnsiColor {
         match self {
@@ -476,13 +539,21 @@ impl ResetFormat {
 }
 
 impl BarStyle {
-    pub const ALL: [Self; 3] = [Self::Blocks, Self::Thin, Self::Dots];
+    pub const ALL: [Self; 5] = [
+        Self::Blocks,
+        Self::Thin,
+        Self::Dots,
+        Self::Capsule,
+        Self::Solid,
+    ];
 
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Blocks => "blocks",
             Self::Thin => "thin",
             Self::Dots => "dots",
+            Self::Capsule => "capsule",
+            Self::Solid => "solid",
         }
     }
 
@@ -491,12 +562,78 @@ impl BarStyle {
     }
 
     /// The full cell, the empty cell and the time mark. The blocks were observed in Claude
-    /// Code (ADR-044); the other two keep to glyphs that are not "Ambiguous" (Step 12m).
+    /// Code (ADR-044); thin and dots keep to glyphs that are not "Ambiguous" (Step 12m). The
+    /// capsule has a glyph per end ([`BarStyle::cell`]); solid draws blanks on a background.
     pub const fn glyphs(self) -> (char, char, char) {
         match self {
             Self::Blocks => ('█', '░', '│'),
             Self::Thin => ('▬', '▭', '|'),
             Self::Dots => ('⣿', '⣀', '|'),
+            Self::Capsule => (CAPSULE[1][1], CAPSULE[0][1], '|'),
+            Self::Solid => (' ', ' ', '|'),
+        }
+    }
+
+    /// Cell `i` of `n`, full or empty: the capsule's ends differ from its middle.
+    pub const fn cell(self, i: usize, n: usize, full: bool) -> char {
+        if matches!(self, Self::Capsule) {
+            let at = if i == 0 {
+                0
+            } else if i + 1 >= n {
+                2
+            } else {
+                1
+            };
+            CAPSULE[full as usize][at]
+        } else {
+            let (f, e, _) = self.glyphs();
+            if full { f } else { e }
+        }
+    }
+
+    /// Whether the time mark takes a cell of the bar instead of going between two: the
+    /// capsule's frame and the solid fill would break around an extra cell (Step 12p).
+    pub const fn marks_in_cell(self) -> bool {
+        matches!(self, Self::Capsule | Self::Solid)
+    }
+}
+
+/// The Nerd Font progress glyphs (Nerd Fonts 3.4, from Fira Code): empty and full, each with
+/// a left end, a middle and a right end.
+pub const CAPSULE: [[char; 3]; 2] = [
+    ['\u{EE00}', '\u{EE01}', '\u{EE02}'],
+    ['\u{EE03}', '\u{EE04}', '\u{EE05}'],
+];
+
+impl IconSet {
+    pub const ALL: [Self; 3] = [Self::Text, Self::Unicode, Self::Nerd];
+
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Text => "text",
+            Self::Unicode => "unicode",
+            Self::Nerd => "nerd",
+        }
+    }
+
+    fn parse(s: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|i| i.as_str() == s)
+    }
+
+    /// The mark before the elapsed time. `⏱` may take two cells in some fonts (ADR-044), so
+    /// only the Nerd set changes it; `oct-stopwatch` is the duration's, so it is the hourglass.
+    pub const fn elapsed_mark(self) -> &'static str {
+        match self {
+            Self::Nerd => "\u{F4E3}", // oct-hourglass
+            _ => "\u{23F1}",          // ⏱
+        }
+    }
+
+    /// The mark before the compaction count.
+    pub const fn compact_mark(self) -> &'static str {
+        match self {
+            Self::Nerd => "\u{F48C}", // oct-fold
+            _ => "\u{27F2}",          // ⟲
         }
     }
 }
@@ -818,6 +955,8 @@ pub struct StatuslinePrefs {
     pub color: ColorMode,
     /// Columns kept free at the right, past the ones Claude Code keeps (ADR-051).
     pub margin: u8,
+    /// What stands for the labels (Step 12p); an item's own label always wins.
+    pub icons: IconSet,
 }
 
 /// Version 1 drew a separator between two values next to each other by itself; version 2 draws
@@ -862,6 +1001,7 @@ impl StatuslinePrefs {
             separator: DEFAULT_SEPARATOR.to_owned(),
             color: ColorMode::Auto,
             margin: 0,
+            icons: IconSet::Text,
         }
         .normalized()
     }
@@ -928,6 +1068,7 @@ impl StatuslinePrefs {
         table["separator"] = value(self.separator.as_str());
         table["color"] = value(self.color.as_str());
         table["margin"] = value(i64::from(self.margin));
+        table["icons"] = value(self.icons.as_str());
         if legacy {
             let windows: Vec<&Item> = self
                 .items
@@ -1031,9 +1172,10 @@ impl StatuslinePrefs {
     }
 }
 
-const KNOWN_KEYS: [&str; 10] = [
+const KNOWN_KEYS: [&str; 11] = [
     "version",
     "margin",
+    "icons",
     "items",
     "theme",
     "separator",
@@ -1102,6 +1244,7 @@ impl<'de> Deserialize<'de> for StatuslinePrefs {
         struct Raw {
             version: Option<Lax<i64>>,
             margin: Option<Lax<i64>>,
+            icons: Option<Lax<String>>,
             items: Option<Lax<Vec<Lax<RawItem>>>>,
             theme: Option<Lax<String>>,
             separator: Option<Lax<String>>,
@@ -1196,6 +1339,11 @@ impl<'de> Deserialize<'de> for StatuslinePrefs {
                 .and_then(ColorMode::parse)
                 .unwrap_or_default(),
             margin: lax(raw.margin).map_or(0, |m| small(m, MAX_MARGIN)),
+            // An unknown set is the words (ADR-042: reading never fails).
+            icons: lax(raw.icons)
+                .as_deref()
+                .and_then(IconSet::parse)
+                .unwrap_or_default(),
         }
         .normalized())
     }

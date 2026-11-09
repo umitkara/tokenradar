@@ -6,8 +6,8 @@ use specta::Type;
 
 use super::prefs::with_separators;
 use super::{
-    AnsiColor, ColorMode, DEFAULT_SEGMENTS, DEFAULT_SEPARATOR, Format, Item, Layout, PREFS_VERSION,
-    SegmentKind as K, StatuslinePrefs, Theme,
+    AnsiColor, ColorMode, DEFAULT_SEGMENTS, DEFAULT_SEPARATOR, Format, IconSet, Item, Layout,
+    PREFS_VERSION, SegmentKind as K, StatuslinePrefs, Theme,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
@@ -46,6 +46,7 @@ impl Preset {
                 separator: DEFAULT_SEPARATOR.to_owned(),
                 color: ColorMode::Auto,
                 margin: 0,
+                icons: IconSet::Text,
             }
             .normalized()
         };
