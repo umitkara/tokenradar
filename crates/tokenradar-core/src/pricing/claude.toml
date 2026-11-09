@@ -1,7 +1,7 @@
 # Claude API list prices used for API-equivalent cost (architecture §9.1, ADR-008, ADR-025).
 #
 # Source:   https://platform.claude.com/docs/en/about-claude/pricing
-# Verified: 2026-10-27 (first-party Claude API, global routing, standard tier)
+# Verified: 2026-11-09 (first-party Claude API, global routing, standard tier)
 #
 # Prices are USD per million tokens, which equals micro-dollars per token.
 # Bump `version` whenever a number changes; stored costs are not recomputed retroactively.
@@ -12,7 +12,7 @@
 # unknown model of a known family is priced as that entry, and anything else as `fallback`.
 
 schema = 1
-version = "2026-10-27"
+version = "2026-11-09"
 fallback = "claude-opus-5-5"
 
 [defaults]
@@ -20,13 +20,21 @@ cache_write_5m_mult = 1.25
 cache_write_1h_mult = 2.0
 # 0.1x is the standard; newer models override it below.
 cache_read_mult = 0.10
-# Fast mode is offered on Opus 5.5, Opus 5 and Opus 4.8, each at 2x the standard price.
+# Fast mode is offered on Fable 5.2, Mythos 5.2, Opus 5.5, Opus 5 and Opus 4.8, each at 2x the
+# standard price.
 # Prompt-caching multipliers stack on top of it.
 fast_mult = 2.0
 # Web search: $10 per 1,000 searches = 10,000 micro-dollars per search. Web fetch is free.
 web_search_micro_usd = 10000
 
 # --- Fable / Mythos -------------------------------------------------------------------------
+
+[[model]]
+id = "claude-fable-5-2"
+family = "fable"
+input = 8.0
+output = 40.0
+cache_read_mult = 0.025
 
 [[model]]
 id = "claude-fable-5-1"
@@ -40,6 +48,13 @@ id = "claude-fable-5"
 family = "fable"
 input = 10.0
 output = 50.0
+
+[[model]]
+id = "claude-mythos-5-2"
+family = "mythos"
+input = 8.0
+output = 40.0
+cache_read_mult = 0.025
 
 [[model]]
 id = "claude-mythos-5-1"

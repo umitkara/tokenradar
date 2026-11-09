@@ -30,7 +30,7 @@ fn sample_tokens() -> TokenCounts {
 #[test]
 fn embedded_table_parses() {
     let pricing = Pricing::claude();
-    assert_eq!(pricing.version(), "2026-10-27");
+    assert_eq!(pricing.version(), "2026-11-09");
     assert_eq!(pricing.models[pricing.fallback].id, "claude-opus-5-5");
 }
 
@@ -40,6 +40,8 @@ fn embedded_table_parses() {
 fn table_matches_the_published_prices() {
     #[rustfmt::skip]
     let published: &[(&str, f64, f64, f64, f64, f64)] = &[
+        ("claude-fable-5-2",   8.0, 10.00, 16.0, 0.20, 40.0),
+        ("claude-mythos-5-2",  8.0, 10.00, 16.0, 0.20, 40.0),
         ("claude-fable-5-1",  10.0, 12.50, 20.0, 0.25, 50.0),
         ("claude-mythos-5-1", 10.0, 12.50, 20.0, 0.25, 50.0),
         ("claude-fable-5",    10.0, 12.50, 20.0, 1.00, 50.0),
