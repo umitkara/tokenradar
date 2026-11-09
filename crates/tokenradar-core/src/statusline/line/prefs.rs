@@ -134,9 +134,9 @@ pub enum Format {
     Remaining,
     /// The context window: the tokens left, `185k left`.
     TokensLeft,
-    /// Compactions: the total, `⟲3`.
+    /// Compactions: the total, `⟲ 3`.
     Total,
-    /// Compactions: automatic and manual apart, `⟲2 auto 1 manual`.
+    /// Compactions: automatic and manual apart, `⟲ 2 auto 1 manual`.
     Split,
 }
 
@@ -620,20 +620,23 @@ impl IconSet {
         Self::ALL.into_iter().find(|i| i.as_str() == s)
     }
 
-    /// The mark before the elapsed time. `⏱` may take two cells in some fonts (ADR-044), so
-    /// only the Nerd set changes it; `oct-stopwatch` is the duration's, so it is the hourglass.
+    /// The mark before the elapsed time, with the gap that follows it. `oct-stopwatch` is the
+    /// duration's, so the Nerd set takes the hourglass. Cascadia has no `⏱`: Windows Terminal
+    /// draws it from the emoji font across two cells in one, over the next digit, so a space
+    /// follows it (Step 12p, ADR-056). The Nerd glyph fits its cell and needs none.
     pub const fn elapsed_mark(self) -> &'static str {
         match self {
             Self::Nerd => "\u{F4E3}", // oct-hourglass
-            _ => "\u{23F1}",          // ⏱
+            _ => "\u{23F1} ",         // ⏱
         }
     }
 
-    /// The mark before the compaction count.
+    /// The mark before the compaction count, with its gap: `⟲` also comes from a fallback font
+    /// wider than the cell.
     pub const fn compact_mark(self) -> &'static str {
         match self {
             Self::Nerd => "\u{F48C}", // oct-fold
-            _ => "\u{27F2}",          // ⟲
+            _ => "\u{27F2} ",         // ⟲
         }
     }
 }

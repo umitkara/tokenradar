@@ -55,7 +55,7 @@ sl-compact-split = { $mark }{ NUM($auto, 0) } auto { NUM($manual, 0) } manual
 sl-compact-other = { NUM($n, 0) } other
 # Auto-compact is turned off in Claude Code's settings.
 sl-compact-off = auto off
-# $count and $limit are already formatted (`⟲3`, `300k`).
+# $count and $limit are already formatted (`⟲ 3`, `300k`).
 sl-compact-with-limit = { $count } · { $limit }
 # The setting alone, while the count is not known.
 sl-compact-limit-only = { $mark } { $limit }

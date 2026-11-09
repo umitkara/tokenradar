@@ -87,7 +87,7 @@ fn every_format_draws_its_own_form() {
     // The 7d window without the bar.
     assert_eq!(
         one(Item::new(K::SevenDay).with_format(Format::Percent)),
-        "7d 41% ⏱54.8% · 3d4h"
+        "7d 41% ⏱ 54.8% · 3d4h"
     );
 }
 
@@ -104,7 +104,7 @@ fn missing_values_hide_their_items() {
     // Without token counts the fraction falls back to the percentage.
     assert_eq!(
         draw(Locale::En, &line, &p, None),
-        "7d 41% ⏱54.8% · 3d4h │ ctx 38%"
+        "7d 41% ⏱ 54.8% · 3d4h │ ctx 38%"
     );
 }
 
@@ -247,7 +247,7 @@ fn powerline_draws_blocks_and_falls_back_without_color() {
             width: None,
         },
     );
-    assert_eq!(plain, "7d 41% ⏱54.8% · 3d4h │ API $4.12 │ Opus 5.5");
+    assert_eq!(plain, "7d 41% ⏱ 54.8% · 3d4h │ API $4.12 │ Opus 5.5");
     // A bar would be drawn in the block's text color, full and empty cells alike: left out.
     let barred = StatuslinePrefs {
         theme: Theme::Powerline,

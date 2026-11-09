@@ -61,7 +61,7 @@ fn without_the_app_the_reading_is_spooled_and_the_line_uses_stdin() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let l10n = Localizer::new(Locale::En, &[Domain::Cli]);
     let out = respond(Some(&input(42.0)), &deps(&l10n, &unique_pipe(), tmp.path()));
-    assert!(out.starts_with("5h 42% ⏱60% · 1h59m"), "{out}");
+    assert!(out.starts_with("5h 42% ⏱ 60% · 1h59m"), "{out}");
     assert_eq!(spooled_lines(tmp.path()), 1);
 }
 
@@ -236,15 +236,15 @@ fn with_the_app_the_compact_item_shows_the_count_and_the_setting() {
     let l10n = Localizer::new(Locale::Tr, &[Domain::Cli]);
     let input = compact_input(&claude);
     let total = compact_deps(&l10n, &pipe, tmp.path(), false);
-    assert_eq!(respond(Some(&input), &total), "⟲3");
+    assert_eq!(respond(Some(&input), &total), "⟲ 3");
     std::fs::write(
         claude.join("settings.json"),
         r#"{"modelSettings": {"claude-opus-5-5": {"autoCompactWindow": 350000}}}"#,
     )
     .expect("settings");
-    assert_eq!(respond(Some(&input), &total), "⟲3 · 350k");
+    assert_eq!(respond(Some(&input), &total), "⟲ 3 · 350k");
     let split = compact_deps(&l10n, &pipe, tmp.path(), true);
-    assert_eq!(respond(Some(&input), &split), "⟲2 oto 1 elle · 350k");
+    assert_eq!(respond(Some(&input), &split), "⟲ 2 oto 1 elle · 350k");
     drop(stop);
     server.join().expect("server");
 }

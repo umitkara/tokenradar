@@ -481,11 +481,11 @@ fn the_time_mark_sits_between_cells_and_the_text_follows_the_value() {
     });
     assert_eq!(
         draw(Locale::En, &line, &p, None),
-        "7d ███│█░░░░ 41% ⏱43% · 3d4h"
+        "7d ███│█░░░░ 41% ⏱ 43% · 3d4h"
     );
     assert_eq!(
         draw(Locale::Tr, &line, &p, None),
-        "7g ███│█░░░░ %41 ⏱%43 · 3g4sa"
+        "7g ███│█░░░░ %41 ⏱ %43 · 3g4sa"
     );
     // Ahead of time: the mark stands inside the filled part.
     line.seven_day = Some(Window {
@@ -494,7 +494,7 @@ fn the_time_mark_sits_between_cells_and_the_text_follows_the_value() {
     });
     assert_eq!(
         draw(Locale::En, &line, &p, None),
-        "7d ██│████░░ 72% ⏱20% · 3d"
+        "7d ██│████░░ 72% ⏱ 20% · 3d"
     );
     // Off in the prefs: neither the mark nor the text.
     let off = StatuslinePrefs::legacy(&[SegmentKind::SevenDay], Layout::Single, true, false);
@@ -519,10 +519,10 @@ fn without_color_the_elapsed_text_stays_and_narrow_drops_it_after_the_bar() {
             width: None,
         },
     );
-    assert_eq!(plain, "7d 41% ⏱43% · 3d4h");
+    assert_eq!(plain, "7d 41% ⏱ 43% · 3d4h");
     // Narrow: the bar goes first, then the elapsed time, then the countdown.
-    assert_eq!(draw(Locale::En, &line, &p, cols(18)), "7d 41% ⏱43% · 3d4h");
-    assert_eq!(draw(Locale::En, &line, &p, cols(17)), "7d 41% · 3d4h");
+    assert_eq!(draw(Locale::En, &line, &p, cols(19)), "7d 41% ⏱ 43% · 3d4h");
+    assert_eq!(draw(Locale::En, &line, &p, cols(18)), "7d 41% · 3d4h");
     assert_eq!(draw(Locale::En, &line, &p, cols(8)), "7d 41%");
 }
 

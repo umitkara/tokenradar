@@ -129,21 +129,27 @@ fn only_the_nerd_set_changes_the_elapsed_and_compact_marks() {
     let line = with_five_hour();
     let mut week = Item::new(SegmentKind::SevenDay).with_format(Format::Percent);
     week.reset = false;
-    assert_eq!(one(&line, week.clone(), IconSet::Text), "7d 41% ⏱54.8%");
-    assert_eq!(one(&line, week.clone(), IconSet::Unicode), "7d 41% ⏱54.8%");
+    // The fallback marks keep a gap: Windows Terminal draws them wider than their cell.
+    assert_eq!(one(&line, week.clone(), IconSet::Text), "7d 41% ⏱ 54.8%");
+    assert_eq!(one(&line, week.clone(), IconSet::Unicode), "7d 41% ⏱ 54.8%");
     assert_eq!(
         one(&line, week, IconSet::Nerd),
         "\u{F455} 41% \u{F4E3}54.8%"
     );
     let sample = Line::sample(now(), false);
     let compact = |icons| one(&sample, Item::new(SegmentKind::Compact), icons);
-    assert_eq!(compact(IconSet::Unicode), "⟲3 · 300k");
+    assert_eq!(compact(IconSet::Unicode), "⟲ 3 · 300k");
     assert_eq!(compact(IconSet::Nerd), "\u{F48C}3 · 300k");
     let mut unknown = Line::sample(now(), false);
     unknown.compacts = None;
     assert_eq!(
         one(&unknown, Item::new(SegmentKind::Compact), IconSet::Nerd),
         "\u{F48C} 300k"
+    );
+    // One space, not two, when only the setting shows.
+    assert_eq!(
+        one(&unknown, Item::new(SegmentKind::Compact), IconSet::Text),
+        "⟲ 300k"
     );
 }
 
@@ -186,29 +192,29 @@ fn bar_item(style: BarStyle) -> Item {
 #[test]
 fn the_capsule_keeps_its_frame_and_marks_the_cell_the_time_falls_in() {
     let line = with_five_hour();
-    // 41 % of 8 cells: 4 full; 54.8 % of the time: the fifth cell, drawn bright.
+    // 41 % of 8 cells: 4 full; 54.8 % of the time: the fifth cell, drawn full and bright.
     let text = one(&line, bar_item(BarStyle::Capsule), IconSet::Text);
     assert_eq!(
         text,
-        "7d \u{EE03}\u{EE04}\u{EE04}\u{EE04}\u{EE01}\u{EE01}\u{EE01}\u{EE02} 41% ⏱54.8%"
+        "7d \u{EE03}\u{EE04}\u{EE04}\u{EE04}\u{EE04}\u{EE01}\u{EE01}\u{EE02} 41% ⏱ 54.8%"
     );
     // No extra cell: the bar is as wide as it says.
     assert_eq!(
         display_width(&text),
-        display_width("7d ") + 8 + display_width(" 41% ⏱54.8%")
+        display_width("7d ") + 8 + display_width(" 41% ⏱ 54.8%")
     );
     let colored = ansi(
         &alone(bar_item(BarStyle::Capsule), IconSet::Text),
         &line,
         true,
     );
-    // Full cells in the window's color, the marked one plain, the rest dim.
+    // Full cells in the window's color, the marked one full in plain, the rest dim.
     assert!(
         colored.contains("\x1b[36m\u{EE03}\u{EE04}\u{EE04}\u{EE04}\x1b[0m"),
         "{colored:?}"
     );
     assert!(
-        colored.contains("\x1b[0m\u{EE01}\x1b[2m\u{EE01}\u{EE01}\u{EE02}\x1b[0m"),
+        colored.contains("\x1b[0m\u{EE04}\x1b[2m\u{EE01}\u{EE01}\u{EE02}\x1b[0m"),
         "{colored:?}"
     );
     // Full and empty at the ends, both ways round.
@@ -227,7 +233,7 @@ fn the_capsule_keeps_its_frame_and_marks_the_cell_the_time_falls_in() {
 fn the_solid_bar_fills_with_background_and_marks_with_a_bar_inside_a_cell() {
     let line = with_five_hour();
     let p = alone(bar_item(BarStyle::Solid), IconSet::Text);
-    assert_eq!(draw(Locale::En, &line, &p, None), "7d     |    41% ⏱54.8%");
+    assert_eq!(draw(Locale::En, &line, &p, None), "7d     |    41% ⏱ 54.8%");
     let colored = ansi(&p, &line, true);
     // Four cyan cells, the mark on the first grey one in black, three more grey ones.
     assert!(colored.contains("\x1b[36;46m    \x1b[0m"), "{colored:?}");
@@ -256,16 +262,16 @@ fn powerline_blocks_draw_the_capsule_but_not_the_solid_bar_and_no_color_draws_ne
     };
     let capsule = draw(Locale::En, &line, &in_blocks(BarStyle::Capsule), None);
     assert!(capsule.contains("\u{EE03}\u{EE04}"), "{capsule}");
-    // Every cell in the block's text color (black on cyan), the mark in its muted grey.
+    // Every cell in the block's text color (black on cyan), the mark full in its muted grey.
     let colored = ansi(&in_blocks(BarStyle::Capsule), &line, true);
     assert!(colored.contains("\x1b[30;46m\u{EE03}"), "{colored:?}");
-    assert!(colored.contains("\x1b[2;90;46m\u{EE01}"), "{colored:?}");
+    assert!(colored.contains("\x1b[2;90;46m\u{EE04}"), "{colored:?}");
     let solid = draw(Locale::En, &line, &in_blocks(BarStyle::Solid), None);
     assert!(!solid.contains('|'), "{solid}");
     assert!(solid.contains("\u{F455} 41%"), "{solid}");
     for style in [BarStyle::Capsule, BarStyle::Solid] {
         let plain = strip(&ansi(&alone(bar_item(style), IconSet::Text), &line, false));
-        assert_eq!(plain, "7d 41% ⏱54.8%");
+        assert_eq!(plain, "7d 41% ⏱ 54.8%");
     }
 }
 

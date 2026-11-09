@@ -8,7 +8,7 @@
 //!    texts right before them);
 //! 2. a 12-cell bar becomes an 8-cell one;
 //! 3. the bar (with its time mark);
-//! 4. the elapsed time (`⏱43%`);
+//! 4. the elapsed time (`⏱ 43%`);
 //! 5. the projection (`▲38m`);
 //! 6. the resets, countdowns and clock times alike;
 //! 7. limit items from the end, keeping the first; then the remaining texts.
@@ -885,7 +885,7 @@ fn value_paint<T>(line: &Line, r: &Reading<T>, paint: Paint) -> Paint {
     }
 }
 
-/// `7d ███│░░░░░ 41% ⏱43% · 3d4h ▲38m`. With `look.remaining` the percentage is what is
+/// `7d ███│░░░░░ 41% ⏱ 43% · 3d4h ▲38m`. With `look.remaining` the percentage is what is
 /// left (`59% left`), the colors still follow what is used.
 fn window(ctx: &Ctx<'_>, label: &str, w: &Window, d: Detail, look: Look) -> Vec<Span> {
     let (l, line) = (ctx.l, ctx.line);
@@ -995,9 +995,10 @@ const SOLID_EMPTY: AnsiColor = AnsiColor::Gray;
 
 /// The bar's cells. When `elapsed` is known the time mark goes between two cells, or in the
 /// capsule and solid styles takes the cell the time falls in, so that the frame and the fill
-/// stay whole (Step 12p): a bright capsule cell, a `|` on a solid one. In a Powerline block
-/// (only the capsule is drawn there) every cell takes the block's text color and the mark the
-/// muted one.
+/// stay whole (Step 12p): a full capsule cell in plain, a `|` on a solid one. In a Powerline
+/// block (only the capsule is drawn there) every cell takes the block's text color and the mark
+/// the muted one. Color alone tells the mark from the fill, which is safe: bars are drawn only
+/// with color.
 fn bar(percent: f64, elapsed: Option<f64>, paint: Paint, look: Look) -> Vec<Span> {
     let (n, style) = (look.cells, look.style);
     let full = bar_cells(percent, n);
@@ -1026,8 +1027,10 @@ fn bar(percent: f64, elapsed: Option<f64>, paint: Paint, look: Look) -> Vec<Span
                     ..span(text, p)
                 };
             }
-            // The mark stands out: bright on the line, muted in a block. In a block every other
-            // cell takes the block's text color, its shape tells full from empty.
+            // The mark is a full cell that stands out: bright on the line, muted in a block (an
+            // empty-shaped mark only recolored the thin frame and was lost in a block). In a
+            // block every other cell takes the block's text color, its shape tells full from
+            // empty.
             let p = if mark {
                 if look.block { Paint::Dim } else { Paint::Plain }
             } else if filled || look.block {
@@ -1035,7 +1038,7 @@ fn bar(percent: f64, elapsed: Option<f64>, paint: Paint, look: Look) -> Vec<Span
             } else {
                 Paint::Dim
             };
-            span(style.cell(i, n, filled).to_string(), p)
+            span(style.cell(i, n, filled || mark).to_string(), p)
         })
         .collect();
     if let Some(pct) = elapsed.filter(|_| !style.marks_in_cell()) {
@@ -1116,7 +1119,7 @@ fn count(l: &Localizer, n: u64, format: Format) -> String {
     }
 }
 
-/// `⟲3 · 300k`, `⟲2 auto 1 manual · auto off`. Without a count (the app is not running, or
+/// `⟲ 3 · 300k`, `⟲ 2 auto 1 manual · auto off`. Without a count (the app is not running, or
 /// the session is not indexed yet) only the setting shows, and the other way round; with
 /// neither, nothing. `limit` false leaves the setting out (a narrow terminal).
 fn compact(
@@ -1161,9 +1164,13 @@ fn compact(
             &[("count", Arg::Str(&c)), ("limit", Arg::Str(&s))],
         )),
         (Some(c), None) => Some(c),
+        // The message puts its own space after the mark.
         (None, Some(s)) => Some(l.fmt(
             "sl-compact-limit-only",
-            &[("mark", mark), ("limit", Arg::Str(&s))],
+            &[
+                ("mark", Arg::Str(icons.compact_mark().trim_end())),
+                ("limit", Arg::Str(&s)),
+            ],
         )),
         (None, None) => None,
     }

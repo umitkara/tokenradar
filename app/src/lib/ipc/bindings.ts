@@ -447,9 +447,9 @@ export type Format =
 "remaining" | 
 /**  The context window: the tokens left, `185k left`. */
 "tokens_left" | 
-/**  Compactions: the total, `⟲3`. */
+/**  Compactions: the total, `⟲ 3`. */
 "total" | 
-/**  Compactions: automatic and manual apart, `⟲2 auto 1 manual`. */
+/**  Compactions: automatic and manual apart, `⟲ 2 auto 1 manual`. */
 "split";
 
 export type Freshness = 

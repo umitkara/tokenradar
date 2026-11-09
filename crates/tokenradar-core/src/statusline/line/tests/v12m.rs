@@ -150,7 +150,7 @@ fn remaining_and_tokens_left_show_what_is_left() {
             &line,
             Item::new(SegmentKind::SevenDay).with_format(Format::Remaining)
         ),
-        "7d 59% left ⏱54.8% · 3d4h"
+        "7d 59% left ⏱ 54.8% · 3d4h"
     );
     assert_eq!(
         one(
@@ -244,14 +244,14 @@ fn bars_take_their_width_and_style() {
         item.reset = false;
         item
     };
-    assert_eq!(one(&line, bar(4, BarStyle::Blocks)), "7d ██│░░ 41% ⏱54.8%");
+    assert_eq!(one(&line, bar(4, BarStyle::Blocks)), "7d ██│░░ 41% ⏱ 54.8%");
     assert_eq!(
         one(&line, bar(12, BarStyle::Thin)),
-        "7d ▬▬▬▬▬▭▭|▭▭▭▭▭ 41% ⏱54.8%"
+        "7d ▬▬▬▬▬▭▭|▭▭▭▭▭ 41% ⏱ 54.8%"
     );
     assert_eq!(
         one(&line, bar(8, BarStyle::Dots)),
-        "7d ⣿⣿⣿⣿|⣀⣀⣀⣀ 41% ⏱54.8%"
+        "7d ⣿⣿⣿⣿|⣀⣀⣀⣀ 41% ⏱ 54.8%"
     );
     let mut ctx = Item::new(SegmentKind::Context).with_format(Format::Bar);
     ctx.bar_width = 12;

@@ -35,14 +35,14 @@ fn count(auto: u32, manual: u32, other: u32) -> Option<CompactCount> {
 #[test]
 fn the_sample_shows_the_count_and_the_window() {
     let line = Line::sample(now(), false);
-    assert_eq!(one(Locale::En, &line, Format::Total), "⟲3 · 300k");
+    assert_eq!(one(Locale::En, &line, Format::Total), "⟲ 3 · 300k");
     assert_eq!(
         one(Locale::En, &line, Format::Split),
-        "⟲2 auto 1 manual · 300k"
+        "⟲ 2 auto 1 manual · 300k"
     );
     assert_eq!(
         one(Locale::Tr, &line, Format::Split),
-        "⟲2 oto 1 elle · 300k"
+        "⟲ 2 oto 1 elle · 300k"
     );
     // The default format is the total.
     let default = draw(
@@ -51,7 +51,7 @@ fn the_sample_shows_the_count_and_the_window() {
         &alone(Item::new(SegmentKind::Compact)),
         None,
     );
-    assert_eq!(default, "⟲3 · 300k");
+    assert_eq!(default, "⟲ 3 · 300k");
 }
 
 #[test]
@@ -60,10 +60,10 @@ fn zero_shows_unknown_hides_and_the_setting_has_three_states() {
     line.compacts = count(0, 0, 0);
     line.auto_compact = None;
     // Zero is worth showing; no setting, no window part.
-    assert_eq!(one(Locale::En, &line, Format::Total), "⟲0");
+    assert_eq!(one(Locale::En, &line, Format::Total), "⟲ 0");
     line.auto_compact = Some(AutoCompact::Off);
-    assert_eq!(one(Locale::En, &line, Format::Total), "⟲0 · auto off");
-    assert_eq!(one(Locale::Tr, &line, Format::Total), "⟲0 · oto kapalı");
+    assert_eq!(one(Locale::En, &line, Format::Total), "⟲ 0 · auto off");
+    assert_eq!(one(Locale::Tr, &line, Format::Total), "⟲ 0 · oto kapalı");
     // Without the app the count is unknown: only the setting.
     line.compacts = None;
     assert_eq!(one(Locale::En, &line, Format::Total), "⟲ auto off");
@@ -79,14 +79,14 @@ fn an_unknown_trigger_counts_in_the_total_and_shows_apart_when_split() {
     let mut line = Line::sample(now(), false);
     line.compacts = count(2, 1, 1);
     line.auto_compact = None;
-    assert_eq!(one(Locale::En, &line, Format::Total), "⟲4");
+    assert_eq!(one(Locale::En, &line, Format::Total), "⟲ 4");
     assert_eq!(
         one(Locale::En, &line, Format::Split),
-        "⟲2 auto 1 manual 1 other"
+        "⟲ 2 auto 1 manual 1 other"
     );
     assert_eq!(
         one(Locale::Tr, &line, Format::Split),
-        "⟲2 oto 1 elle 1 diğer"
+        "⟲ 2 oto 1 elle 1 diğer"
     );
 }
 
@@ -103,10 +103,10 @@ fn a_narrow_terminal_drops_the_window_part_then_the_item() {
     }
     .normalized();
     let full = draw(Locale::En, &line, &prefs, None);
-    assert!(full.ends_with("⟲3 · 300k"), "{full}");
+    assert!(full.ends_with("⟲ 3 · 300k"), "{full}");
     let width = full.chars().count();
     let narrower = draw(Locale::En, &line, &prefs, cols(width - 1));
-    assert!(narrower.ends_with("⟲3"), "{narrower}");
+    assert!(narrower.ends_with("⟲ 3"), "{narrower}");
     assert!(!narrower.contains("300k"), "{narrower}");
     let narrowest = draw(Locale::En, &line, &prefs, cols(width - 8));
     assert!(!narrowest.contains('⟲'), "{narrowest}");
