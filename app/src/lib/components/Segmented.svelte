@@ -81,6 +81,9 @@ function keydown(e: KeyboardEvent) {
 <style>
   .segmented {
     display: inline-flex;
+    /* Options wrap rather than spill out of a narrow column (five bar styles, Step 12p). */
+    flex-wrap: wrap;
+    max-width: 100%;
     padding: 2px;
     gap: 2px;
     border-radius: var(--radius-control);
@@ -112,6 +115,8 @@ function keydown(e: KeyboardEvent) {
   .glyphs {
     font-family: var(--font-term);
     margin-right: 4px;
+    /* Terminal cells: a solid bar is colored spaces, which must not collapse. */
+    white-space: pre;
   }
   button:disabled {
     opacity: 0.5;

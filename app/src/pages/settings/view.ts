@@ -673,6 +673,22 @@ export function itemText(preview: StatuslinePreview, index: number): string | nu
 }
 
 /**
+ * An item's preview text as glyph runs when part of it is drawn by background (a solid bar,
+ * Step 12p), so the list shows the colored cells rather than blank space; otherwise `null` and
+ * the plain `itemText` stands. The ends are trimmed as there, but never a colored cell.
+ */
+export function itemRuns(preview: StatuslinePreview, index: number): GlyphRun[] | null {
+  const spans = preview.lines.flat().filter((s) => s.item === index);
+  if (!spans.some((s) => s.bg)) return null;
+  const runs = glyphRuns(spans);
+  const first = runs[0];
+  const last = runs[runs.length - 1];
+  if (first && !first.background) first.text = first.text.trimStart();
+  if (last && !last.background) last.text = last.text.trimEnd();
+  return runs.filter((r) => r.text !== "");
+}
+
+/**
  * The CSS classes of a preview span: the user's (or a Powerline block's) color, otherwise the
  * paint's; `p-dim` adds the terminal's faint style (SGR 2) on top, as the CLI does.
  */

@@ -7,6 +7,7 @@
 <script lang="ts">
 import { onMount, untrack } from "svelte";
 import Button from "../../lib/components/Button.svelte";
+import IconButton from "../../lib/components/IconButton.svelte";
 import Segmented from "../../lib/components/Segmented.svelte";
 import Select from "../../lib/components/Select.svelte";
 import { t } from "../../lib/i18n/i18n.svelte";
@@ -243,6 +244,8 @@ function keydown(e: KeyboardEvent) {
       <Button disabled={!editor.canUndo} onclick={() => editor.undo()} title={t("statusline-undo-hint")}>
         {t("statusline-undo")}
       </Button>
+      <!-- Both open the preset dialog; here they leave the toolbar room for the icon set. -->
+      <Button disabled={!draft} onclick={() => presetDialog?.open("preset")}>{t("statusline-presets")}</Button>
       <Button disabled={!draft} onclick={() => presetDialog?.open("reset")}>{t("statusline-restore-default")}</Button>
     </div>
     {#if bridge === "not_installed" || bridge === "no_directory"}
@@ -274,9 +277,17 @@ function keydown(e: KeyboardEvent) {
           onchange={(icons) => set({ icons })}
         />
         <span class="spacer"></span>
-        <Button onclick={() => presetDialog?.open("preset")}>{t("statusline-presets")}</Button>
-        <Button onclick={exportLine}>{t("statusline-export")}</Button>
-        <Button onclick={() => importDialog?.open()}>{t("statusline-import")}</Button>
+        <!-- Icons, so that the toolbar stays on one line in Turkish too (Step 12p). -->
+        <IconButton label={t("statusline-export")} onclick={exportLine}>
+          <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+            <path d="M8 10V2.5M5 5.5l3-3 3 3M3 9.5v4h10v-4" fill="none" stroke="currentColor" stroke-width="1.2" />
+          </svg>
+        </IconButton>
+        <IconButton label={t("statusline-import")} onclick={() => importDialog?.open()}>
+          <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+            <path d="M8 2.5V10M5 7l3 3 3-3M3 9.5v4h10v-4" fill="none" stroke="currentColor" stroke-width="1.2" />
+          </svg>
+        </IconButton>
       </div>
       {#if draft.icons === "nerd" && iconNote}
         <p class="note">
@@ -353,6 +364,7 @@ function keydown(e: KeyboardEvent) {
           {items}
           catalog={editor.catalog}
           preview={editor.preview}
+          theme={draft.theme}
           {selected}
           hovered={editor.hovered}
           onselect={(i) => (editor.selected = i)}

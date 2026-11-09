@@ -15,12 +15,14 @@ import type {
   SegmentKind,
   StatuslineKind,
   StatuslinePreview,
+  Theme,
 } from "../../../lib/ipc/bindings";
 import {
   canDrop,
   canRemoveLine,
   dropIndex,
   flexHintKey,
+  itemRuns,
   itemText,
   kindKey,
   lines,
@@ -32,6 +34,8 @@ interface Props {
   items: Item[];
   catalog: StatuslineKind[];
   preview: StatuslinePreview;
+  /** The line's theme: only a plain line draws bars by background (Powerline blocks are not). */
+  theme: Theme;
   selected: number | null;
   hovered: number | null;
   onselect: (index: number) => void;
@@ -52,6 +56,7 @@ let {
   items,
   catalog,
   preview,
+  theme,
   selected,
   hovered,
   onselect,
@@ -99,6 +104,15 @@ function rowText(item: Item, index: number): string {
   if (preview.absent.includes(item.kind)) return sampleOf(item.kind);
   return itemText(preview, index) ?? sampleOf(item.kind);
 }
+
+/** Rows whose preview is partly drawn by background (a solid bar) show those cells in color. */
+const runsOf = $derived(
+  items.map((item, i) =>
+    theme === "plain" && item.enabled && !preview.absent.includes(item.kind)
+      ? itemRuns(preview, i)
+      : null,
+  ),
+);
 
 async function focusRow(index: number, part: "pick" | "grip" = "pick") {
   await tick();
@@ -295,7 +309,12 @@ function cancelDrag(e: KeyboardEvent) {
                 <span class="mark" aria-hidden="true">⟷</span>
               {/if}
               <span class="name">{name(item.kind)}</span>
-              <span class="text" class:hint={item.kind === "flex"}>{rowText(item, i)}</span>
+              <span class="text" class:hint={item.kind === "flex"}
+                >{#if runsOf[i]}{#each runsOf[i] ?? [] as run, j (j)}<span
+                      style:color={run.color}
+                      style:background-color={run.background}>{run.text}</span
+                    >{/each}{:else}{rowText(item, i)}{/if}</span
+              >
               {#if absent}<span class="tag">{t("statusline-segment-absent")}</span>{/if}
             </button>
             <IconButton

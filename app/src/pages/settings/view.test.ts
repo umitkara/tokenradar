@@ -39,6 +39,7 @@ import {
   HISTORY_LIMIT,
   ICON_SETS,
   iconSetKey,
+  itemRuns,
   itemText,
   kindHintKey,
   kindKey,
@@ -553,6 +554,38 @@ describe("statusline icons and bar styles", () => {
         { text: "|", color: "var(--term-black)", background: "var(--term-gray)" },
       ],
     );
+  });
+
+  it("colors a solid bar's row in the item list and trims the item's outer blanks", () => {
+    const cell = (text: string, item: number | null, more: Partial<Span> = {}): Span => ({
+      text,
+      paint: "ok",
+      fg: null,
+      bg: null,
+      item,
+      ...more,
+    });
+    const preview = {
+      lines: [
+        [
+          cell(" ", 0),
+          cell("  ", 0, { bg: "cyan" }),
+          cell("  ", 0, { bg: "gray" }),
+          cell(" 41% ", 0),
+          cell("│", null),
+          cell("ctx 38%", 1),
+        ],
+      ],
+      absent: [],
+    };
+    expect(itemRuns(preview, 0)).toEqual([
+      { text: "  ", color: null, background: "var(--term-cyan)" },
+      { text: "  ", color: null, background: "var(--term-gray)" },
+      { text: " 41%", color: null, background: null },
+    ]);
+    // No background cells: the row keeps its plain text.
+    expect(itemRuns(preview, 1)).toBeNull();
+    expect(itemRuns(preview, 2)).toBeNull();
   });
 });
 
