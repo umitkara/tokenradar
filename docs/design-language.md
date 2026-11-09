@@ -113,6 +113,7 @@ Başlığın altında iki eşit düğmeli bir segment kontrolü: `Özet | Ayrın
 - **Düzen satırları:** Ayraç, boşluk, esnek boşluk ve gizli satır sonu satırları 30 px'tir (değer satırları 36 px). Adları `--type-caption` ve `--text-2` ile yazılır. Esnek boşluk `⟷` işaretini ve satırdaki etkisini ("Sonrası sağa yaslanır"), boşluk genişliğini, ayraç glifini gösterir.
 - **Önizlemede pay ve boşluklar:** Satırın boş bıraktığı sağ sütunlar (Claude Code'un 4 sütunu ve sağ pay) kenara kadar soluk çapraz taramayla gösterilir. Metni olmayan span'ler (boşluk, esnek boşluk) seçiliyken ve üzerine gelinince hafif beyaz bir tonla görünür olur.
 - **Çubuk ve sıfırlanma ayarları (Adım 12m, ADR-053):** Çubuk genişliği (4/8/12) ve stili yalnızca biçim `bar` iken görünür. Sıfırlanma biçimi (Geri sayım / Saat), sıfırlanma gösteriliyorsa limit pencerelerinde görünür. Stil örnekleri UI'da çizilmez; backend'in `bar_sample` çıktısıdır.
+- **Simgeler ve yeni çubuk stilleri (Adım 12p, ADR-056):** Simge seti seçici araç çubuğunda renk seçicinin ardından gelir. Nerd seti seçiliyken ya da tema Powerline iken ve bir Nerd Font kuruluyken açıklama satırı fontla ilgili notu ya da "Nerd Font simgelerini kullan" bağlantısını gösterir. Çubuk stili seçicisinin altındaki not, Powerline'da kapsül dışı stillerin çizilmediğini ya da kapsülün font ihtiyacını söyler. Dolgu örneği seçicide `--term-*` arka plan renkleriyle çizilir; renkler backend'in span'lerinden gelir. Düz temada öğe listesi de dolgu çubuğunun hücrelerini renkli çizer; diğer satırlar tek renktir. Araç çubuğu tek satırda kalsın diye "Şablonlar…" başlık satırında "Varsayılana dön…"ün yanındadır; Dışa aktar ve İçe aktar araç çubuğunun sonunda `IconButton`'dır (16 px yukarı ve aşağı ok, ipucu ve erişilebilir ad tam cümle). Bar stili seçicisi dar sütunda iki satıra kırılır (`flex-wrap`).
 - **Terminal fontu (Adım 12o, ADR-055):** Giriş, önizlemenin altındaki açıklama satırında bir bağlantıdır (araç çubuğu tek satırda kalsın diye). Diyalog dört bölümdür: Nerd Font (durum, onay kutusu, ilerleme), Terminal, Terminal ayarları (satır başına Fontu seç / Geri al), Hepsini geri al. İndirme onayı ayrı bir `--surface-1` kutuda aile, sürüm, boyut, lisans ve tam URL'yi gösterir; ilerleme çubuğu `accent-color: var(--accent)`'tir. Diff ve geri dönüş özeti aynı diyalogun ikinci görünümüdür. Kurulu Nerd Font `--font-term`'in başına geçer; pencere onu çizemiyorsa (yeni kurulduysa) açıklama yeniden başlatmayı söyler.
 
 ### Tray ikonu
@@ -202,7 +203,7 @@ Başlığın altında iki eşit düğmeli bir segment kontrolü: `Özet | Ayrın
 | Live / API / Estimated | Canlı / API / Tahmini | Kaynak rozetleri |
 | API-equivalent cost | API karşılığı maliyet | İkincil metrik |
 | Context window | Bağlam penceresi | Statusline'da kısa form her dilde "ctx" |
-| Time mark (statusline) | Zaman işareti | Bar üstünde `│`, metinde `⏱43%` / `⏱%43`; geçen zaman bir ölçümdür, `≈` almaz |
+| Time mark (statusline) | Zaman işareti | Bar üstünde `│`, metinde `⏱ 43%` / `⏱ %43`; geçen zaman bir ölçümdür, `≈` almaz |
 | Time line (mod `/radar`, panel) | Zaman çizgisi | |
 | Time strip (mod pane, panel) | Zaman şeridi | Haftalık pencere: takvim günleri (`┊` gece yarısı) ve reset'ten itibaren her 24 saat (`│`), "▲ şimdi" işareti ve reset saatiyle |
 | Details (mod band) | Ayrıntı | Paneli açan düğme |
@@ -217,15 +218,16 @@ Başlığın altında iki eşit düğmeli bir segment kontrolü: `Özet | Ayrın
 | Right margin | Sağ pay | Claude Code'un 4 sütununa ek olarak sağda boş bırakılan sütunlar |
 | Theme: Plain / Powerline / Rounded | Tema: Düz / Powerline / Yuvarlak | |
 | Preset | Şablon | Varsayılan, Sade, Ayrıntılı, İki satır, Powerline |
-| Export / Import | Dışa aktar / İçe aktar | `[statusline]` TOML metni; içe aktarma kaydetmeden önizler |
+| Export / Import | Dışa aktar / İçe aktar | `[statusline]` TOML metni; içe aktarma kaydetmeden önizler. Statusline araç çubuğunda simge düğmesi; ipucu: "Dışa aktar: satırı [statusline] tablosu olarak kopyala" |
 | Daily budget | Günlük bütçe | Haftalık payın kalan günlere bölümü: `20%/day` / `%20/gün`; pencerenin kaynağını devralır, tahminse `≈` |
 | Cache ratio | Cache oranı | Son istekte cache'ten okunan girdi: `cache 82%` / `cache %82`; "cache" çevrilmez |
 | Session name / Output style | Oturum adı / Output style | "Output style" Claude Code'un terimi, çevrilmez |
 | Left / Tokens left | Kalan / Kalan token | Biçim adları; satırda `58% left` / `%58 kaldı`, `124k left` / `124k kaldı` |
 | Reset as: Countdown / Clock time | Sıfırlanma: Geri sayım / Saat | Saat biçimi yerel saattir: `Tue 04:20` / `Sal 04:20` |
-| Bar width / Bar style: Blocks / Thin / Dots | Çubuk genişliği / Çubuk stili: Blok / İnce / Nokta | |
-| Compactions / Total / Auto and manual | Compact sayısı / Toplam / Oto ve elle | Satırda `⟲2 auto 1 manual · 300k` / `⟲2 oto 1 elle · 300k`; "compact" çevrilmez. Bilinmeyen tetikleyici `other` / `diğer` |
-| Auto off | Oto kapalı | Auto-compact kapalıysa pencere yerine: `⟲3 · auto off` / `⟲3 · oto kapalı` |
+| Bar width / Bar style: Blocks / Thin / Dots / Capsule / Solid | Çubuk genişliği / Çubuk stili: Blok / İnce / Nokta / Kapsül / Dolgu | Kapsül Nerd Fonts ≥ 3.4 ister ve Powerline bloğunda çizilen tek stildir; Dolgu arka plan hücreleriyle çizilir, font istemez (ADR-056) |
+| Icons: Text / Unicode / Nerd Font | Simgeler: Metin / Unicode / Nerd Font | Etiketin yerine geçen simge seti; kullanıcının etiketi her zaman önde. `≈`, `API` ve "bu oturum" hiçbir sette değişmez (ADR-056) |
+| Compactions / Total / Auto and manual | Compact sayısı / Toplam / Oto ve elle | Satırda `⟲ 2 auto 1 manual · 300k` / `⟲ 2 oto 1 elle · 300k`; "compact" çevrilmez. Bilinmeyen tetikleyici `other` / `diğer` |
+| Auto off | Oto kapalı | Auto-compact kapalıysa pencere yerine: `⟲ 3 · auto off` / `⟲ 3 · oto kapalı` |
 | Terminal font | Terminal fontu | Ayarlardaki yardımcı ve diyalog başlığı (ADR-055) |
 | Nerd Font | Nerd Font | Çevrilmez. Kademeler: "Nerd Font değil" / "Nerd Font, 3.4 öncesi" / "Nerd Font" |
 | Select font / Undo | Fontu seç / Geri al | Terminal satırındaki eylemler; ikisi de diff ve onayla |

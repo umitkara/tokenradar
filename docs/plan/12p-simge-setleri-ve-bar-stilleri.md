@@ -105,13 +105,13 @@ Yeni iki `BarStyle`:
 
 ## Görevler
 
-- [ ] Prefs: `IconSet`, `icons` anahtarı (okuma/yazma, eski build uyumu), `SegmentKind::icon`; testler.
-- [ ] Render: `label()` önceliği, `compact()` ve `window()` içindeki `⟲`/`⏱` değişimi; testler.
-- [ ] Bar: `BarStyle::{Capsule, Solid}`, `bar()` ve `bar_sample`; işaret davranışı; testler.
-- [ ] Düzenleyici: simge seti seçici, bar stilleri, uyarılar; Fluent (EN/TR); bindings; örnek veri.
-- [ ] Gerçek görsel kontrol (aşağıda) ve kararların ADR-056'ya yazılması.
-- [ ] Ölçüm: CLI boyutu ve statusline gecikmesi (`docs/perf/`).
-- [ ] Ekran görüntüsü onayı ve devir notu.
+- [x] Prefs: `IconSet`, `icons` anahtarı (okuma/yazma, eski build uyumu), `SegmentKind::icon`; testler.
+- [x] Render: `label()` önceliği, `compact()` ve `window()` içindeki `⟲`/`⏱` değişimi; testler.
+- [x] Bar: `BarStyle::{Capsule, Solid}`, `bar()` ve `bar_sample`; işaret davranışı; testler.
+- [x] Düzenleyici: simge seti seçici, bar stilleri, uyarılar; Fluent (EN/TR); bindings; örnek veri.
+- [x] Gerçek görsel kontrol (aşağıda) ve kararların ADR-056'ya yazılması.
+- [x] Ölçüm: CLI boyutu ve statusline gecikmesi (`docs/perf/`).
+- [x] Ekran görüntüsü onayı ve devir notu.
 
 ## Teknik notlar ve tuzaklar
 
@@ -140,4 +140,54 @@ Yeni iki `BarStyle`:
 
 ## Devir notu
 
-_Adım bitince doldurulur._
+**Tarih:** 2026-11-09 · **Karar:** ADR-056 · **Ölçüm:** `docs/perf/2026-11-09-icon-sets.md` · **Ekran görüntüleri:** `img/12p-statusline-en.png` (açık tema, EN; düz tema, Nerd simgeleri, haftalık kapsül, bağlam dolgu), `img/12p-statusline-tr-dark.png` (koyu tema, TR; Powerline, haftalık dolgu seçili ve "yalnızca kapsül" notu)
+
+### Yapılanlar
+- **Core `prefs.rs`:** `IconSet` (`text` / `unicode` / `nerd`), `icons` anahtarı (hoşgörülü okuma, varsayılan `text` yazılmaz), `SegmentKind::icon`, `elapsed_mark` ve `compact_mark`. `BarStyle::{Capsule, Solid}` ve `CAPSULE` glif tablosu.
+- **Core `render.rs`:**
+  - Etiket önceliği: kullanıcı etiketi > set simgesi > Fluent kelimeleri; yalnızca boşluk olan etiket hiçbir şey göstermez.
+  - Zaman ve compact işaretleri sete göre. Metin ve Unicode setlerinde `⏱ ` ve `⟲ ` boşlukla gelir (aşağıda, Sapmalar).
+  - Kapsül ve dolgu; zaman işareti hücre içinde. Kapsülde dolu glif: düz temada parlak, blokta soluk. Dolguda `|`.
+  - Kapsül Powerline bloklarında da çiziliyor. Kullanıcının rengi dolgunun doluluğuna uyarı eşiğinin altında uygulanıyor.
+- **Şablonlar** kullanıcının simge setini koruyor.
+- **Uygulama:**
+  - Simge seti seçici. Powerline + kurulu Nerd Font'ta "Nerd Font simgelerini kullan" önerisi. Font uyarıları (`fontNoteKey`: font yok, Mono değil, kapsül için 3.4 öncesi).
+  - Bar stili seçicisi beş seçenekle; dolgu örneği renkli (`glyphRuns`). Powerline'da kapsül dışı stiller için not.
+  - Katalog etiketleri ve örnekleri seçili sette. Terminal fontu sayfadaki bütün örneklere ulaşıyor.
+- **Araç çubuğu Türkçede de tek satır** (12o düzeltmesinin 12p'de bozulması, ekran görüntüsünde görüldü):
+  - "Şablonlar…" başlık satırına taşındı.
+  - Dışa ve içe aktar, ipucu ve erişilebilir adı tam cümle olan `IconButton` oldu (kullanıcı kararı).
+  - `Segmented` dar sütunda kırılıyor (`flex-wrap`). Glif örneği boşlukları koruyor (`white-space: pre`).
+- **Öğe listesi:** Düz temada dolgu çubuğunun hücreleri renkli (`itemRuns`). Önce bütün Powerline satırlarını da boyuyordu (benim yan etkim); yalnızca düz temayla sınırlandı.
+- **Fluent (EN/TR):** `statusline-icons-*`, kapsül ve dolgu stil adları, `statusline-capsule-*` uyarıları. Dışa ve içe aktar metinleri ipucu cümlesi oldu. CLI'da `sl-compact-limit-only` işareti `$mark` argümanıyla.
+- **Testler:** Çekirdek `tests/v12p.rs` (setler, öncelik, genişlik: Unicode glifleri cjk açık ve kapalı 1 hücre ve Ambiguous değil, Nerd glifleri BMP PUA'da, kapsül ve dolgu hücreleri, işaret, bloklar, şablonlar). Eski testler boşluklu işarete güncellendi. Ön yüz: `fontNoteKey`, `glyphRuns`, `itemRuns`.
+- **Dokümanlar:** ADR-056; data-sources (glif gözlemi düzeltmesi); architecture §11 (madde 8 ve yeni madde 11); design-language (sözlük, bileşen notu, araç çubuğu); performance-budget (CLI satırı); perf kaydı; CHANGELOG ve README (`⏱ 43%`).
+
+### Sapmalar
+- **Kapsül Powerline bloklarında çiziliyor** (plan: çizilmez). Şekille okunuyor; WT'de görülerek kullanıcıyla karar verildi.
+- **`⏱` ve `⟲`'den sonra boşluk** (metin ve Unicode setleri; kullanıcı kararı). Gerçek WT'de iki glif de yedek fonttan geniş çiziliyor ve sonraki rakamın üstüne biniyordu; `⏱` U+FE0E ile bile emoji. Bu, 12k'nin "`⏱` bir hücre kaplıyor" gözlemini düzeltiyor: sayım 1, çizim değil. Nerd seti boşluk almıyor. Dar terminal eşikleri bir sütun kaydı (test `cols(19)` / `cols(18)`).
+- **"Renk kapalıyken `blocks`'a düşer" kabul kriterinin etkisi yok:** Çubuklar zaten yalnızca renkle çiziliyor; renk kapalıyken hiçbir stil çizilmiyor.
+- **Araç çubuğu düzeni değişti** (Şablonlar başlık satırında, dışa ve içe aktar simge düğmeleri). Plan bunu öngörmüyordu; 12o'nun tek satır kuralı korunsun diye.
+- **Gerçek görsel kontrol yalnızca Windows Terminal'de** (kullanıcı, `show.ps1` ile icons, bars ve fit). VS Code terminali ve Mono olmayan varyant görülmedi; kabul kriterinin VS Code kısmı açık (aşağıda).
+- **Kurulu uygulama ölçüm ve ekran görüntüleri için kapatıldı,** sonra yeniden başlatıldı (kullanıcı onayıyla). İlk ölçüm denemesi kurulu uygulama açıkken yapıldı: portable CLI, SID'den türeyen pipe adıyla kurulu uygulamaya bağlandı. Çıktı geçersiz sayıldı ve kaydedilmedi, çünkü gerçek bir limit değeri içeriyordu. Okumalar bilinmeyen config dizini yüzünden düştü; gerçek veriye yazılmadı.
+
+### Doğrulama
+- `cargo fmt --check`, `cargo clippy --workspace --all-targets -- -D warnings` temiz. `cargo test --workspace`: 516 test (çekirdek 394 → 406, CLI 25, uygulama 61); 4 ignored.
+- `pnpm -C app check`, `lint` ve `test` temiz (126 → 129 test).
+- Boyut: CLI 2.488.320 B (+5.120 B). Statusline p95 açık 13,7–14,1 ms, kapalı 26,5–27,4 ms; `main` ile aynı. Hepsi bütçede.
+- Gerçek WT (CaskaydiaMono Nerd Font Mono): üç set × üç tema, beş stil × dört durum × iki tema, `COLUMNS` 120/80/50. Boşluk sonrası `⏱` ve `⟲` rakamın üstüne binmiyor. Nerd glifleri ve kapsül hücresine sığıyor. Satırlar ölçüye sığıyor; kullanıcı onayladı.
+- Debug build, portable mod ve CDP ile düzenleyici. Araç çubuğu EN ve TR'de 30 px (tek satır). Ekran görüntüleri `PrintWindow` ile alındı (odak değiştirmeden, Mica dahil); kullanıcıya gösterildi.
+
+### Açık konular
+- **VS Code terminali görülmedi.** Kabul kriterinin bu kısmı açık. Aynı kontrol, geçici `show.ps1` ve `.ans` örnekleriyle (silinmişse yeniden üretilmeli) VS Code terminalinde yapılmalı. VS Code'un yedek fontu `⏱`'yi farklı genişlikte çizebilir.
+- **Mono olmayan Nerd Font varyantı denenmedi** (bu makinede yok). Düzenleyici uyarıyor.
+- **Öğe listesi tek renkli:** Kapsülün işareti orada doluluk renginde, bir boşlukla ayrılmış görünüyor ve kullanım sanılabilir. Önizleme ve terminal renkli. Listede kapsülü renkli çizmek küçük bir iş; karar bekliyor.
+- **Mod'un kendi `⏱`'si** (`TokenRadar · Weekly 42% ⏱43%`) boşluksuz; mod 12p kapsamı dışında. Aynı taşma orada da olabilir.
+- **Dil ve tema aynı anda değişirse (12p dışı):** CDP'den ikisi aynı milisaniyede değiştirilince `config.toml` "light" yazdı, ama uygulamanın görünümü "dark" kaldı. Tek tek değiştirince doğru. İnsan eliyle olası değil; incelenmedi.
+- **Renk karoları radiogroup'unun erişilebilir adı yok** (`aria-label` null). 12p öncesinden mi geldiği kontrol edilmedi.
+- **WT'nin yeni kurulan fontu yeniden başlatmadan çizip çizmediği** hâlâ gözlenmedi (WT süreci font kurulumundan sonra başladı).
+
+### Sonraki adıma notlar
+- Simge tabloları `SegmentKind::icon` içinde; yeni bir öğe türü eklenirse iki sete de bakın. Unicode setine yalnızca fontta olan, Ambiguous olmayan glif girmeli: WT'de yedek fonttan gelen glif hücresinden taşıyor.
+- Ekran görüntüleri için `PrintWindow(PW_RENDERFULLCONTENT)` kullanın: odak gerektirmiyor ve Mica arka planını çiziyor. CDP `Page.captureScreenshot` şeffaf alanları gri bırakıyor.
+- Ölçüm ve CLI denemelerinden önce kurulu uygulamanın kapalı olduğunu yolundan kontrol edin; pipe adı kullanıcı başına olduğundan portable CLI de ona bağlanır.

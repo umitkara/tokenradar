@@ -81,6 +81,9 @@ Claude Code, `settings.json` içindeki `statusLine.command` komutunu çalıştı
 - Satır en fazla `COLUMNS − 4` sütun kaplıyor. Daha uzun satırın sonu `…` ile kesiliyor; satır sarmıyor.
 - Baştaki boşluklar kırpılıyor. Satır `ESC[0m` gibi görünmeyen bir diziyle başlarsa boşluklar korunuyor. Satır içindeki boşluklar korunuyor.
 - `⏱`, `▲` ve `≈` birer hücre kaplıyor; `unicode-width` de bunları 1 sayıyor.
+  - **Düzeltme (2026-11-09, Adım 12p, ADR-056):** Sayım 1, ama çizim öyle değil. Cascadia Mono ve CaskaydiaMono Nerd Font Mono'da `⏱` (U+23F1), `⟲` (U+27F2) ve `⎇` (U+2387) yok. Windows Terminal üçünü de yedek fonttan, bir hücreden geniş çiziyor ve glif sonraki hücrenin üstüne biniyor. `⏱`, U+FE0E ile bile renkli emoji olarak çiziliyor. Bu yüzden `⏱` ve `⟲`'den sonra bir boşluk geliyor; `⎇`'den sonra zaten etiketin boşluğu var.
+  - `◷ ⇡ ⇣ ⌂ ›` ve `▲ ≈` fontun içinde ve hücresine sığıyor. Nerd glifleri (Octicons, U+EE00–EE05 ilerleme glifleri) Mono varyantta tam bir hücre. `⌚` (U+231A) East Asian Wide, yani iki hücre; kullanılmıyor.
+  - VS Code terminali ve Mono olmayan varyant henüz gözlenmedi.
 - Pencere küçültülünce, komut yeniden çalışana kadar eski satır kesik görünüyor. Sağa yaslı satır bu arada `…` ile kesilir. `margin` bu daralmaya pay bırakır.
 
 **Komutun ortamı ve renkler (gözlem, 2026-11-07, Adım 12i):**

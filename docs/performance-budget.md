@@ -49,7 +49,7 @@
 |---|---|
 | Installer (NSIS) | ≤ 12 MB |
 | `tokenradar-app.exe` | ≤ 15 MB. Adım 11b: 12,04 MiB. Adım 12o: 13,81 MiB (`lzma-rust2`, `ttf-parser`, +314 KiB) |
-| `tokenradar.exe` (CLI) | ≤ 3 MB. Adım 07: 2,95 MiB. Adım 11b: doctor ile `--release` 3,14 MiB; `release-cli` profili (`opt-level = "s"`, ADR-034) ile 2,17 MiB. Adım 12c: 2,21 MiB. Adım 12i: 2,30 MiB. Adım 12k: 2,33 MiB (`unicode-width`, +28,5 KiB). Adım 12m: 2,35 MiB. Adım 12n: 2,37 MiB. Adım 12o: 2,37 MiB (+1,5 KiB) |
+| `tokenradar.exe` (CLI) | ≤ 3 MB. Adım 07: 2,95 MiB. Adım 11b: doctor ile `--release` 3,14 MiB; `release-cli` profili (`opt-level = "s"`, ADR-034) ile 2,17 MiB. Adım 12c: 2,21 MiB. Adım 12i: 2,30 MiB. Adım 12k: 2,33 MiB (`unicode-width`, +28,5 KiB). Adım 12m: 2,35 MiB. Adım 12n: 2,37 MiB. Adım 12o: 2,37 MiB (+1,5 KiB). Adım 12p: 2,37 MiB (simge setleri ve iki bar stili, +5 KiB) |
 | Frontend bundle (panel sayfası, gzip) | ≤ 60 KB JS + ≤ 15 KB CSS |
 | Frontend bundle (ana pencere, gzip) | ≤ 180 KB JS |
 | Veritabanı büyümesi | ≤ 30 MB/ay (referans kullanım). Ham olaylar 90 gün sonra silinir, `usage_5m` kalıcıdır. |

@@ -58,7 +58,7 @@ Doğrulanmış Ultra hesaplarında 5 saatlik pencere kalktı (ADR-041). Bu adım
 | 12m | [Statusline zenginleştirme: yeni öğeler ve biçimler](12m-statusline-zenginlestirme.md) | 12l | ✅ (2026-11-08, ADR-053). Açık: yeni sürüm gerekli |
 | 12n | [Statusline compact öğesi: oturumdaki compact sayısı ve auto-compact limiti](12n-statusline-compact.md) | 12m | ✅ (2026-11-08, ADR-054). Açık: yeni sürüm gerekli; şema v2 sürüm notu |
 | 12o | [Nerd Font yardımcısı: tespit, indirme, kurulum ve terminal ayarı](12o-nerd-font-yardimcisi.md) | 12n | ✅ (2026-11-09, ADR-055). Açık: WT/VS Code'da yeniden başlatma gözlemi; yeni CLI gerekli |
-| 12p | [Statusline simge setleri ve Nerd bar stilleri](12p-simge-setleri-ve-bar-stilleri.md) | 12o | ⬜ |
+| 12p | [Statusline simge setleri ve Nerd bar stilleri](12p-simge-setleri-ve-bar-stilleri.md) | 12o | ✅ (2026-11-09, ADR-056). Açık: VS Code terminali görülmedi; öğe listesinde kapsül işareti tek renkli |
 
 ### v0.2 — Analitik ve Atıf
 

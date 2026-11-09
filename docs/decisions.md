@@ -1082,3 +1082,43 @@
   - `CascadiaCode.zip` ya da tek tek TTF indirmek: zip daha büyük; tek tek TTF'ler release varlığı değil, depo dosyası. Kullanıcı tar.xz'i seçti.
   - Geri dönüşte dosya başına diff göstermek: tek tık isteğine uymuyordu. Hiç onaysız uygulamak: kural tamamen bırakılırdı; kullanıcı özet onayını seçti.
   - Kurulum durumunu bir dosyada tutmak: yedekler ve sabit hash'ler aynı bilgiyi veriyor, eskiyebilecek ikinci bir durum gerekmiyor.
+
+### ADR-056 — Statusline simge setleri, kapsül ve dolgu çubukları, yedek fontlu işaretlerden sonra boşluk
+**Durum:** Kabul (2026-11-09, Adım 12p, kullanıcı kararlarıyla). ADR-044'ün zaman işaretini, ADR-049'un etiket ve renk kurallarını genişletir.
+- **Bağlam:**
+  - 12o'dan beri bu makinede gerçek bir Nerd Font (CaskaydiaMono Nerd Font Mono 3.5.1) var. Etiketler hâlâ kelimeydi (`git main`, `ctx 38%`), çubuklar üç stilde (blok, ince, nokta) yalnızca düz temada çiziliyordu.
+  - Kullanıcı kararları (2026-11-08): üç simge seti; Nerd Fonts 3.4'ün ilerleme glifleriyle bir çubuk ve arka plan hücreleriyle bir çubuk; kullanıcı etiketi her zaman önde. 2026-11-09: kapsül Powerline bloklarında denenip görülerek karara bağlanacaktı; zaman işareti dolu bir hücre olacak; yedek fonttan gelen işaretlerden sonra boşluk konacak.
+  - **Gerçek Windows Terminal gözlemi (2026-11-09):** Cascadia Mono ve Caskaydia'da `⏱` (U+23F1), `⟲` (U+27F2) ve `⎇` (U+2387) yok. Üçü de yedek fonttan, bir hücreden geniş çiziliyor ve sonraki hücrenin üstüne biniyor. `⏱`, U+FE0E ile bile renkli emoji olarak çiziliyor. `◷ ⇡ ⇣ ⌂ ›` fontun içinde ve hücresine sığıyor. Nerd glifleri hücresine sığıyor. `⌚` (U+231A) East Asian Wide, yani iki hücre.
+- **Karar:**
+  - **Tercih:** `[statusline] icons = "text" | "unicode" | "nerd"`, varsayılan `text`. Bilinmeyen değer `text` okunur (ADR-042'nin hoşgörülü okuması). Anahtarı bilmeyen eski bir build onu atlar ve kelime çizer.
+  - **Etiket önceliği:** Kullanıcının etiketi > setin simgesi > Fluent kelimeleri. Yalnızca boşluktan oluşan bir etiket hiçbir şey göstermez, simge de.
+  - **Unicode seti** yalnızca güçlü ve Ambiguous olmayan simgeler kullanır: `⇡` gönderilen ve `⇣` alınan token, `◷` süre, `⎇` git dalı, `⌂` proje dizini, `›` çalışma dizini, `#` oturum kimliği. Diğer türler kelimelerini korur.
+  - **Nerd seti** Octicons kullanır (hepsi BMP PUA, U+F400–F533): 5 saat, 7 gün, bağlam, token, süre, API süresi, önbellek, git, proje, cwd, oturum kimliği, model, sürüm, ajan, oturum adı, çıktı stili, satır değişimi, günlük bütçe ve yanma hızı. Kelime etiketi olmayan değerler de simge alır.
+  - **Zaman ve compact işaretleri:** Yalnızca Nerd seti bunları değiştirir: `⏱` yerine kum saati (U+F4E3, çünkü `oct-stopwatch` süreye ait), `⟲` yerine U+F48C.
+  - **Değişmeyenler:** `≈`, soluk çizim, `API` işareti ve "bu oturum" hiçbir sette değişmez. Dürüst sayılar kuralı simgeye bırakılmaz.
+  - **Yedek fontlu işaretlerden sonra boşluk (kullanıcı kararı):** Metin ve Unicode setlerinde `⏱` ve `⟲`'den sonra bir boşluk gelir (`⏱ 43%`, `⟲ 3`). Geniş çizilen glif bu boşluğa taşar, rakamın üstüne binmez; WT'de doğrulandı. Nerd glifleri hücresine sığdığı için boşluk almaz; kum saati rakama bitişik çizilir. `unicode-width` bu glifleri yine 1 sayar; boşluk sayıma dahildir.
+  - **`⎇` boşluk almaz:** Ardından zaten etiketin boşluğu gelir; glif o boşluğa taşıyor, kabul edildi.
+  - **Bar stilleri:**
+    - `capsule`: Nerd Fonts ≥ 3.4 ilerleme glifleri U+EE00–EE05 (boş ve dolu; sol uç, orta, sağ uç).
+    - `solid`: arka planı boyanmış boşluk hücreleri; font istemez. Doluluk paint'in rengini (ok cyan, warn sarı, crit kırmızı), boş hücreler griyi alır. Kullanıcının rengi doluluğa yalnızca uyarı eşiğinin altında uygulanır (ADR-049).
+  - **Zaman işareti hücre içinde:** İki stil de ADR-044'ün `│`'ünü ek bir hücre olarak eklemez; zamanın düştüğü hücreyi işaretler, böylece çerçeve ve doluluk bütün kalır. Dolgu bir `|` çizer. Kapsül, **dolu bir glif** çizer (kullanıcı kararı B): düz temada parlak, Powerline bloğunda soluk. İşareti doluluktan ayıran yalnızca renk; bu güvenli, çünkü çubuklar yalnızca renkle çizilir.
+  - **Powerline blokları:** Kapsül bloklarda da çizilir. Hücreleri şekille ayrıldığı için bloğun tek renginde de okunuyor; WT'de görülerek karar verildi (kullanıcı: "Dene, görüp karar ver"). Plan "capsule blok içinde çizilmez" diyordu. Dolgu, blok, ince ve nokta bloklarda çizilmez. Düzenleyici bu durumda "Powerline blokları yalnızca kapsülü çizer" notunu gösterir.
+  - **Renk kapalıyken:** Çubuklar zaten yalnızca renkle çizilir; renk kapalıyken hiçbir stil çizilmez. Plandaki "renk kapalıyken `blocks`'a düşer" kuralının bu yüzden bir etkisi yok.
+  - **Şablonlar** kullanıcının simge setini korur.
+  - **Düzenleyici:**
+    - Araç çubuğunda simge seti seçici. Powerline teması seçilip bir Nerd Font kuruluysa Nerd simgeleri önerilir. Font yoksa ya da Mono değilse bir uyarı çıkar; kapsül 3.4 öncesi fontta uyarır. Uyarılar 12o'nun font kademesini kullanır ve font durumu bilinmeden konuşmaz.
+    - Araç çubuğu Türkçede tek satıra sığsın diye "Şablonlar…" başlık satırına, "Varsayılana dön…"ün yanına taşındı. "Dışa aktar" ve "İçe aktar", ipucu ve erişilebilir adı tam cümle olan simge düğmeleri oldu (kullanıcı kararı).
+    - Bar stili seçicisi beş seçeneği dar sütunda iki satıra kırar. Dolgunun örneği renkli hücrelerle çizilir.
+    - Öğe listesi, düz temada dolgu çubuğunun hücrelerini renkli çizer; Powerline'da liste metni tek renkte kalır.
+- **Bedel:**
+  - CLI 5.120 B büyüdü (2,37 MiB, bütçe ≤ 3 MB). Statusline p95'te ölçülebilir fark yok (`docs/perf/2026-11-09-icon-sets.md`).
+  - Metin ve Unicode setlerinde zaman ve compact işaretleri bir sütun daha uzun; dar terminalde öğeler bir sütun önce düşebilir.
+  - **Öğe listesi tek renkli:** Kapsülün işareti orada doluluğun renginde, araya bir boşluk girmiş gibi görünür ve kullanım sanılabilir. Önizleme ve terminal renkli; liste bir sınır olarak bırakıldı.
+  - Mono olmayan Nerd Font varyantları denenmedi (bu makinede yalnızca Mono kurulu); simgeler komşu hücreye taşabilir. Düzenleyici bunun için uyarır.
+  - **VS Code terminali görülmedi.** Gerçek kontrol yalnızca Windows Terminal'de yapıldı. VS Code'un yedek fontu farklıysa boşluğun yetip yetmediği orada açık.
+- **Alternatifler:**
+  - Kapsül işaretini çerçeveli (boş) bir glifle çizmek: kullanıcı dolu işareti seçti.
+  - `⏱` yerine fontta olan `◷`: süreyle aynı simge olurdu ve "geçen zaman" anlamı kaybolurdu.
+  - `⏱` için U+FE0E (metin sunumu): WT emoji çizmeye devam etti.
+  - `unicode-width`'i `⏱`'yi 2 sayacak biçimde değiştirmek: genişlik terminalden terminale değişiyor; boşluk iki durumda da doğru.
+  - Araç çubuğunu iki satıra bırakmak: 12o'nun tek satır düzeltmesini geri alırdı. Düğme metinlerini kısaltmak yerine kullanıcı simge düğmelerini seçti.
