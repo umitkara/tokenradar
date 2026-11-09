@@ -3,11 +3,16 @@
   a drop-down. A radio group to assistive tech: arrow keys move the choice, Tab leaves the group.
 -->
 <script lang="ts" generics="T extends string | number">
+import type { GlyphRun } from "./glyphs";
+
 interface Option {
   value: T;
   label: string;
-  /** Terminal glyphs shown before the label in the terminal font; hidden from assistive tech. */
-  glyphs?: string;
+  /**
+   * Terminal glyphs shown before the label in the terminal font, as text or as colored runs;
+   * hidden from assistive tech.
+   */
+  glyphs?: string | readonly GlyphRun[];
 }
 
 interface Props {
@@ -58,7 +63,16 @@ function keydown(e: KeyboardEvent) {
       {disabled}
       onclick={() => pick(option.value)}
     >
-      {#if option.glyphs}<span class="glyphs" aria-hidden="true">{option.glyphs}</span>{/if}
+      {#if typeof option.glyphs === "string" && option.glyphs}
+        <span class="glyphs" aria-hidden="true">{option.glyphs}</span>
+      {:else if typeof option.glyphs === "object" && option.glyphs.length > 0}
+        <span class="glyphs" aria-hidden="true"
+          >{#each option.glyphs as run, i (i)}<span
+              style:color={run.color}
+              style:background-color={run.background}>{run.text}</span
+            >{/each}</span
+        >
+      {/if}
       {option.label}
     </button>
   {/each}

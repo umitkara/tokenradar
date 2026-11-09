@@ -1,6 +1,7 @@
 // The settings window's pure logic: which tab a panel link opens, how sizes and API states are
 // worded, and the rules for threshold chips. Components only render what these return.
 
+import type { GlyphRun } from "../../lib/components/glyphs";
 import type { Args } from "../../lib/i18n/fluent";
 import type {
   AnsiColor,
@@ -9,7 +10,9 @@ import type {
   ColorMode,
   Format,
   Group,
+  IconSet,
   Item,
+  NerdFontView,
   PickError,
   ResetFormat,
   SampleState,
@@ -257,6 +260,7 @@ export type Width = (typeof WIDTHS)[number];
 export const SAMPLE_STATES: readonly SampleState[] = ["normal", "warn", "crit", "stale"];
 export const THEMES: readonly Theme[] = ["plain", "powerline", "powerline_round"];
 export const COLOR_MODES: readonly ColorMode[] = ["auto", "always", "never"];
+export const ICON_SETS: readonly IconSet[] = ["text", "unicode", "nerd"];
 export const GROUPS: readonly Group[] = ["limit", "session", "project", "layout"];
 
 /** The palette of the color swatches, in the order a terminal lists them. */
@@ -299,6 +303,40 @@ export const colorModeKey = (mode: ColorMode) => `statusline-color-mode-${mode}`
 export const stateKey = (state: SampleState) => `statusline-state-${state}`;
 export const resetFormatKey = (f: ResetFormat) => `statusline-reset-format-${f}`;
 export const barStyleKey = (style: BarStyle) => `statusline-bar-style-${style}`;
+export const iconSetKey = (set: IconSet) => `statusline-icons-${set}`;
+
+/**
+ * A bar sample's spans as glyph runs for the style picker. Only the solid bar's backgrounds (and
+ * the text on them) bring their terminal colors; the other styles read by shape in the control's
+ * own text color.
+ */
+export function glyphRuns(spans: readonly Span[]): GlyphRun[] {
+  return spans.map((s) => ({
+    text: s.text,
+    color: s.bg && s.fg ? `var(--term-${kebab(s.fg)})` : null,
+    background: s.bg ? `var(--term-${kebab(s.bg)})` : null,
+  }));
+}
+
+/**
+ * What the installed Nerd Font (Step 12o) means for the Nerd icons or the capsule: a message key,
+ * or `null` when there is nothing to say. `loaded` false (the font state is not known yet) says
+ * nothing rather than a warning that may be wrong.
+ */
+export function fontNoteKey(
+  need: "icons" | "capsule",
+  font: NerdFontView | null,
+  loaded: boolean,
+): string | null {
+  if (!loaded) return null;
+  const tier = font?.tier ?? "none";
+  if (need === "capsule") {
+    if (tier === "none") return "statusline-capsule-no-font";
+    return tier === "old" ? "statusline-capsule-old-font" : null;
+  }
+  if (tier === "none") return "statusline-icons-no-font";
+  return font && !font.mono ? "statusline-icons-not-mono" : null;
+}
 
 /** The bar widths in cells (prefs.rs `BAR_WIDTHS`). */
 export const BAR_WIDTHS = [4, 8, 12] as const;

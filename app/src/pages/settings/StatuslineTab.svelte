@@ -36,6 +36,9 @@ import {
   colorModeKey,
   dropInto,
   flexHintKey,
+  fontNoteKey,
+  ICON_SETS,
+  iconSetKey,
   lines,
   MARGINS,
   moveItem,
@@ -81,6 +84,9 @@ const bridge = $derived(store.sources?.statusline.state ?? null);
 
 const themes = $derived(THEMES.map((v) => ({ value: v, label: t(themeKey(v)) })));
 const colorModes = $derived(COLOR_MODES.map((v) => ({ value: v, label: t(colorModeKey(v)) })));
+const iconSets = $derived(ICON_SETS.map((v) => ({ value: v, label: t(iconSetKey(v)) })));
+/** Only a change of the set reloads the catalog, not every edit of the draft. */
+const icons = $derived(draft?.icons ?? "text");
 const states = $derived(SAMPLE_STATES.map((v) => ({ value: v, label: t(stateKey(v)) })));
 const widths = $derived(
   WIDTHS.map((v) => ({ value: v, label: t("statusline-columns", { n: v }) })),
@@ -93,6 +99,9 @@ const nerdFont = $derived(fontView?.font ?? null);
 const termFont = $derived(previewFont(nerdFont));
 /** A font installed while TokenRadar runs reaches the preview only after a restart. */
 const drawsFont = $derived(nerdFont ? canDraw(nerdFont.family) : false);
+/** What the installed font means for the Nerd icons and for the capsule (Step 12p). */
+const iconNote = $derived(fontNoteKey("icons", nerdFont, fontView !== null));
+const capsuleNote = $derived(fontNoteKey("capsule", nerdFont, fontView !== null));
 /** Whether the alignment note is worth showing: some line has a flexible space. */
 const flexed = $derived(items.some((i) => i.kind === "flex" && i.enabled));
 
@@ -102,10 +111,10 @@ $effect(() => {
   untrack(() => editor.adopt(stored));
 });
 
-// The catalog's labels and samples are in the UI language.
+// The catalog's labels and samples are in the UI language and the icon set.
 $effect(() => {
   void t("statusline-title");
-  void editor.load();
+  void editor.load(icons);
 });
 
 // Redrawn on every change of the draft, the sample state, the width or the language.
@@ -224,7 +233,8 @@ function keydown(e: KeyboardEvent) {
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="page" onkeydown={keydown}>
+<!-- The terminal font reaches every terminal sample on the page: preview, list, pickers, dialogs. -->
+<div class="page" onkeydown={keydown} style:--font-term={termFont ?? undefined}>
   <header>
     <div class="title">
       <h2>{t("statusline-editor-title")}</h2>
@@ -257,20 +267,35 @@ function keydown(e: KeyboardEvent) {
           options={colorModes}
           onchange={(color) => set({ color })}
         />
+        <Segmented
+          label={t("statusline-icons")}
+          value={draft.icons}
+          options={iconSets}
+          onchange={(icons) => set({ icons })}
+        />
         <span class="spacer"></span>
         <Button onclick={() => presetDialog?.open("preset")}>{t("statusline-presets")}</Button>
         <Button onclick={exportLine}>{t("statusline-export")}</Button>
         <Button onclick={() => importDialog?.open()}>{t("statusline-import")}</Button>
       </div>
+      {#if draft.icons === "nerd" && iconNote}
+        <p class="note">
+          {t(iconNote)}
+          <button type="button" class="link" onclick={() => fontDialog?.open()}>{t("font-open")}</button>
+        </p>
+      {:else if draft.theme !== "plain" && draft.icons !== "nerd" && nerdFont}
+        <p class="caption">
+          {t("statusline-icons-suggest")}
+          <button type="button" class="link" onclick={() => set({ icons: "nerd" })}>
+            {t("statusline-icons-use-nerd")}
+          </button>
+        </p>
+      {/if}
     {/if}
   </header>
 
   {#if draft}
-    <section
-      class="preview"
-      aria-label={t("statusline-preview")}
-      style:--font-term={termFont ?? undefined}
-    >
+    <section class="preview" aria-label={t("statusline-preview")}>
       <div class="preview-bar">
         <Segmented
           label={t("statusline-state")}
@@ -350,6 +375,8 @@ function keydown(e: KeyboardEvent) {
             count={items.length}
             info={editor.kind(item.kind)}
             absent={editor.preview.absent.includes(item.kind)}
+            theme={draft.theme}
+            {capsuleNote}
             flexHint={item.kind === "flex" ? flexHintKey(items, index) : null}
             onchange={(patch, key) => setItems(updateItem(items, index, patch), key)}
             onmove={(by) => move(index, index + by)}
@@ -368,7 +395,7 @@ function keydown(e: KeyboardEvent) {
       title={t("statusline-add-to-line", { n: paletteLine + 1 })}
       onadd={add}
     />
-    <PresetDialog bind:this={presetDialog} presets={editor.presets} onapply={replace} />
+    <PresetDialog bind:this={presetDialog} presets={editor.presets} icons={draft.icons} onapply={replace} />
     <ImportDialog bind:this={importDialog} onapply={replace} />
     <TerminalFontDialog bind:this={fontDialog} onchange={(v) => (fontView = v)} />
   {/if}

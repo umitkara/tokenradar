@@ -29,8 +29,11 @@ export const commands = {
 	 *  painted spans per line.
 	 */
 	previewStatusline: (prefs: StatuslinePrefs, state: SampleState, width: number | null) => __TAURI_INVOKE<StatuslinePreview>("preview_statusline", { prefs, state, width }),
-	/**  Every kind of statusline item, for the add-item palette and the item editor. */
-	statuslineCatalog: () => __TAURI_INVOKE<StatuslineKind[]>("statusline_catalog"),
+	/**
+	 *  Every kind of statusline item, for the add-item palette and the item editor; labels and
+	 *  samples in icon set `icons` (Step 12p).
+	 */
+	statuslineCatalog: (icons: IconSet) => __TAURI_INVOKE<StatuslineKind[]>("statusline_catalog", { icons }),
 	/**  The built-in statusline presets. */
 	listStatuslinePresets: () => __TAURI_INVOKE<StatuslinePreset[]>("list_statusline_presets"),
 	/**  `prefs` as a `[statusline]` TOML table to share. */
@@ -212,8 +215,8 @@ export type AvailableUpdate = {
 };
 
 /**
- *  The glyphs of a bar (Step 12m). The new styles use only glyphs that take one cell in every
- *  terminal: none of them is East Asian "Ambiguous".
+ *  The glyphs of a bar (Step 12m). `thin` and `dots` use only glyphs that take one cell in every
+ *  terminal: none of them is East Asian "Ambiguous". `capsule` needs Nerd Fonts 3.4 (Step 12p).
  */
 export type BarStyle = 
 /**  `███░░░░░`. */
@@ -221,12 +224,22 @@ export type BarStyle =
 /**  `▬▬▬▭▭▭▭▭`. */
 "thin" | 
 /**  `⣿⣿⣿⣀⣀⣀⣀⣀`. */
-"dots";
+"dots" | 
+/**
+ *  A framed capsule of the Nerd Font progress glyphs (U+EE00–EE05). Full and empty cells
+ *  differ in shape, so it reads in one color too and is drawn in Powerline blocks.
+ */
+"capsule" | 
+/**
+ *  Blank cells on a background color: no glyph, so no font and no width risk. Not drawn in
+ *  Powerline blocks, whose background it would fight.
+ */
+"solid";
 
-/**  A bar style and how it looks. */
+/**  A bar style and how it looks: the cells as painted spans (the solid style is backgrounds). */
 export type BarStyleSample = {
 	style: BarStyle,
-	sample: string,
+	sample: Span[],
 };
 
 export type ChartPoint = {
@@ -452,6 +465,18 @@ export type Freshness =
  *  session and project items before limits.
  */
 export type Group = "limit" | "session" | "project" | "layout";
+
+/**
+ *  What stands for an item's label (Step 12p): the localized words, a few Unicode symbols, or
+ *  Nerd Font icons (Octicons). Symbols do not depend on the language.
+ */
+export type IconSet = 
+/**  `git main`, `ctx 42%`. */
+"text" | 
+/**  `⎇ main`; kinds without a strong symbol keep their words. */
+"unicode" | 
+/**  Octicons from the Nerd Font, also for values that have no label in words. */
+"nerd";
 
 /**  The result of [`StatuslinePrefs::import_toml`]. */
 export type Imported = {
@@ -959,7 +984,10 @@ export type StatuslineKind = {
 	/**  The formats it accepts; empty when it has one look. */
 	formats: Format[],
 	default_format: Format | null,
-	/**  Whether a label can be set, and the one shown when it is empty. */
+	/**
+	 *  Whether a label can be set, and the one shown when it is empty: the icon set's symbol,
+	 *  else the words.
+	 */
 	labeled: boolean,
 	default_label: string,
 	colored: boolean,
@@ -995,6 +1023,8 @@ export type StatuslinePrefs = {
 	color: ColorMode,
 	/**  Columns kept free at the right, past the ones Claude Code keeps (ADR-051). */
 	margin: number,
+	/**  What stands for the labels (Step 12p); an item's own label always wins. */
+	icons: IconSet,
 };
 
 /**  A built-in starting point. */

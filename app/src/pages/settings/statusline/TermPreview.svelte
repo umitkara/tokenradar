@@ -39,8 +39,8 @@ function itemOf(e: Event): number | null {
   return el ? Number(el.dataset.item) : null;
 }
 
-/** A span of an item that draws only blanks: a space, a flexible space. */
-const blank = (span: Span) => span.item !== null && span.text.trim() === "";
+/** A span of an item that draws only blanks: a space, a flexible space (not a solid bar's cells). */
+const blank = (span: Span) => span.item !== null && span.text.trim() === "" && span.bg === null;
 
 function click(e: MouseEvent) {
   const item = itemOf(e);

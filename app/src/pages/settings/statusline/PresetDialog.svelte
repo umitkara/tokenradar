@@ -1,13 +1,15 @@
 <!--
   Applying a preset, or going back to the default: each choice is drawn by the core before the
-  user confirms, because it replaces every item, the theme and the colors. Undo still brings
-  the previous line back.
+  user confirms, because it replaces every item, the theme and the colors. A preset keeps the
+  user's icon set, which depends on their font like the theme does not (Step 12p); going back to
+  the default resets it too. Undo still brings the previous line back.
 -->
 <script lang="ts">
 import Button from "../../../lib/components/Button.svelte";
 import { t } from "../../../lib/i18n/i18n.svelte";
 import {
   commands,
+  type IconSet,
   type Preset,
   type Span,
   type StatuslinePrefs,
@@ -18,10 +20,12 @@ import TermPreview from "./TermPreview.svelte";
 
 interface Props {
   presets: StatuslinePreset[];
+  /** The draft's icon set, kept by a preset. */
+  icons: IconSet;
   onapply: (prefs: StatuslinePrefs) => void;
 }
 
-let { presets, onapply }: Props = $props();
+let { presets, icons, onapply }: Props = $props();
 
 let dialog: HTMLDialogElement;
 let mode = $state<"preset" | "reset">("preset");
@@ -30,6 +34,9 @@ let lines = $state<Partial<Record<Preset, Span[][]>>>({});
 
 const shown = $derived(mode === "reset" ? presets.filter((p) => p.preset === "default") : presets);
 const presetKey = (p: Preset) => `statusline-preset-${p.replaceAll("_", "-")}`;
+/** What a choice applies: a preset with the user's icons, the default as it is. */
+const applied = (p: StatuslinePreset): StatuslinePrefs =>
+  mode === "reset" ? p.prefs : { ...p.prefs, icons };
 
 export async function open(next: "preset" | "reset") {
   mode = next;
@@ -38,7 +45,7 @@ export async function open(next: "preset" | "reset") {
   if (!inTauri()) return;
   const drawn = await Promise.all(
     presets.map(async (p) => {
-      const preview = await commands.previewStatusline(p.prefs, "normal", 120);
+      const preview = await commands.previewStatusline(applied(p), "normal", 120);
       return [p.preset, preview.lines] as const;
     }),
   );
@@ -48,7 +55,7 @@ export async function open(next: "preset" | "reset") {
 function apply() {
   const preset = presets.find((p) => p.preset === chosen);
   dialog.close();
-  if (preset) onapply(preset.prefs);
+  if (preset) onapply(applied(preset));
 }
 </script>
 

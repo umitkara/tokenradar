@@ -9,13 +9,14 @@ import IconButton from "../../../lib/components/IconButton.svelte";
 import Segmented from "../../../lib/components/Segmented.svelte";
 import Toggle from "../../../lib/components/Toggle.svelte";
 import { t } from "../../../lib/i18n/i18n.svelte";
-import type { AnsiColor, Format, Item, StatuslineKind } from "../../../lib/ipc/bindings";
+import type { AnsiColor, Format, Item, StatuslineKind, Theme } from "../../../lib/ipc/bindings";
 import {
   ANSI_COLORS,
   BAR_WIDTHS,
   barStyleKey,
   colorKey,
   formatKey,
+  glyphRuns,
   groupKey,
   hasThresholdColors,
   isWindow,
@@ -36,13 +37,29 @@ interface Props {
   absent: boolean;
   /** A flexible space's effect in its line (`flexHintKey`); `null` on other kinds. */
   flexHint: string | null;
+  /** The line's theme: Powerline blocks draw only the capsule bar. */
+  theme: Theme;
+  /** What the installed font means for the capsule (`fontNoteKey`); `null`: nothing to say. */
+  capsuleNote: string | null;
   onchange: (patch: Partial<Item>, key: string | null) => void;
   onmove: (by: -1 | 1) => void;
   /** Gives every separator, and the ones added later, this item's glyph. */
   onapplyall: (glyph: string) => void;
 }
 
-let { item, index, count, info, absent, flexHint, onchange, onmove, onapplyall }: Props = $props();
+let {
+  item,
+  index,
+  count,
+  info,
+  absent,
+  flexHint,
+  theme,
+  capsuleNote,
+  onchange,
+  onmove,
+  onapplyall,
+}: Props = $props();
 
 const formats = $derived(
   (info?.formats ?? []).map((f: Format) => ({ value: f, label: t(formatKey(f)) })),
@@ -58,10 +75,18 @@ const barStyles = $derived(
   (info?.bar_styles ?? []).map((b) => ({
     value: b.style,
     label: t(barStyleKey(b.style)),
-    glyphs: b.sample,
+    glyphs: glyphRuns(b.sample),
   })),
 );
 const showsBar = $derived(barStyles.length > 0 && item.format === "bar");
+/** A note under the style picker: the bar is left out of Powerline blocks, or the font lacks it. */
+const barNote = $derived(
+  theme !== "plain" && item.bar_style !== "capsule"
+    ? "statusline-bar-in-blocks"
+    : item.bar_style === "capsule"
+      ? capsuleNote
+      : null,
+);
 
 let swatchGroup = $state<HTMLDivElement>();
 
@@ -138,6 +163,7 @@ function swatchKey(e: KeyboardEvent) {
         options={barStyles}
         onchange={(bar_style) => onchange({ bar_style }, null)}
       />
+      {#if barNote}<p class="note">{t(barNote)}</p>{/if}
     </div>
   {/if}
 

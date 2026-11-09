@@ -31,10 +31,14 @@ import {
   dropInto,
   emptyHistory,
   flexHintKey,
+  fontNoteKey,
   formatKey,
   GROUPS,
+  glyphRuns,
   groupKey,
   HISTORY_LIMIT,
+  ICON_SETS,
+  iconSetKey,
   itemText,
   kindHintKey,
   kindKey,
@@ -482,6 +486,7 @@ describe("statusline lines", () => {
       separator: "│",
       color: "auto",
       margin: 0,
+      icons: "text",
     };
     const next = applySeparator(prefs, "·");
     expect(next.separator).toBe("·");
@@ -519,6 +524,38 @@ describe("statusline preview", () => {
   });
 });
 
+describe("statusline icons and bar styles", () => {
+  const font = (tier: "none" | "old" | "full", mono = true) => ({ family: "F", tier, mono });
+
+  it("warns about the font only when it is known and short of what is asked", () => {
+    expect(fontNoteKey("icons", null, false)).toBeNull();
+    expect(fontNoteKey("icons", null, true)).toBe("statusline-icons-no-font");
+    expect(fontNoteKey("icons", font("old"), true)).toBeNull();
+    expect(fontNoteKey("icons", font("full", false), true)).toBe("statusline-icons-not-mono");
+    expect(fontNoteKey("capsule", null, true)).toBe("statusline-capsule-no-font");
+    expect(fontNoteKey("capsule", font("old"), true)).toBe("statusline-capsule-old-font");
+    expect(fontNoteKey("capsule", font("full", false), true)).toBeNull();
+  });
+
+  it("colors only the solid bar's runs in the style picker", () => {
+    const cell = (text: string, more: Partial<Span> = {}): Span => ({
+      text,
+      paint: "ok",
+      fg: null,
+      bg: null,
+      item: null,
+      ...more,
+    });
+    expect(glyphRuns([cell("██")])).toEqual([{ text: "██", color: null, background: null }]);
+    expect(glyphRuns([cell("  ", { bg: "cyan" }), cell("|", { fg: "black", bg: "gray" })])).toEqual(
+      [
+        { text: "  ", color: null, background: "var(--term-cyan)" },
+        { text: "|", color: "var(--term-black)", background: "var(--term-gray)" },
+      ],
+    );
+  });
+});
+
 describe("statusline undo", () => {
   const prefs = (separator: string): StatuslinePrefs => ({
     version: 2,
@@ -527,6 +564,7 @@ describe("statusline undo", () => {
     separator,
     color: "auto",
     margin: 0,
+    icons: "text",
   });
 
   it("undoes step by step and joins quick edits of one field", () => {
@@ -665,7 +703,19 @@ describe("statusline message keys", () => {
       ...COLOR_MODES.map(colorModeKey),
       ...SAMPLE_STATES.map(stateKey),
       ...(["countdown", "clock"] as const).map(resetFormatKey),
-      ...(["blocks", "thin", "dots"] as const).map(barStyleKey),
+      ...(["blocks", "thin", "dots", "capsule", "solid"] as const).map(barStyleKey),
+      ...ICON_SETS.map(iconSetKey),
+      ...(["icons", "capsule"] as const)
+        .flatMap((need) =>
+          [null, { family: "X", tier: "old" as const, mono: false }].map((font) =>
+            fontNoteKey(need, font, true),
+          ),
+        )
+        .filter((k): k is string => k !== null),
+      "statusline-icons",
+      "statusline-icons-suggest",
+      "statusline-icons-use-nerd",
+      "statusline-bar-in-blocks",
       "statusline-reset-format",
       "statusline-bar-width",
       "statusline-bar-style",

@@ -13,7 +13,7 @@ use tokenradar_core::config::{DataConfig, LocalePref, LogLevel, PanelView, Theme
 use tokenradar_core::events::CoreEvent;
 use tokenradar_core::limits::{PanelDetail, PanelSnapshot};
 use tokenradar_core::notifier::{self, NotifyPrefs};
-use tokenradar_core::statusline::line::{Imported, SampleState, StatuslinePrefs};
+use tokenradar_core::statusline::line::{IconSet, Imported, SampleState, StatuslinePrefs};
 use tokenradar_core::terminal_font::TargetId;
 use tokenradar_core::terminal_font::terminals::FontChange;
 
@@ -260,11 +260,12 @@ async fn preview_statusline(
     prefs::statusline_preview(&app, &prefs, state, width)
 }
 
-/// Every kind of statusline item, for the add-item palette and the item editor.
+/// Every kind of statusline item, for the add-item palette and the item editor; labels and
+/// samples in icon set `icons` (Step 12p).
 #[tauri::command]
 #[specta::specta]
-async fn statusline_catalog(app: AppHandle) -> Vec<StatuslineKind> {
-    prefs::statusline_catalog(&app)
+async fn statusline_catalog(app: AppHandle, icons: IconSet) -> Vec<StatuslineKind> {
+    prefs::statusline_catalog(&app, icons)
 }
 
 /// The built-in statusline presets.

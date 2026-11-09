@@ -18,8 +18,8 @@ use tokenradar_core::domain::{LimitKind, Timestamp, WindowPresence};
 use tokenradar_core::notifier::NotifyPrefs;
 use tokenradar_core::paths::Paths;
 use tokenradar_core::statusline::line::{
-    self, BarStyle, Format, Group, Item, Line, Preset, ResetFormat, SampleState, SegmentKind, Span,
-    StatuslinePrefs, Style,
+    self, BarStyle, Format, Group, IconSet, Item, Line, Preset, ResetFormat, SampleState,
+    SegmentKind, Span, StatuslinePrefs, Style,
 };
 use tokenradar_i18n::{HourCycle, Locale};
 
@@ -398,7 +398,8 @@ pub struct StatuslineKind {
     /// The formats it accepts; empty when it has one look.
     pub formats: Vec<Format>,
     pub default_format: Option<Format>,
-    /// Whether a label can be set, and the one shown when it is empty.
+    /// Whether a label can be set, and the one shown when it is empty: the icon set's symbol,
+    /// else the words.
     pub labeled: bool,
     pub default_label: String,
     pub colored: bool,
@@ -412,15 +413,15 @@ pub struct StatuslineKind {
     pub bar_styles: Vec<BarStyleSample>,
 }
 
-/// A bar style and how it looks.
+/// A bar style and how it looks: the cells as painted spans (the solid style is backgrounds).
 #[derive(Debug, Clone, Serialize, Type)]
 pub struct BarStyleSample {
     pub style: BarStyle,
-    pub sample: String,
+    pub sample: Vec<Span>,
 }
 
-/// Every kind of item, in palette order.
-pub fn statusline_catalog(app: &AppHandle) -> Vec<StatuslineKind> {
+/// Every kind of item, in palette order, with labels and samples in icon set `icons`.
+pub fn statusline_catalog(app: &AppHandle, icons: IconSet) -> Vec<StatuslineKind> {
     let five_hour = has_five_hour(app);
     let l10n = cli_l10n(app);
     let sample = Line::sample(Timestamp::now(), true);
@@ -436,13 +437,14 @@ pub fn statusline_catalog(app: &AppHandle) -> Vec<StatuslineKind> {
             formats: kind.formats().to_vec(),
             default_format: kind.default_format(),
             labeled: kind.labeled(),
-            default_label: line::default_label(&l10n, kind),
+            default_label: line::shown_label(&l10n, kind, icons),
             colored: kind.colored(),
             sample: if kind.is_layout() {
                 String::new()
             } else {
                 let alone = StatuslinePrefs {
                     items: vec![Item::new(kind)],
+                    icons,
                     ..StatuslinePrefs::default()
                 };
                 line::render(&l10n, &sample, &alone, plain)

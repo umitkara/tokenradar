@@ -6,6 +6,7 @@
 
 import {
   commands,
+  type IconSet,
   type SampleState,
   type StatuslineKind,
   type StatuslinePrefs,
@@ -39,18 +40,22 @@ export class StatuslineEditor {
 
   #saver = createSaver<StatuslinePrefs>(SAVE_DELAY_MS, (prefs) => this.#save(prefs));
   #previewSeq = 0;
+  #catalogSeq = 0;
 
   async #save(prefs: StatuslinePrefs): Promise<void> {
     if (!inTauri()) return;
     this.saveFailed = !(await savePrefs(() => commands.setStatuslinePrefs(prefs)));
   }
 
-  async load(): Promise<void> {
+  /** Loads the catalog, its labels and samples in icon set `icons`; an older answer is dropped. */
+  async load(icons: IconSet): Promise<void> {
     if (!inTauri()) return;
+    const seq = ++this.#catalogSeq;
     const [catalog, presets] = await Promise.all([
-      commands.statuslineCatalog(),
+      commands.statuslineCatalog(icons),
       commands.listStatuslinePresets(),
     ]);
+    if (seq !== this.#catalogSeq) return;
     this.catalog = catalog;
     this.presets = presets;
   }
