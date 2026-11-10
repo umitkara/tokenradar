@@ -67,6 +67,8 @@ panel-token-stale = Updates after you run Claude Code once.
 # $ms is how long ago the last value arrived.
 panel-offline = Offline · last value { DUR($ms) } ago
 panel-schema-drift = Claude Code may have been updated; some data can't be read.
+# $models is a comma-separated list of model ids.
+panel-unpriced = No price yet for { $models }. Cost is estimated until TokenRadar is updated.
 panel-diagnostics = Show diagnostics
 
 ## The panel's two views (ADR-048)

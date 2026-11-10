@@ -48,6 +48,7 @@ export function snapshot(o: Partial<PanelSnapshot> = {}): PanelSnapshot {
       progress: null,
       recent_ready: true,
       drift: null,
+      unpriced_models: [],
     },
     api: {
       state: { state: "active" },

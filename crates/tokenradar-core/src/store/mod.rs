@@ -14,6 +14,7 @@ mod index;
 mod kv;
 mod migrate;
 mod notifications;
+mod reprice;
 mod retention;
 mod snapshots;
 mod sql;
@@ -29,6 +30,7 @@ use rusqlite::{Connection, OpenFlags};
 
 pub use events::UpsertStats;
 pub use index::{CompactCounts, IndexBatch, SourceFileState};
+pub use reprice::RepriceStats;
 pub use retention::{PruneStats, RETENTION_INTERVAL_MS};
 pub use stats::AccountStats;
 pub use windows::{SessionLabel, WINDOW_MATCH_TOLERANCE_MS};
@@ -219,6 +221,11 @@ impl Store {
         self.read(|c| kv::get(c, key))
     }
 
+    /// Names of the models the account used at or after `since`.
+    pub fn models_used_since(&self, account: AccountId, since: Timestamp) -> Result<Vec<String>> {
+        self.read(|c| catalog::models_used_since(c, account, since))
+    }
+
     /// `notification_log` rows `(rule, dedupe_key, fired_at)` fired at or after `since`.
     pub fn notifications_since(
         &self,
@@ -400,6 +407,13 @@ impl Writer {
         self.call(move |conn| retention::prune_if_due(conn, now, keep_days))
     }
 
+    /// Prices every raw event again with the embedded table if another table priced them, and
+    /// moves `usage_5m` by the difference (ADR-057). Returns `None` when the fingerprints
+    /// match, which is one `kv` read.
+    pub fn reprice_if_table_changed(&self) -> Result<Option<RepriceStats>> {
+        self.call(|conn| reprice::reprice_if_table_changed(conn, crate::pricing::Pricing::claude()))
+    }
+
     /// Stops the writer thread after queued jobs finish. Further calls return `WriterGone`.
     pub fn shutdown(&self) {
         self.tx
@@ -493,6 +507,17 @@ impl ReadOnlyStore {
 
     pub fn kv_get(&self, key: &str) -> Result<Option<String>> {
         kv::get(&self.conn, key)
+    }
+
+    /// Names of the models the account used at or after `since`.
+    pub fn models_used_since(&self, account: AccountId, since: Timestamp) -> Result<Vec<String>> {
+        catalog::models_used_since(&self.conn, account, since)
+    }
+
+    /// Fingerprint of the price table that priced the stored events; `None` before the first
+    /// re-pricing check (ADR-057).
+    pub fn pricing_table(&self) -> Result<Option<String>> {
+        kv::get(&self.conn, reprice::TABLE_KEY)
     }
 
     /// `PRAGMA user_version`: the migration the database is at.

@@ -12,6 +12,9 @@ use crate::domain::{MicroUsd, ModelFamily, Speed, Usage};
 
 const CLAUDE_TOML: &str = include_str!("claude.toml");
 
+/// How long after its last use a model without a price entry is still reported (ADR-057).
+pub const UNPRICED_LOOKBACK_MS: i64 = 7 * 24 * 60 * 60 * 1000;
+
 static CLAUDE: LazyLock<Pricing> =
     LazyLock::new(|| Pricing::from_toml(CLAUDE_TOML).expect("embedded claude.toml is valid"));
 
@@ -62,6 +65,7 @@ pub struct Priced {
 #[derive(Debug)]
 pub struct Pricing {
     version: String,
+    fingerprint: String,
     models: Vec<ModelPrice>,
     fallback: usize,
     web_search_micro_usd: f64,
@@ -105,6 +109,11 @@ impl Pricing {
             .position(|m| m.id == file.fallback)
             .ok_or(PricingError::MissingFallback(file.fallback))?;
         Ok(Self {
+            fingerprint: format!(
+                "{}#{:016x}",
+                file.version,
+                xxhash_rust::xxh3::xxh3_64(text.as_bytes())
+            ),
             version: file.version,
             models,
             fallback,
@@ -118,6 +127,12 @@ impl Pricing {
         &self.version
     }
 
+    /// The version plus a hash of the table's text. Stored costs are priced again when it
+    /// changes (ADR-057), so an edit counts even if `version` was not bumped.
+    pub fn fingerprint(&self) -> &str {
+        &self.fingerprint
+    }
+
     /// Exact entry for a model, if the table knows it.
     pub fn find(&self, model: &str) -> Option<&ModelPrice> {
         let name = strip_platform_prefix(model);
@@ -125,6 +140,17 @@ impl Pricing {
             .iter()
             .filter(|m| matches_id(name, &m.id))
             .max_by_key(|m| m.id.len())
+    }
+
+    /// The models among `names` that the table has no entry for, sorted and without
+    /// duplicates. Their cost is a stand-in until a newer table knows them (ADR-057).
+    pub fn unpriced<S: AsRef<str>>(&self, names: impl IntoIterator<Item = S>) -> Vec<String> {
+        let unknown: std::collections::BTreeSet<String> = names
+            .into_iter()
+            .filter(|n| self.find(n.as_ref()).is_none())
+            .map(|n| n.as_ref().to_owned())
+            .collect();
+        unknown.into_iter().collect()
     }
 
     /// Price for a model: the exact entry, else the newest entry of its family, else the

@@ -114,7 +114,8 @@ export type Notice =
   | { type: "indexing"; pct: number; recentReady: boolean }
   | { type: "token-stale" }
   | { type: "offline"; since: number | null }
-  | { type: "drift" };
+  | { type: "drift" }
+  | { type: "unpriced"; models: string };
 
 /** Calm notices above the limits (design-language.md §9), most useful first. */
 export function notices(snapshot: PanelSnapshot): Notice[] {
@@ -138,6 +139,9 @@ export function notices(snapshot: PanelSnapshot): Notice[] {
     });
   }
   if (index.drift) out.push({ type: "drift" });
+  if (index.unpriced_models.length > 0) {
+    out.push({ type: "unpriced", models: index.unpriced_models.join(", ") });
+  }
   return out;
 }
 

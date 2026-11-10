@@ -58,7 +58,7 @@ pub(crate) fn tokens_to_sql(n: u64) -> i64 {
     i64::try_from(n).unwrap_or(i64::MAX)
 }
 
-#[cfg(test)]
+/// Stored counts are never negative; a corrupt negative value reads as zero.
 pub(crate) fn tokens_from_sql(n: i64) -> u64 {
     u64::try_from(n).unwrap_or(0)
 }

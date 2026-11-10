@@ -24,7 +24,7 @@
 //! Start-up order (architecture §2): the watcher starts at once; the first full scan waits
 //! [`Timings::startup_delay`] so the tray and IPC come up first.
 
-use std::collections::HashSet;
+use std::collections::{BTreeSet, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, RecvTimeoutError};
@@ -49,6 +49,7 @@ use crate::limits::{
 };
 use crate::live_sessions::{self, LiveSession, LiveSessionTracker};
 use crate::notifier::{self, Fired, Notifier, NotifyPrefs, Outcome};
+use crate::pricing::{Pricing, UNPRICED_LOOKBACK_MS};
 use crate::providers::claude::credentials::{self, CREDENTIALS_FILE};
 use crate::providers::claude::usage_api::{
     HttpTransport, PollInputs, PollUpdate, PollerMsg, UsageApiPoller,
@@ -179,6 +180,8 @@ pub struct CoreStatus {
     pub recent_ready: bool,
     /// Unusable records seen since start.
     pub schema_drift: Option<SchemaDriftView>,
+    /// Models without a price entry: used in the last week as of start, or seen since.
+    pub unpriced_models: BTreeSet<String>,
     /// Terminals statusline calls came from since start, in order of kind (Step 12o).
     pub terminals: Vec<TerminalKind>,
     /// The terminal of the latest statusline call.
@@ -208,6 +211,7 @@ impl CoreStatus {
             progress: self.index_progress,
             recent_ready: self.recent_ready,
             drift: self.schema_drift,
+            unpriced_models: self.unpriced_models.iter().cloned().collect(),
         }
     }
 }
@@ -221,6 +225,11 @@ impl CoreRuntime {
     #[allow(clippy::too_many_lines)] // one linear wiring of every core thread, in start order
     pub fn start(config: &CoreConfig) -> Result<CoreHandle, RuntimeError> {
         let store = Store::open(&config.db_path)?;
+        // Before the limit engine reads any cost. A no-op unless this build carries a new price
+        // table; a failure only leaves the old costs in place until the next start.
+        if let Err(error) = store.writer().reprice_if_table_changed() {
+            tracing::warn!(%error, "could not re-price stored events");
+        }
         let bus = EventBus::default();
         let status = Arc::new(Mutex::new(CoreStatus::default()));
         let cancel = Arc::new(AtomicBool::new(false));
@@ -278,6 +287,9 @@ impl CoreRuntime {
                 tx,
             ));
         }
+
+        // Stand-in costs from before this start still shape this week's numbers.
+        lock(&status).unpriced_models = unpriced_recently(&store, &metas, Timestamp::now());
 
         let account_dirs: Vec<(AccountId, PathBuf)> = metas
             .iter()
@@ -764,7 +776,26 @@ fn run_pass(ctx: &mut IndexCtx, work: Pending, initial: bool) {
     }
 }
 
+/// Models used within [`UNPRICED_LOOKBACK_MS`] that the price table does not know.
+fn unpriced_recently(store: &Store, accounts: &[AccountMeta], now: Timestamp) -> BTreeSet<String> {
+    let since = now.saturating_sub_millis(UNPRICED_LOOKBACK_MS);
+    let mut names = Vec::new();
+    for account in accounts {
+        match store.models_used_since(account.id, since) {
+            Ok(used) => names.extend(used),
+            Err(error) => tracing::warn!(%error, "could not list the models used recently"),
+        }
+    }
+    Pricing::claude().unpriced(names).into_iter().collect()
+}
+
 fn publish_report(ctx: &IndexCtx, report: &IndexReport, initial: bool) {
+    if !report.unpriced_models.is_empty() {
+        // The pass ends with `LimitsMsg::Indexed`; the rebuilt snapshot carries the names.
+        lock(&ctx.status)
+            .unpriced_models
+            .extend(report.unpriced_models.iter().cloned());
+    }
     let p = &report.parse;
     let unknown = p.unknown() + p.prefilter_misses + p.oversized_suspect;
     if unknown > 0 {

@@ -15,6 +15,7 @@ use super::*;
 use crate::domain::{
     BUCKET_MS, CompactEvent, LimitKind, Scope, SessionKind, SessionTitle, Source, TitleSource,
 };
+use crate::pricing::Pricing;
 
 fn upsert(conn: &mut Connection, batch: &[UsageEvent]) -> UpsertStats {
     let tx = conn.transaction().expect("tx");
@@ -803,4 +804,212 @@ fn upgrading_from_schema_1_rereads_every_live_file() {
             ("live.jsonl".into(), 0, 0, 0),
         ]
     );
+}
+
+#[test]
+fn models_used_since_reads_the_rollup() {
+    let mut conn = memory_db();
+    let fx = seed(&conn);
+    upsert(
+        &mut conn,
+        &[
+            fx.event(1, 10, 0, 0, 0),
+            fx.event(2, 10, 10 * BUCKET_MS, 0, 1),
+        ],
+    );
+    let names = |since: i64| {
+        catalog::models_used_since(&conn, fx.account, Timestamp::from_millis(since))
+            .expect("models")
+    };
+    assert_eq!(names(0), ["claude-opus-5-5", "claude-sonnet-5-5"]);
+    // Bucket granularity: a time inside the bucket still counts the bucket.
+    assert_eq!(names(10 * BUCKET_MS + 1), ["claude-sonnet-5-5"]);
+    assert_eq!(names(11 * BUCKET_MS), Vec::<String>::new());
+}
+
+// --- Re-pricing after a price table change (ADR-057) --------------------------------------
+
+/// Two versions of a small price table: the newer one learns `claude-fable-5-2`.
+fn price_tables() -> (Pricing, Pricing) {
+    const COMMON: &str = r#"
+schema = 1
+fallback = "claude-opus-5-5"
+
+[defaults]
+cache_write_5m_mult = 1.25
+cache_write_1h_mult = 2.0
+cache_read_mult = 0.10
+fast_mult = 2.0
+web_search_micro_usd = 10000
+
+[[model]]
+id = "claude-fable-5-1"
+family = "fable"
+input = 10.0
+output = 50.0
+cache_read_mult = 0.025
+
+[[model]]
+id = "claude-opus-5-5"
+family = "opus"
+input = 4.0
+output = 20.0
+cache_read_mult = 0.05
+"#;
+    const FABLE_5_2: &str = r#"
+[[model]]
+id = "claude-fable-5-2"
+family = "fable"
+input = 8.0
+output = 40.0
+cache_read_mult = 0.025
+"#;
+    let table = |text: String| Pricing::from_toml(&text).expect("table");
+    (
+        table(format!("version = \"old\"{COMMON}")),
+        table(format!("version = \"new\"{COMMON}{FABLE_5_2}")),
+    )
+}
+
+const REPRICE_MODELS: [&str; 2] = ["claude-fable-5-2", "claude-opus-5-5"];
+
+/// The seeded account with a model the old table does not know and one it does.
+fn seed_for_reprice(conn: &Connection) -> Fixture {
+    let fx = seed(conn);
+    Fixture {
+        models: [
+            catalog::upsert_model(conn, REPRICE_MODELS[0], ModelFamily::Fable).expect("model"),
+            catalog::upsert_model(conn, REPRICE_MODELS[1], ModelFamily::Opus).expect("model"),
+        ],
+        ..fx
+    }
+}
+
+/// `events` with the cost `pricing` gives them; `model` indexes [`REPRICE_MODELS`].
+fn priced(pricing: &Pricing, events: &[(usize, UsageEvent)]) -> Vec<UsageEvent> {
+    events
+        .iter()
+        .map(|(model, e)| UsageEvent {
+            cost: pricing.cost(REPRICE_MODELS[*model], &e.usage).cost,
+            ..e.clone()
+        })
+        .collect()
+}
+
+fn stored_costs(conn: &Connection) -> Vec<i64> {
+    conn.prepare("SELECT cost_micro_usd FROM usage_events ORDER BY id")
+        .expect("prepare")
+        .query_map([], |r| r.get(0))
+        .expect("query")
+        .collect::<rusqlite::Result<_>>()
+        .expect("rows")
+}
+
+#[test]
+fn a_new_price_table_reprices_stored_events_and_shifts_the_rollup() {
+    let (old, new) = price_tables();
+    let mut conn = memory_db();
+    let fx = seed_for_reprice(&conn);
+
+    // Fast mode and web searches are part of the cost, so they must survive the round trip.
+    let mut fast = fx.event(4, 400, BUCKET_MS, 1, 1);
+    fast.usage.speed = crate::domain::Speed::Fast;
+    let mut searched = fx.event(5, 500, BUCKET_MS, 0, 0);
+    searched.usage.web_search = 3;
+    let events = [
+        (0, fx.event(1, 100, 0, 0, 0)),
+        (0, fx.event(2, 200, 10, 0, 0)), // same bucket as the first
+        (1, fx.event(3, 300, 0, 0, 1)),
+        (1, fast),
+        (0, searched),
+    ];
+    upsert(&mut conn, &priced(&old, &events));
+
+    // A database from before this feature has no recorded table: it is checked once.
+    let first = reprice::reprice_if_table_changed(&mut conn, &old).expect("first");
+    assert_eq!(
+        first,
+        Some(RepriceStats {
+            scanned: 5,
+            repriced: 0
+        })
+    );
+    assert_eq!(
+        reprice::reprice_if_table_changed(&mut conn, &old).expect("same table"),
+        None
+    );
+
+    let stats = reprice::reprice_if_table_changed(&mut conn, &new).expect("new table");
+    assert_eq!(
+        stats,
+        Some(RepriceStats {
+            scanned: 5,
+            repriced: 3
+        })
+    );
+    let expected = priced(&new, &events);
+    assert_eq!(
+        stored_costs(&conn),
+        expected.iter().map(|e| e.cost.0).collect::<Vec<_>>()
+    );
+    assert_eq!(rollup(&conn), expected_rollup(expected));
+    assert_eq!(
+        kv::get(&conn, "pricing.table").expect("kv").as_deref(),
+        Some(new.fingerprint())
+    );
+    assert_eq!(
+        reprice::reprice_if_table_changed(&mut conn, &new).expect("again"),
+        None
+    );
+}
+
+#[test]
+fn repricing_leaves_the_rollup_share_of_pruned_events_alone() {
+    let (old, new) = price_tables();
+    let mut conn = memory_db();
+    let fx = seed_for_reprice(&conn);
+    let events: Vec<_> = (0..4)
+        .map(|i| (0, fx.event(i, 100, i64::from(i) * BUCKET_MS, 0, 0)))
+        .collect();
+    let before = priced(&old, &events);
+    upsert(&mut conn, &before);
+    retention::prune_raw_events(&mut conn, Timestamp::from_millis(2 * BUCKET_MS)).expect("prune");
+
+    let stats = reprice::reprice_if_table_changed(&mut conn, &new)
+        .expect("reprice")
+        .expect("ran");
+    assert_eq!((stats.scanned, stats.repriced), (2, 2));
+
+    let after = priced(&new, &events);
+    assert!(after[0].cost < before[0].cost, "the tables must differ");
+    let mixed = before[..2].iter().chain(&after[2..]).cloned();
+    assert_eq!(rollup(&conn), expected_rollup(mixed));
+}
+
+#[test]
+fn repricing_walks_every_chunk() {
+    let (old, new) = price_tables();
+    let mut conn = memory_db();
+    let fx = seed_for_reprice(&conn);
+    let n = reprice::CHUNK as usize + 5;
+    let events: Vec<_> = (0..n)
+        .map(|i| {
+            let mut e = fx.event(
+                0,
+                50 + (i % 9) as u64,
+                (i % 40) as i64 * BUCKET_MS,
+                i % 2,
+                0,
+            );
+            e.msg_key = crate::domain::MsgKey::from_ids(&format!("msg_{i}"), "req");
+            (0, e)
+        })
+        .collect();
+    upsert(&mut conn, &priced(&old, &events));
+
+    let stats = reprice::reprice_if_table_changed(&mut conn, &new)
+        .expect("reprice")
+        .expect("ran");
+    assert_eq!((stats.scanned, stats.repriced), (n, n));
+    assert_eq!(rollup(&conn), expected_rollup(priced(&new, &events)));
 }

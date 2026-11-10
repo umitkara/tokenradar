@@ -134,6 +134,8 @@ path-unsupported = Bu komut yalnızca Windows'ta kullanılabilir.
 
 doctor-done = Tanılama paketi yazıldı: { $path }
     Token, konuşma içeriği veya okunabilir yol içermez. Paylaşmadan önce açıp kontrol edin.
+# $models, virgülle ayrılmış model kimlikleridir.
+doctor-unpriced = { $models } için henüz fiyat yok. TokenRadar güncellenene kadar maliyet tahminidir.
 error = hata: { $message }
 cli-help =
     TokenRadar - yapay zekâ kodlama ajanları için kullanım limitleri

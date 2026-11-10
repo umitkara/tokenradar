@@ -141,6 +141,8 @@ path-unsupported = This command is only available on Windows.
 
 doctor-done = Diagnostics bundle written: { $path }
     It holds no token, conversation content or readable path. Open it and check before sharing.
+# $models is a comma-separated list of model ids.
+doctor-unpriced = No price yet for { $models }. Cost is estimated until TokenRadar is updated.
 error = error: { $message }
 cli-help =
     TokenRadar - usage limits for AI coding agents

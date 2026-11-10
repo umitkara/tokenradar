@@ -513,6 +513,11 @@ export type IndexState = {
 	recent_ready: boolean,
 	/**  Records the parser could not use since the app started; the format may have changed. */
 	drift: SchemaDriftView | null,
+	/**
+	 *  Models used in the last week that the price table does not know, sorted. Their cost
+	 *  is a stand-in until an update brings their price (ADR-057).
+	 */
+	unpriced_models: string[],
 };
 
 /**  One item of the line. */

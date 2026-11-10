@@ -24,7 +24,7 @@ use tokenradar_core::providers::claude::usage_api::{ApiState, PollDiagnostics};
 use crate::ipc;
 use crate::tray::{self, TrayMsg};
 
-pub const SCENES: [&str; 15] = [
+pub const SCENES: [&str; 16] = [
     "ok",
     "crit",
     "many",
@@ -37,6 +37,7 @@ pub const SCENES: [&str; 15] = [
     "offline",
     "stale",
     "drift",
+    "unpriced",
     "no-claude",
     "five-hour-only",
     "no-five-hour",
@@ -336,6 +337,7 @@ fn build(scene: &str) -> Option<PanelSnapshot> {
                 }),
                 recent_ready: true,
                 drift: None,
+                unpriced_models: Vec::new(),
             };
             s
         }
@@ -438,6 +440,11 @@ fn build(scene: &str) -> Option<PanelSnapshot> {
                 unknown_count: 37,
                 last_at: at(-2),
             });
+            s
+        }
+        "unpriced" => {
+            let mut s = base(normal_limits(), live());
+            s.index_state.unpriced_models = vec!["claude-fable-6".to_owned()];
             s
         }
         "no-claude" => {

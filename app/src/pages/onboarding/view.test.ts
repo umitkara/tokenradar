@@ -9,6 +9,7 @@ function index(overrides: Partial<IndexState>): IndexState {
     progress: null,
     recent_ready: false,
     drift: null,
+    unpriced_models: [],
     ...overrides,
   };
 }

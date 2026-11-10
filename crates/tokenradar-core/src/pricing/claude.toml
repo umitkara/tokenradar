@@ -4,7 +4,8 @@
 # Verified: 2026-11-09 (first-party Claude API, global routing, standard tier)
 #
 # Prices are USD per million tokens, which equals micro-dollars per token.
-# Bump `version` whenever a number changes; stored costs are not recomputed retroactively.
+# Bump `version` whenever a number or a model changes. Any edit to this file makes the app
+# price its stored events again at the next start (ADR-057).
 #
 # Matching: a model name matches an entry when it equals `id`, or `id` followed by a date
 # (`-20251001`), a version (`-v1:0`) or `@`/`[` suffix. Platform prefixes such as

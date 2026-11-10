@@ -143,6 +143,14 @@ fn report_counts_the_indexed_fixtures() {
     assert_eq!(account["stats"]["sessions"], 3);
     assert!(account["stats"]["events"].as_u64().unwrap_or(0) > 0);
     assert_eq!(report["database"]["tables"]["accounts"], 1);
+    let pricing = &report["database"]["pricing"];
+    assert_eq!(
+        pricing["table"],
+        crate::pricing::Pricing::claude().fingerprint()
+    );
+    // Only the running app re-prices; the fixtures use models the table knows.
+    assert_eq!(pricing["stored_table"], Value::Null);
+    assert_eq!(pricing["unpriced_models"], serde_json::json!([]));
     assert_eq!(report["files"]["logs"]["files"], 2);
     assert_eq!(report["errors"], serde_json::json!([]));
 }

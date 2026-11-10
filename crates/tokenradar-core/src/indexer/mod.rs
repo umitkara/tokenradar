@@ -186,6 +186,9 @@ pub struct IndexReport {
     pub sessions: BTreeSet<SessionId>,
     /// Earliest and latest timestamp among those events.
     pub ts_range: Option<(Timestamp, Timestamp)>,
+    /// Models among those events that the price table does not know; their cost is a
+    /// stand-in (ADR-057).
+    pub unpriced_models: BTreeSet<String>,
     /// The pass stopped early because [`Indexer::set_cancel`]'s flag was raised. Everything
     /// reported was stored; the remaining files are picked up by the next pass.
     pub cancelled: bool,
@@ -552,7 +555,10 @@ impl Indexer {
 
         for raw in chunk.events {
             let model_id = self.model_for(&raw.model)?;
-            let cost = Pricing::claude().cost(&raw.model, &raw.usage).cost;
+            let priced = Pricing::claude().cost(&raw.model, &raw.usage);
+            if !priced.model_known && !report.unpriced_models.contains(&raw.model) {
+                report.unpriced_models.insert(raw.model.clone());
+            }
             state.batch.events.push(UsageEvent {
                 account_id: self.account,
                 session_id: session,
@@ -560,7 +566,7 @@ impl Indexer {
                 ts: raw.ts,
                 msg_key: raw.key,
                 usage: raw.usage,
-                cost,
+                cost: priced.cost,
             });
         }
         // Only a main session's own compactions count; a subagent's are its own business.

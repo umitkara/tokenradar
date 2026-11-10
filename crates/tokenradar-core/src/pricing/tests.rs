@@ -224,6 +224,44 @@ fn unknown_models_use_a_flagged_stand_in() {
 }
 
 #[test]
+fn the_fingerprint_changes_with_any_edit_to_the_table() {
+    const TABLE: &str = "schema = 1\nversion = \"v1\"\nfallback = \"m\"\n\
+        [defaults]\ncache_write_5m_mult = 1.25\ncache_write_1h_mult = 2.0\n\
+        cache_read_mult = 0.1\nfast_mult = 2.0\nweb_search_micro_usd = 10000\n\
+        [[model]]\nid = \"m\"\nfamily = \"opus\"\ninput = 4.0\noutput = 20.0\n";
+    let fingerprint = |text: &str| {
+        Pricing::from_toml(text)
+            .expect("table")
+            .fingerprint()
+            .to_owned()
+    };
+    let base = fingerprint(TABLE);
+    assert!(base.starts_with("v1#"), "{base}");
+    assert_eq!(base, fingerprint(TABLE));
+    // A price changed but nobody bumped `version`: still a different table.
+    assert_ne!(
+        base,
+        fingerprint(&TABLE.replace("input = 4.0", "input = 5.0"))
+    );
+}
+
+#[test]
+fn unpriced_lists_only_models_without_an_entry() {
+    let names = [
+        "claude-opus-9",
+        "claude-opus-5-5",
+        "claude-opus-5-5-20261001",
+        "<synthetic>",
+        "claude-fable-9",
+        "claude-opus-9",
+    ];
+    assert_eq!(
+        Pricing::claude().unpriced(names),
+        ["claude-fable-9", "claude-opus-9"]
+    );
+}
+
+#[test]
 fn families_are_detected_by_pattern() {
     assert_eq!(family_of("claude-opus-5-5"), ModelFamily::Opus);
     assert_eq!(family_of("claude-sonnet-9"), ModelFamily::Sonnet);

@@ -230,3 +230,20 @@ where
         rusqlite::Error::FromSqlConversionFailure(idx, rusqlite::types::Type::Text, Box::new(e))
     })
 }
+
+/// Names of the models with usage at or after `since`, from the rollup (a narrow index range).
+pub(crate) fn models_used_since(
+    conn: &Connection,
+    account: AccountId,
+    since: Timestamp,
+) -> Result<Vec<String>> {
+    let names = conn
+        .prepare_cached(
+            "SELECT name FROM models WHERE id IN
+               (SELECT DISTINCT model_id FROM usage_5m WHERE account_id = ?1 AND bucket_ts >= ?2)
+             ORDER BY name",
+        )?
+        .query_map(params![account, since.bucket_5m()], |r| r.get(0))?
+        .collect::<rusqlite::Result<_>>()?;
+    Ok(names)
+}

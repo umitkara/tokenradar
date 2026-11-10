@@ -35,6 +35,14 @@ pub fn run(ctx: &Context, out: Option<PathBuf>) -> Outcome {
             let shown = std::path::absolute(&path).unwrap_or(path);
             let shown = shown.display().to_string();
             println!("{}", l.fmt("doctor-done", &[("path", Arg::Str(&shown))]));
+            let unpriced = doctor::unpriced_models(paths, Timestamp::now());
+            if !unpriced.is_empty() {
+                let models = unpriced.join(", ");
+                println!(
+                    "{}",
+                    l.fmt("doctor-unpriced", &[("models", Arg::Str(&models))])
+                );
+            }
             Ok(())
         }
         Err(e) => {

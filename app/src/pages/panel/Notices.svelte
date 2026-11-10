@@ -1,6 +1,6 @@
 <!--
   Calm notices above the limits (design-language.md §9): first indexing, a stale token, being
-  offline and a suspected format change. Never in the error color.
+  offline, a suspected format change and a model without a price. Never in the error color.
 -->
 <script lang="ts">
 import { t } from "../../lib/i18n/i18n.svelte";
@@ -49,6 +49,8 @@ let { notices, openSettings }: Props = $props();
               {t("panel-diagnostics")}
             </button>
           </span>
+        {:else if notice.type === "unpriced"}
+          <Icon name="info" /><span>{t("panel-unpriced", { models: notice.models })}</span>
         {/if}
       </li>
     {/each}

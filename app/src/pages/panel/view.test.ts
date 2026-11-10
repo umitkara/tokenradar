@@ -128,6 +128,7 @@ describe("notices", () => {
         },
         recent_ready: true,
         drift: null,
+        unpriced_models: [],
       },
     });
     expect(notices(s)).toEqual([{ type: "indexing", pct: 42, recentReady: true }]);
@@ -139,6 +140,16 @@ describe("notices", () => {
       index_state: { ...snapshot().index_state, drift: { unknown_count: 3, last_at: NOW } },
     });
     expect(notices(s).map((n) => n.type)).toEqual(["token-stale", "drift"]);
+  });
+
+  it("names the models that have no price yet", () => {
+    const s = snapshot({
+      index_state: {
+        ...snapshot().index_state,
+        unpriced_models: ["claude-fable-6", "claude-opus-6"],
+      },
+    });
+    expect(notices(s)).toEqual([{ type: "unpriced", models: "claude-fable-6, claude-opus-6" }]);
   });
 
   it("mentions being offline only when the values depend on the API", () => {

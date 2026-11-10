@@ -604,7 +604,7 @@ impl LimitEngine {
                     absent: Vec::new(),
                     live_sessions: Vec::new(),
                     top_sessions: Vec::new(),
-                    index_state: self.index,
+                    index_state: self.index.clone(),
                     api: empty_api,
                     statusline: StatuslineState::default(),
                     generated_at: now,
@@ -640,7 +640,7 @@ impl LimitEngine {
             absent: state.presence.absent(),
             live_sessions: live_rows,
             top_sessions: top_rows,
-            index_state: self.index,
+            index_state: self.index.clone(),
             api: ApiStatusView {
                 state: state.api_state,
                 diagnostics: state.api_diag.clone(),

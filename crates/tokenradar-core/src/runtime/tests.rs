@@ -631,6 +631,44 @@ fn spooled_readings_are_imported_once_at_start() {
 }
 
 #[test]
+fn a_model_without_a_price_reaches_the_panel_state_and_survives_a_restart() {
+    let env = Env::new();
+    let handle = CoreRuntime::start(&env.config()).expect("start");
+    let rx = events(&handle);
+    wait_initial(&rx);
+    assert!(handle.status().unpriced_models.is_empty());
+
+    // Stamped now: the start-up check only looks at the last week.
+    let line = assistant_line(77)
+        .replace("claude-opus-5-5", "claude-opus-99")
+        .replace("2026-10-27T10:00:00.000Z", &Timestamp::now().to_string());
+    append(&env.alpha_main(), &line);
+    let shown = wait_for(&rx, Duration::from_secs(30), |e| match e {
+        CoreEvent::LimitsUpdated(s) if !s.index_state.unpriced_models.is_empty() => {
+            Some(s.index_state.unpriced_models.clone())
+        }
+        _ => None,
+    })
+    .expect("the panel snapshot names the model");
+    assert_eq!(shown, ["claude-opus-99"]);
+    let report = handle.shutdown(SHUTDOWN_TIMEOUT);
+    assert!(report.timed_out.is_empty(), "{report:?}");
+
+    // Nothing new is indexed after a restart, but this week's cost is still a stand-in.
+    let handle = CoreRuntime::start(&env.config()).expect("restart");
+    assert_eq!(
+        handle
+            .status()
+            .unpriced_models
+            .into_iter()
+            .collect::<Vec<_>>(),
+        ["claude-opus-99"]
+    );
+    let report = handle.shutdown(SHUTDOWN_TIMEOUT);
+    assert!(report.timed_out.is_empty(), "{report:?}");
+}
+
+#[test]
 fn terminals_are_kept_once_in_order_of_kind() {
     use crate::terminal_font::TerminalKind::{Vscode, WindowsTerminal};
     let mut status = CoreStatus::default();

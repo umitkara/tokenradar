@@ -21,6 +21,7 @@ use crate::domain::Timestamp;
 use crate::ipc::StatusReply;
 use crate::limits::PanelSnapshot;
 use crate::paths::Paths;
+use crate::pricing::{Pricing, UNPRICED_LOOKBACK_MS};
 use crate::providers::claude;
 use crate::store::ReadOnlyStore;
 
@@ -68,7 +69,7 @@ pub fn bundle(input: &Input<'_>, now: Timestamp) -> Vec<(String, Vec<u8>)> {
         "system": sys::info(),
         "files": files(paths),
         "claude_dirs": claude_dirs(&config),
-        "database": database(paths, &mut errors),
+        "database": database(paths, now, &mut errors),
         "live": input.live,
         "errors": errors,
     });
@@ -247,7 +248,27 @@ fn claude_dirs(config: &AppConfig) -> Value {
     })
 }
 
-fn database(paths: &Paths, errors: &mut Vec<String>) -> Value {
+/// Models used in the last week that the price table does not know; their cost is a
+/// stand-in until an update brings their price (ADR-057). Model ids are product names,
+/// not user data. Empty without a database.
+pub fn unpriced_models(paths: &Paths, now: Timestamp) -> Vec<String> {
+    match ReadOnlyStore::open(paths.db_path()) {
+        Ok(Some(store)) => unpriced_in(&store, now),
+        _ => Vec::new(),
+    }
+}
+
+fn unpriced_in(store: &ReadOnlyStore, now: Timestamp) -> Vec<String> {
+    let since = now.saturating_sub_millis(UNPRICED_LOOKBACK_MS);
+    let used = store
+        .accounts()
+        .unwrap_or_default()
+        .into_iter()
+        .flat_map(|a| store.models_used_since(a.id, since).unwrap_or_default());
+    Pricing::claude().unpriced(used)
+}
+
+fn database(paths: &Paths, now: Timestamp, errors: &mut Vec<String>) -> Value {
     let store = match ReadOnlyStore::open(paths.db_path()) {
         Ok(Some(store)) => store,
         Ok(None) => return Value::Null,
@@ -291,6 +312,11 @@ fn database(paths: &Paths, errors: &mut Vec<String>) -> Value {
         "tables": tables,
         "accounts": accounts,
         "muted_until": store.kv_get(crate::notifier::KV_MUTED_UNTIL).ok().flatten(),
+        "pricing": {
+            "table": Pricing::claude().fingerprint(),
+            "stored_table": store.pricing_table().ok().flatten(),
+            "unpriced_models": unpriced_in(&store, now),
+        },
     })
 }
 

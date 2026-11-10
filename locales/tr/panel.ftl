@@ -67,6 +67,8 @@ panel-token-stale = Claude Code'u bir kez çalıştırınca güncellenecek.
 # $ms son değerin ne kadar önce geldiğidir.
 panel-offline = Çevrimdışı · son değer { DUR($ms) } önce
 panel-schema-drift = Claude Code güncellenmiş olabilir; bazı veriler okunamıyor.
+# $models, virgülle ayrılmış model kimlikleridir.
+panel-unpriced = { $models } için henüz fiyat yok. TokenRadar güncellenene kadar maliyet tahminidir.
 panel-diagnostics = Tanılamayı göster
 
 ## Panelin iki görünümü (ADR-048)

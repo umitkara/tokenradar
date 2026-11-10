@@ -127,7 +127,7 @@ pub struct SessionShareView {
     pub tokens_per_min: f64,
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Type)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Type)]
 pub struct IndexState {
     pub initial_scan_done: bool,
     pub last_indexed_at: Option<Timestamp>,
@@ -137,6 +137,9 @@ pub struct IndexState {
     pub recent_ready: bool,
     /// Records the parser could not use since the app started; the format may have changed.
     pub drift: Option<SchemaDriftView>,
+    /// Models used in the last week that the price table does not know, sorted. Their cost
+    /// is a stand-in until an update brings their price (ADR-057).
+    pub unpriced_models: Vec<String>,
 }
 
 /// Unusable records seen since start, summed over indexing passes.
@@ -252,7 +255,7 @@ impl PanelSnapshot {
                 .iter()
                 .map(|s| (s.session_uuid.clone(), s.status, s.share_percent.map(round)))
                 .collect(),
-            index: self.index_state,
+            index: self.index_state.clone(),
             api: std::mem::discriminant(&self.api.state),
             statusline_seen: self.statusline.last_seen.is_some(),
         }
