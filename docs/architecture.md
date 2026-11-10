@@ -309,6 +309,11 @@ C = speed_mult(m) × [ p_in(m) × (input + 1.25·cache_w5m + 2.0·cache_w1h + r(
 
 `cache_creation` kırılımı yoksa `cache_creation_input_tokens` değeri 5 dakikalık cache yazımı olarak kabul edilir. Çarpanlar ve fiyatlar `Pricing` tablosunda sürümlenir.
 
+**Tablo değişince (ADR-057):**
+- Maliyet indeksleme anında saklanır. Depo, olayları fiyatlayan tablonun parmak izini (`version` + tablo metninin özeti) `kv.pricing.table` anahtarında tutar.
+- Çekirdek başlarken parmak izi farklıysa bütün ham olaylar yeniden fiyatlanır ve fark `usage_5m`'e uygulanır (`store/reprice.rs`). Saklama süresini aşmış olayların `usage_5m` payı eski maliyetle kalır.
+- Tabloda satırı olmayan model aile yedeğiyle fiyatlanır (ADR-025). Son 7 günde kullanılan böyle modeller `IndexState.unpriced_models` ile panele ve `doctor` çıktısına gider; maliyetleri tahmin sayılır.
+
 **Hipotez H1:** Limit tüketimi C ile orantılıdır (`Δ% ≈ k·ΔC`) ve tüm modeller için aynı k geçerlidir. H1 backtest ile sınanır. Modele bağlı sistematik bir sapma görülürse aile bazlı çarpanlar (`α_f`, normalize edilmiş) öğrenilir: `Δ% ≈ k·Σ_f α_f·ΔC_f`.
 
 ### 9.2 Kalibrasyon (v0.2)

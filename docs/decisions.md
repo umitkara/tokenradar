@@ -1122,3 +1122,29 @@
   - `⏱` için U+FE0E (metin sunumu): WT emoji çizmeye devam etti.
   - `unicode-width`'i `⏱`'yi 2 sayacak biçimde değiştirmek: genişlik terminalden terminale değişiyor; boşluk iki durumda da doğru.
   - Araç çubuğunu iki satıra bırakmak: 12o'nun tek satır düzeltmesini geri alırdı. Düğme metinlerini kısaltmak yerine kullanıcı simge düğmelerini seçti.
+
+### ADR-057 — Fiyat tablosu değişince saklı maliyetler yeniden hesaplanır; fiyatı bilinmeyen model görünür olur
+**Durum:** Kabul (2026-11-11, Adım 13 öncesi veri keşfi, kullanıcı kararlarıyla). ADR-025'in "bilinmeyen model" kuralını genişletir.
+- **Bağlam:**
+  - `usage_events.cost_micro_usd` indeksleme anında hesaplanıp saklanır. Tabloda satırı olmayan model, ailesinin en yeni satırıyla fiyatlanır (ADR-025) ve bu yalnızca log dosyasına yazılır.
+  - Kurulu derleme `claude-fable-5-2` satırından önce derlenmişti. Model iki gün boyunca Fable 5.1 fiyatıyla ($10/$50; doğrusu $8/$40) kaydedildi, yani %25 fazla. Tablo aynı akşam güncellendi, ama saklı maliyetler değişmedi ve yeni derleme kurulana kadar yeni olaylar da yanlış yazıldı. Fark, Adım 13 öncesi veri keşfinde ortaya çıktı.
+  - Kalibrasyon (`k = Δp/ΔC`) ve atıf doğrudan bu sütuna dayanır. Yanlış ağırlık, yanlış katsayı demektir.
+- **Karar:**
+  - **Yeniden fiyatlama.** Depo, olayları fiyatlayan tablonun parmak izini `kv` tablosunda `pricing.table` anahtarıyla tutar. Parmak izi `version` ile tablo metninin xxh3 özetidir; sürümü artırmak unutulsa bile tablodaki her değişiklik sayılır.
+    - Çekirdek başlarken gömülü tablonun parmak izi farklıysa (ya da anahtar yoksa) bütün ham olaylar yeniden fiyatlanır. Maliyeti değişen her olayın farkı `usage_5m` satırına uygulanır.
+    - Geçiş 10.000 olaylık transaction'larla ve limit motoru kurulmadan önce çalışır. Yarıda kesilirse parmak izi yazılmaz, bir sonraki açılışta baştan çalışır ve doğru fiyatlı olaylara dokunmaz.
+  - **Görünürlük.** Son 7 günde kullanılmış olup tabloda satırı bulunmayan modeller `IndexState.unpriced_models` alanıyla panele gider.
+    - Liste açılışta `usage_5m`'den kurulur, sonra indeksleyici raporlarıyla büyür. Yalnızca yeniden başlatmada küçülür; düzeltme zaten yeni bir derleme gerektirir.
+    - Panel sakin bir bildirim gösterir (`panel-unpriced`, model adlarıyla). `tokenradar doctor` aynı listeyi yazdırır ve `report.json` içine `database.pricing` bölümünü ekler. Model kimlikleri ürün adıdır, kişisel veri değildir.
+- **Bedel:**
+  - Saklama süresini aşmış olaylar yeniden fiyatlanamaz: `usage_5m` olay başına hız modunu, web aramasını ve istem büyüklüğünü taşımaz. O kovalar eski maliyetle kalır.
+  - Tabloda mevcut bir modelin sayısı değişirse geçmiş de yeni sayıyla fiyatlanır. Anthropic bir modelin fiyatını değiştirirse tarihli fiyat satırları gerekir; bu, o gün ayrı bir ADR ile ele alınır.
+  - Daha eski bir derlemeye dönülürse olaylar o derlemenin tablosuyla yeniden fiyatlanır.
+  - Yayınlanmış sürümü kullananlar, güncelleme gelene kadar yedek fiyatı görmeye devam eder. Bildirim bunu söyler ama düzeltmez.
+  - Ölçüm: gerçek bir veritabanının kopyasında tam geçiş release derlemede 0,1 saniyenin altında sürdü. Parmak izi eşleşiyorsa maliyet tek bir `kv` okumasıdır.
+- **Alternatifler:**
+  - Fiyat tablosunu uygulama sürümünden bağımsız olarak GitHub'dan güncellemek: yayınlanmış sürümleri de düzeltir, ama ağ allowlist'ini (ADR-013) genişletir ve bütünlük doğrulaması ister. Ertelendi; gerekirse ayrı bir adım olarak planlanır.
+  - Yalnızca yedekle fiyatlanmış olayları işaretleyip onları yeniden fiyatlamak: şema değişikliği gerektirir ve eski derlemelerin işaretsiz kayıtlarını yakalayamaz.
+  - Maliyeti saklamayıp sorgu anında hesaplamak: `usage_5m` toplamları ve panel sorguları için pahalı.
+  - Kalibrasyonda `ΔC` değerini token'lardan hesaplamak: yalnızca kalibrasyonu düzeltir, paneldeki maliyetler yanlış kalır.
+- **Adım 13'e not:** `unpriced_models` listesindeki modellerin ağırlıklı olduğu aralıklar kalibrasyona alınmamalı; maliyetleri tahmindir.

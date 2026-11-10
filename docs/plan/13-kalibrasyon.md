@@ -4,6 +4,8 @@
 |---|---|---|---|
 | v0.2 | 12 + **en az 1 hafta (ideal: 2) gerçek snapshot verisi** | 1-2 oturum | ⬜ |
 
+> **Başlangıç: 18 Kasım 2026'dan sonra, tek adım olarak** (kullanıcı kararı, 2026-11-11). İlk tam haftalık pencere o gün kapanır. Başlamadan önce aşağıdaki "Ön keşif" bölümünü oku; oradaki sapmalar için ADR gerekir.
+
 ## Amaç
 
 Limit yüzdesi ile API karşılığı maliyet arasındaki katsayıyı (`k`, %/USD) gerçek veriden **öğrenmek**. Bunun için bir backtest düzeneği kurulur ve tahmin hatası ölçülür. Sapma (drift) algılanır ve güven skoru üretilir.
@@ -82,6 +84,32 @@ Kalibrasyon şu özelliklerin temelidir:
 - **Eşzamanlı oturumlar** kalibrasyonu etkilemez, çünkü `ΔC` tüm yerel oturumların toplamıdır. Etki yalnızca atıfta (Adım 14) önemlidir.
 - **S1'in ondalıklı değerleri** aslında yuvarlanmış başlık değerleri olabilir. Gerçek çözünürlüğü veriden gözlemle (örneğin 0,1 adımlar mı?) ve gürültü modelini buna göre ayarla.
 - **Zaman hizası:** Snapshot zamanı (S1: yanıt sonrası), `ΔC` olaylarının zamanından birkaç saniye sonra gelir. Aralık sınırlarında olayları `observed_at` zamanına göre değil, `ts ≤ observed_at` koşuluna göre ata. Belirsiz kenar olaylarının etkisini ölç.
+
+## Ön keşif (2026-11-11)
+
+Adım başlamadan, gerçek veritabanı salt okunur incelendi. Kişisel kullanım sayıları buraya yazılmadı.
+
+**Veri durumu**
+- Snapshot kaydı 6 Kasım 2026'da başladı. Hesapta yalnızca `weekly_all` ve `weekly_scoped` (`model:Fable`) var; `session` yok (ADR-041).
+- Haftalık pencere çarşamba 11:00'de (yerel) sıfırlanıyor. 11 Kasım'da henüz tamamlanmış bir pencere yoktu.
+- `seven_day_breakdown` tüketimin neredeyse tamamını `claude_code` olarak gösteriyor; dış tüketim oranı bozmuyor.
+
+**Planla uyuşmayan noktalar (karar ve ADR gerekir)**
+- **S1 ondalıklı değil.** `seven_day` yüzdesi statusline'da da tam sayı. Doğru gözlem birimi, yüzdenin bir puan arttığı ilk anlar arasındaki aralıktır (`Δp = 1`). Rastgele snapshot çiftleri ±1 puan kuantizasyon hatası taşır.
+- **Pencere düzeyinde walk-forward bu hesapta işlemez.** Haftada tek pencere var. Backtest pencere içi ileri tahmine çevrilmeli (ör. önceki aralıklardan öğrenilen `k` ile sonraki +1 puanın maliyeti).
+- **Kabul kriteri uygulanamıyor.** "MAE ≤ 3 puan (5 saatlik pencere)" ölçülemez; haftalık pencere için yeni bir ölçüt belirlenmeli.
+- **API `resets_at` değeri ±1 s oynuyor.** Birebir eşitlikle yüzlerce "pencere" çıkar. Aralık oluşturucu, `limit_windows` ile aynı toleransı (`WINDOW_MATCH_TOLERANCE_MS`) kullanmalı.
+- **API, statusline'dan yaklaşık 1 puan yüksek okuyor** (yuvarlama farkı). İki kaynak aynı aralıkta karıştırılmamalı.
+- **Boşluktan sonraki ilk okuma bayat.** Uzun bir aranın ardından bir puanın maliyeti önce yüksek, hemen sonraki puanınki düşük görünüyor; ikisi birlikte normal. Komşu aralıklar birleştirilmeli.
+- **İlk aralık kırpık.** Kaydın başladığı andaki yüzde bir eşik geçişi değildir; o aralık atılmalı.
+
+**H1 için ilk işaret**
+- Opus ve Sonnet ağırlıklı aralıklarda `Δp/ΔC` dar bir bantta kalıyor (çeyrekler medyandan en fazla %7 uzakta).
+- Fable ağırlıklı az sayıdaki aralıkta oran yaklaşık 2 kat. Tek `k` büyük olasılıkla yetmeyecek; aile çarpanı (`α_fable`) ya da cache okuma ağırlığı sınanmalı. 11 Kasım'da bunu ayırt edecek kadar Fable aralığı yoktu.
+
+**Maliyet sütunu**
+- Saklı maliyetler artık tablo değişince yeniden hesaplanıyor (ADR-057). 9-11 Kasım arasındaki `claude-fable-5-2` olayları Fable 5.1 fiyatıyla kaydedilmişti; yeni derleme ilk açılışta düzeltir.
+- `IndexState.unpriced_models` listesindeki modellerin ağırlıklı olduğu aralıklar kalibrasyona alınmamalı.
 
 ## Kabul kriterleri
 

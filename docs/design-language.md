@@ -251,3 +251,4 @@ Başlığın altında iki eşit düğmeli bir segment kontrolü: `Özet | Ayrın
 | Token bayat (401) | "Claude Code'u bir kez çalıştırınca güncellenecek" (sakin, hata rengi kullanılmaz) |
 | Çevrimdışı | Son değer gösterilir, yanında "X dk önce" ve bulut-çarpı ikonu |
 | Format değişikliği şüphesi | "Claude Code güncellenmiş olabilir; bazı veriler okunamıyor" + tanılama butonu |
+| Fiyatı bilinmeyen model (ADR-057) | "claude-… için henüz fiyat yok. TokenRadar güncellenene kadar maliyet tahminidir." (sakin, bilgi ikonu) |
