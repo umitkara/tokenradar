@@ -148,7 +148,10 @@ Başlığın altında iki eşit düğmeli bir segment kontrolü: `Özet | Ayrın
 
 ### Widget (kompakt şerit, v0.3)
 
-İki çubuk, yüzde ve geri sayımdan oluşur. Boyutu 220×44 px'tir, köşe yarıçapı 8 px. Arka planı Acrylic'tir; Windows 10'da opak bir yedek kullanılır.
+Native çizilir (`tiny-skia` + layered window, ADR-058). Üst çubuk haftalık, alt çubuk 5 saatlik pencere; 5 saatlik pencere yoksa tek çubuk çizilir (ADR-041). Yüzde ve dakika çözünürlüğünde geri sayım gösterilir; `≈`, bayatlık ve önem renkleri paneldekiyle aynıdır.
+
+- **Yüzen mod:** 220×44 px (iki satır) veya 220×28 px (tek satır), köşe yarıçapı 8 px. Zemin yarı saydam tema rengidir; layered pencerede Acrylic kullanılamaz.
+- **Görev çubuğu modu:** Bildirim alanının solunda durur. Zemin şeffaftır, görev çubuğuyla kaynaşır; hover'da görev çubuğu düğmeleri gibi ince bir vurgu çizilir. Renkler uygulama temasından değil görev çubuğu temasından gelir. Görev çubuğu ≥ 40 mantıksal px ise iki satır, değilse tek satır kullanılır: `7g %34 ▮▮▮▯▯ · 5s %72 ▮▮▮▮▯`.
 
 ## 5. Yerleşim ve şekil
 

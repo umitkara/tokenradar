@@ -80,7 +80,7 @@
 - **Alternatif:** i18next yalnızca TS tarafında çalışır. Rust tarafı için ikinci bir sistem gerekirdi.
 
 ### ADR-011 — Widget WebView ile başlar; bütçe aşılırsa native çizime geçilir
-**Durum:** Kabul
+**Durum:** Yerini aldı: ADR-058
 - **Karar:** v0.3'te widget bir Tauri penceresi (WebView) olarak yapılır ve bellek etkisi ölçülür. Ek maliyet > 45 MB ise widget `tiny-skia` + layered window ile native çizilir (hedef ~3-5 MB).
 
 ### ADR-012 — Dağıtım: imzasız başlangıç, ardından SignPath
@@ -1148,3 +1148,32 @@
   - Maliyeti saklamayıp sorgu anında hesaplamak: `usage_5m` toplamları ve panel sorguları için pahalı.
   - Kalibrasyonda `ΔC` değerini token'lardan hesaplamak: yalnızca kalibrasyonu düzeltir, paneldeki maliyetler yanlış kalır.
 - **Adım 13'e not:** `unpriced_models` listesindeki modellerin ağırlıklı olduğu aralıklar kalibrasyona alınmamalı; maliyetleri tahmindir.
+
+### ADR-058 — Widget baştan native çizilir; görev çubuğu modu eklenir
+**Durum:** Kabul (2026-11-11, Adım 18 yeniden planı, kullanıcı kararlarıyla). ADR-011'in yerini alır.
+- **Bağlam:**
+  - Adım 13, ilk tam haftalık pencere kapanana kadar (18 Kasım 2026) başlayamıyor. Kullanıcı bu arada Windows'a özel, isteğe bağlı ve estetik bir görev çubuğu widget'ı istedi.
+  - ADR-011 widget'ı önce WebView ile yapıp ölçmeyi, ek maliyet 45 MB'ı aşarsa native çizime geçmeyi öngörüyordu. Plan yalnızca masaüstünde yüzen bir şerit içeriyordu.
+  - Windows 11'de görev çubuğuna öğe eklemenin resmi bir API'si yok (DeskBand kaldırıldı). Görev çubuğuna kenetlenen bir pencere Win32 yöntemleriyle yapılabiliyor. Bu pencerede bir WebView2 süreç ağacı hem kırılgan hem de pahalı olur.
+  - Tray ikonu zaten `tiny-skia` ile çiziliyor ve ortam değişikliklerini gizli bir pencereyle izliyor (ADR-030). Native bir widget bu altyapıyı yeniden kullanabilir.
+- **Karar:**
+  - **Native çizim.** Widget bir Tauri penceresi değildir. Kendi thread'inde çalışan bir Win32 layered window'dur (`UpdateLayeredWindow`, per-pixel alpha); bitmap `tiny-skia` ile çizilir. Renkler ve eşikler tray ile paylaşılır. Widget kapalıyken thread ve pencere yoktur.
+  - **İki mod.** `floating` (masaüstünde, topmost, sürüklenebilir, kenarlara yapışır) ve `taskbar` (birincil görev çubuğunun boş alanına, bildirim alanının soluna kenetli). İkisi aynı pencere ve çizim temelini kullanır.
+  - **Görev çubuğu modu en iyi çabadır.** Kenetlenme başarısız olursa veya düzen desteklenmiyorsa (yan veya üst kenardaki görev çubuğu) widget yüzen moda düşer ve bunu bir kez söyler. Explorer'a kod enjekte edilmez.
+  - **İçerik.** Haftalık çubuk her zaman, 5 saatlik çubuk yalnızca pencere varsa gösterilir (ADR-041). `≈`, bayatlık ve önem renkleri diğer yüzeylerle aynıdır.
+  - **Bütçe.** Widget açıkken ek bellek tray-only değerinin üstüne ≤ 8 MB'tır (hedef 3-5 MB). Kesin değer ölçümden sonra bu kayda eklenir.
+  - **Bölünme.** Adım 18 yüzen modu ve ortak temeli yapar, Adım 18b görev çubuğu modunu ekler. İkisi de Adım 13'ü beklemeden yapılabilir.
+- **Açık kararlar (adımlarda spike ile kapanır, sonuç bu kayda eklenir):**
+  - Metin: DirectWrite ve sistem fontu ile `fontdue` ve gömülü mono font arasında seçim (Adım 18).
+  - Görev çubuğu yöntemi: `Shell_TrayWnd`'nin sahip olduğu topmost popup ile `SetParent` ile çocuk pencere arasında seçim (Adım 18b). Varsayılan tercih popup'tır.
+- **Bedel:**
+  - Sürükleme, menü, DPI ve erişilebilirlik Win32 ile elle yazılır; WebView'ın hazır sunduğu şeyler yeniden yapılır.
+  - Widget'ın görünümü Svelte bileşenleriyle paylaşılmaz. Tasarım değişiklikleri iki yerde yapılır.
+  - DWM Acrylic layered pencerede kullanılamaz; yüzen modun zemini yarı saydam düz renktir.
+  - Görev çubuğu modu Windows'un gelecekteki görev çubuğu değişikliklerinde bozulabilir. Yüzen mod yedek olarak kalır.
+  - Yalnızca birincil görev çubuğu desteklenir.
+- **Alternatifler:**
+  - ADR-011'in yolu (önce WebView, sonra ölç): yüzen modda işe yarardı, ama görev çubuğu modunda başka bir sürecin penceresine WebView2 bağlamak gerekirdi.
+  - Windows 11 Widgets panosu (Adaptive Cards): resmi bir yol, ama MSIX paketleme ve COM sağlayıcı istiyor ve görev çubuğunda değil, ayrı bir panoda görünüyor.
+  - Yalnızca görev çubuğu modu: yüzen yedek olmadan, görev çubuğu bozulduğunda widget tamamen kaybolurdu.
+  - Explorer içinde çalışan bir mod (Windhawk tarzı DLL enjeksiyonu): güvenlik ve kararlılık açısından kabul edilemez.

@@ -13,7 +13,7 @@
 | Panel açık | ≤ 130 MB | WebView2 süreçleri dahil |
 | Ana pencere açık (v0.2) | ≤ 180 MB | Büyük listeler sanallaştırılmış |
 | Tüm pencereler kapandıktan `warm_ttl + 10 s` sonra | ≤ 30 MB | **Adım 02'de doğrulandı:** WebView2 süreçleri `destroy()` sonrası ~0,4 s'de çıkıyor, 60 s sonra 3,6 MB (ADR-023). |
-| Widget açık (v0.3) | Tray + ≤ 45 MB | Aşılırsa native çizim yedek planı devreye girer (ADR-011) |
+| Widget açık (v0.3) | Tray + ≤ 8 MB | Baştan native çizilir: `tiny-skia` + layered window, WebView yok (ADR-058). Yüzen ve görev çubuğu modu için aynı bütçe. |
 
 ## CPU
 
