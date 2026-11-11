@@ -1,0 +1,59 @@
+{
+  "hook_event_name": "Status",
+  "session_id": "00000000-0000-4000-8000-000000000002",
+  "transcript_path": "C:\\Users\\example\\.claude\\projects\\C--Work-Alpha\\00000000-0000-4000-8000-000000000002.jsonl",
+  "cwd": "C:\\Work\\Alpha",
+  "model": { "id": "claude-opus-5-5", "display_name": "Opus 5.5" },
+  "workspace": {
+    "current_dir": "C:\\Work\\Alpha",
+    "project_dir": "C:\\Work\\Alpha",
+    "added_dirs": ["C:\\Work\\Shared", "C:\\Work\\Docs"],
+    "git_worktree": "feature-xyz",
+    "repo": { "host": "gitlab.com", "owner": "group/subgroup", "name": "alpha" }
+  },
+  "version": "2.1.310",
+  "cost": { "total_cost_usd": 0.01234, "total_duration_ms": 45000 },
+  "context_window": { "used_percentage": 8, "context_window_size": 200000 },
+  "prompt_cache": {
+    "warm": true,
+    "caching_observed": true,
+    "ttl": "1h",
+    "expires_at": 1738429200,
+    "requests": 14,
+    "misses": 2,
+    "expected_rebuilds": 1,
+    "hit_ratio": 0.91,
+    "cache_write_tokens": 352000,
+    "miss_recache_tokens": 310200,
+    "last_miss_at": 1738425230,
+    "last_miss_cause": { "causes": ["tools_changed", "system_prompt_changed"], "tools_added": 2, "tools_removed": 0 },
+    "miss_causes": { "tools_changed": 2 },
+    "recache_tokens_if_cold": 45000
+  },
+  "fast_mode": true,
+  "effort": { "level": "max" },
+  "thinking": { "enabled": false },
+  "rate_limits": {
+    "seven_day": { "used_percentage": 41.2, "resets_at": 1738857600 },
+    "spend_limit": {
+      "used_percentage": 62.8,
+      "resets_at": 1740787200,
+      "used_usd": 314.12,
+      "limit_usd": 500,
+      "period": "monthly"
+    }
+  },
+  "pr": {
+    "number": 45,
+    "url": "https://gitlab.com/group/subgroup/alpha/-/merge_requests/45",
+    "review_state": "draft",
+    "kind": "mr"
+  },
+  "worktree": {
+    "name": "my-feature",
+    "path": "C:\\Work\\Alpha\\.claude\\worktrees\\my-feature",
+    "branch": "worktree-my-feature",
+    "original_cwd": "C:\\Work\\Alpha",
+    "original_branch": "main"
+  }
+}

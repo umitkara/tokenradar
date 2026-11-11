@@ -79,6 +79,22 @@ pub enum SegmentKind {
     OutputStyle,
     /// How many times the session was compacted and the auto-compact window (Step 12n).
     Compact,
+    /// The session's reasoning effort, with fast mode and thinking (Step 12q).
+    Effort,
+    /// When the prompt cache goes cold, as a local time.
+    CacheTimer,
+    /// Requests that missed the prompt cache, and the last miss's likely cause.
+    CacheMisses,
+    /// The tokens the next request writes to the cache again if it went cold by then.
+    RecacheCost,
+    /// The spend limit behind a Claude apps gateway.
+    SpendLimit,
+    /// The branch's open pull request or merge request.
+    Pr,
+    /// The linked worktree's name.
+    Worktree,
+    /// The repository of the `origin` remote.
+    Repo,
     /// A separator glyph of the user's choice.
     Separator,
     /// Starts a new output line.
@@ -138,6 +154,28 @@ pub enum Format {
     Total,
     /// Compactions: automatic and manual apart, `⟲ 2 auto 1 manual`.
     Split,
+    /// Effort: the level alone, `high` (Step 12q).
+    Level,
+    /// Effort: the level with fast mode and thinking off, `max fast`.
+    Flags,
+    /// Cache misses: the count alone, `2 misses`.
+    Count,
+    /// Cache misses: the count and the last miss's cause.
+    Cause,
+    /// Spend limit: the dollars, `$314/$500`.
+    Amount,
+    /// Repository: its name alone.
+    Name,
+    /// Repository: the host, the owner and the name.
+    Host,
+    /// Model: the name and the effort, `Opus 5.5 · high`.
+    WithEffort,
+    /// Cache ratio: the last request's.
+    Last,
+    /// Cache ratio: the whole session's, `cache 91% (session)`.
+    Session,
+    /// Folders: the name and how many folders were added, `alpha +2`.
+    WithAdded,
 }
 
 /// How a limit shows its reset (Step 12m).
@@ -248,7 +286,7 @@ pub const DEFAULT_SEPARATOR: &str = "│";
 pub const BAR_WIDTHS: [u8; 3] = [8, 4, 12];
 
 impl SegmentKind {
-    pub const ALL: [Self; 30] = [
+    pub const ALL: [Self; 38] = [
         Self::FiveHour,
         Self::SevenDay,
         Self::Scoped,
@@ -274,6 +312,14 @@ impl SegmentKind {
         Self::CacheRatio,
         Self::OutputStyle,
         Self::Compact,
+        Self::Effort,
+        Self::CacheTimer,
+        Self::CacheMisses,
+        Self::RecacheCost,
+        Self::SpendLimit,
+        Self::Pr,
+        Self::Worktree,
+        Self::Repo,
         Self::Separator,
         Self::LineBreak,
         Self::CustomText,
@@ -308,6 +354,14 @@ impl SegmentKind {
             Self::CacheRatio => "cache_ratio",
             Self::OutputStyle => "output_style",
             Self::Compact => "compact",
+            Self::Effort => "effort",
+            Self::CacheTimer => "cache_timer",
+            Self::CacheMisses => "cache_misses",
+            Self::RecacheCost => "recache_cost",
+            Self::SpendLimit => "spend_limit",
+            Self::Pr => "pr",
+            Self::Worktree => "worktree",
+            Self::Repo => "repo",
             Self::Separator => "separator",
             Self::LineBreak => "line_break",
             Self::CustomText => "custom_text",
@@ -324,13 +378,19 @@ impl SegmentKind {
     pub const fn is_limit(self) -> bool {
         matches!(
             self,
-            Self::FiveHour | Self::SevenDay | Self::Scoped | Self::DailyBudget
+            Self::FiveHour | Self::SevenDay | Self::Scoped | Self::DailyBudget | Self::SpendLimit
         )
     }
 
     /// The limit windows with a reset countdown and a time mark.
     pub const fn is_window(self) -> bool {
         matches!(self, Self::FiveHour | Self::SevenDay)
+    }
+
+    /// The limits with a reset that can be shown, as a countdown or a local time. The spend
+    /// limit has no time mark: its period's length is not always known (Step 12q).
+    pub const fn has_reset(self) -> bool {
+        matches!(self, Self::FiveHour | Self::SevenDay | Self::SpendLimit)
     }
 
     /// Whether one of its formats draws a bar.
@@ -367,8 +427,17 @@ impl SegmentKind {
 
     pub const fn group(self) -> Group {
         match self {
-            Self::FiveHour | Self::SevenDay | Self::Scoped | Self::DailyBudget => Group::Limit,
-            Self::Cwd | Self::ProjectDir | Self::GitBranch => Group::Project,
+            Self::FiveHour
+            | Self::SevenDay
+            | Self::Scoped
+            | Self::DailyBudget
+            | Self::SpendLimit => Group::Limit,
+            Self::Cwd
+            | Self::ProjectDir
+            | Self::GitBranch
+            | Self::Pr
+            | Self::Worktree
+            | Self::Repo => Group::Project,
             Self::Separator | Self::LineBreak | Self::CustomText | Self::Space | Self::Flex => {
                 Group::Layout
             }
@@ -388,14 +457,30 @@ impl SegmentKind {
                 Format::Remaining,
                 Format::TokensLeft,
             ],
+            Self::SpendLimit => &[
+                Format::Bar,
+                Format::Percent,
+                Format::Remaining,
+                Format::Amount,
+            ],
             Self::Cost => &[Format::TwoDecimals, Format::FourDecimals],
-            Self::Model | Self::SessionId => &[Format::Short, Format::Full],
+            Self::Model => &[Format::Short, Format::Full, Format::WithEffort],
+            Self::SessionId | Self::Pr => &[Format::Short, Format::Full],
             Self::TokensIn | Self::TokensOut => &[Format::Compact, Format::Full],
             Self::Duration | Self::ApiDuration => &[Format::Short, Format::Hms],
             Self::LinesChanged => &[Format::Both, Format::Net],
-            Self::Cwd => &[Format::Basename, Format::Home, Format::Full],
-            Self::ProjectDir => &[Format::Basename, Format::Full],
+            Self::Cwd => &[
+                Format::Basename,
+                Format::Home,
+                Format::Full,
+                Format::WithAdded,
+            ],
+            Self::ProjectDir => &[Format::Basename, Format::Full, Format::WithAdded],
             Self::Compact => &[Format::Total, Format::Split],
+            Self::Effort => &[Format::Level, Format::Flags],
+            Self::CacheMisses => &[Format::Cause, Format::Count],
+            Self::CacheRatio => &[Format::Last, Format::Session],
+            Self::Repo => &[Format::Full, Format::Name, Format::Host],
             _ => &[],
         }
     }
@@ -451,6 +536,13 @@ impl SegmentKind {
                 Self::LinesChanged => Some("\u{F440}"), // oct-diff
                 Self::DailyBudget => Some("\u{F4DE}"),  // oct-goal
                 Self::BurnRate => Some("\u{F490}"),     // oct-flame; the `API` mark stays
+                Self::Effort => Some("\u{F463}"),       // oct-meter
+                Self::CacheTimer => Some("\u{F464}"),   // oct-history
+                Self::CacheMisses => Some("\u{F468}"),  // oct-circle_slash
+                Self::RecacheCost => Some("\u{F46A}"),  // oct-sync
+                Self::Pr => Some("\u{F407}"),           // oct-git_pull_request
+                Self::Worktree => Some("\u{F414}"),     // oct-file_submodule
+                Self::Repo => Some("\u{F484}"),         // oct-globe
                 _ => None,
             },
         }
@@ -459,13 +551,30 @@ impl SegmentKind {
     /// The block color in the Powerline themes when the user picked none.
     pub const fn block_color(self) -> AnsiColor {
         match self {
-            Self::FiveHour | Self::SevenDay | Self::Scoped | Self::DailyBudget => AnsiColor::Cyan,
-            Self::Context | Self::Model | Self::Cwd | Self::ProjectDir => AnsiColor::Blue,
-            Self::SessionShare | Self::TokensIn | Self::TokensOut | Self::CacheRatio => {
-                AnsiColor::Magenta
+            Self::FiveHour
+            | Self::SevenDay
+            | Self::Scoped
+            | Self::DailyBudget
+            | Self::SpendLimit => AnsiColor::Cyan,
+            Self::Context | Self::Model | Self::Cwd | Self::ProjectDir | Self::Repo => {
+                AnsiColor::Blue
             }
-            Self::Cost | Self::BurnRate | Self::LinesChanged | Self::GitBranch => AnsiColor::Green,
-            Self::SessionName | Self::OutputStyle | Self::Compact => AnsiColor::BrightBlue,
+            Self::SessionShare
+            | Self::TokensIn
+            | Self::TokensOut
+            | Self::CacheRatio
+            | Self::CacheTimer
+            | Self::CacheMisses
+            | Self::RecacheCost => AnsiColor::Magenta,
+            Self::Cost
+            | Self::BurnRate
+            | Self::LinesChanged
+            | Self::GitBranch
+            | Self::Pr
+            | Self::Worktree => AnsiColor::Green,
+            Self::SessionName | Self::OutputStyle | Self::Compact | Self::Effort => {
+                AnsiColor::BrightBlue
+            }
             Self::VimMode => AnsiColor::Yellow,
             Self::AgentName => AnsiColor::BrightCyan,
             _ => AnsiColor::Gray,
@@ -474,7 +583,7 @@ impl SegmentKind {
 }
 
 impl Format {
-    pub const ALL: [Self; 17] = [
+    pub const ALL: [Self; 28] = [
         Self::Bar,
         Self::Percent,
         Self::Fraction,
@@ -492,6 +601,17 @@ impl Format {
         Self::TokensLeft,
         Self::Total,
         Self::Split,
+        Self::Level,
+        Self::Flags,
+        Self::Count,
+        Self::Cause,
+        Self::Amount,
+        Self::Name,
+        Self::Host,
+        Self::WithEffort,
+        Self::Last,
+        Self::Session,
+        Self::WithAdded,
     ];
 
     pub const fn as_str(self) -> &'static str {
@@ -513,6 +633,17 @@ impl Format {
             Self::TokensLeft => "tokens_left",
             Self::Total => "total",
             Self::Split => "split",
+            Self::Level => "level",
+            Self::Flags => "flags",
+            Self::Count => "count",
+            Self::Cause => "cause",
+            Self::Amount => "amount",
+            Self::Name => "name",
+            Self::Host => "host",
+            Self::WithEffort => "with_effort",
+            Self::Last => "last",
+            Self::Session => "session",
+            Self::WithAdded => "with_added",
         }
     }
 
@@ -801,7 +932,7 @@ pub struct Item {
     /// `None`: the automatic color. On limits and the context window this is the color below
     /// the warning threshold; the warning and critical colors always win (ADR-049).
     pub color: Option<AnsiColor>,
-    /// Limit windows: the reset countdown.
+    /// Limits with a reset ([`SegmentKind::has_reset`]): the reset countdown.
     pub reset: bool,
     /// Limit windows: the time mark and the elapsed time (ADR-044).
     pub pace: bool,
@@ -809,7 +940,7 @@ pub struct Item {
     pub text: String,
     /// `space`: the columns, 1–[`MAX_SPACE`]. 1 on every other kind.
     pub width: u8,
-    /// Limit windows: the reset as a countdown or a local time (Step 12m).
+    /// Limits with a reset: the reset as a countdown or a local time (Step 12m).
     pub reset_format: ResetFormat,
     /// Kinds with a bar: its cells, one of [`BAR_WIDTHS`]; 8 on every other kind.
     pub bar_width: u8,
@@ -882,10 +1013,12 @@ impl Item {
             }
             _ => String::new(),
         };
-        if !self.kind.is_window() {
+        if !self.kind.has_reset() {
             self.reset = true;
-            self.pace = true;
             self.reset_format = ResetFormat::Countdown;
+        }
+        if !self.kind.is_window() {
+            self.pace = true;
         }
         self.width = match self.kind {
             SegmentKind::Space => self.width.clamp(1, MAX_SPACE),

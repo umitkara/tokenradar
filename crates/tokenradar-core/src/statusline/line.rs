@@ -111,6 +111,8 @@ pub struct Line {
     /// Claude Code's auto-compact setting, read by the caller from the settings files (I/O);
     /// `None` when it is on with no window set.
     pub auto_compact: Option<AutoCompact>,
+    /// `rate_limits.spend_limit` (Step 12q); the limit engine does not see it.
+    pub spend_limit: Option<Spend>,
 }
 
 /// The time zone a reset's wall-clock time is shown in.
@@ -179,6 +181,134 @@ pub struct Facts {
     pub cache_ratio: Option<f64>,
     /// The last request's input tokens with the cache: what the context window holds now.
     pub context_used: Option<u64>,
+    /// Step 12q (ADR-059): `effort.level` as sent; absent when the model takes no effort.
+    pub effort: Option<String>,
+    pub fast_mode: bool,
+    pub thinking: Option<bool>,
+    pub cache: Option<PromptCache>,
+    pub pr: Option<PullRequest>,
+    /// `worktree.name`, else `workspace.git_worktree`.
+    pub worktree: Option<String>,
+    pub repo: Option<Repo>,
+    /// Folders added with `/add-dir`.
+    pub added_dirs: u32,
+}
+
+/// `prompt_cache`, the main conversation's.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct PromptCache {
+    /// Whether any response this session reported cache tokens.
+    pub observed: bool,
+    pub warm: bool,
+    /// `5m` or `1h`; another value is kept as it came.
+    pub ttl: Option<String>,
+    pub expires_at: Option<Timestamp>,
+    pub misses: Option<u64>,
+    /// The session's cache reads as a share of all its input, 0–100 %.
+    pub hit_ratio: Option<f64>,
+    /// The last miss's likely causes, as Claude Code names them.
+    pub causes: Vec<String>,
+    /// Tokens the next request re-caches if the cache went cold; `None` right after a compaction.
+    pub recache: Option<u64>,
+}
+
+/// The branch's open pull request, or merge request (`mr`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PullRequest {
+    pub number: u64,
+    pub review: Option<Review>,
+    pub mr: bool,
+}
+
+/// `pr.review_state`; one this build does not know is kept as it came.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Review {
+    Approved,
+    ChangesRequested,
+    Pending,
+    Draft,
+    Other(String),
+}
+
+impl Review {
+    fn parse(s: &str) -> Self {
+        match s {
+            "approved" => Self::Approved,
+            "changes_requested" => Self::ChangesRequested,
+            "pending" => Self::Pending,
+            "draft" => Self::Draft,
+            other => Self::Other(other.to_owned()),
+        }
+    }
+}
+
+/// `workspace.repo`, from the `origin` remote.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Repo {
+    pub host: Option<String>,
+    pub owner: Option<String>,
+    pub name: String,
+}
+
+/// A known effort level, for its color; Claude Code may add others.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EffortLevel {
+    Low,
+    Medium,
+    High,
+    XHigh,
+    Max,
+}
+
+impl EffortLevel {
+    pub fn parse(s: &str) -> Option<Self> {
+        Some(match s {
+            "low" => Self::Low,
+            "medium" => Self::Medium,
+            "high" => Self::High,
+            "xhigh" => Self::XHigh,
+            "max" => Self::Max,
+            _ => return None,
+        })
+    }
+}
+
+/// The session's effort as the line shows it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Effort {
+    /// As sent, for a level this build does not know.
+    pub raw: String,
+    pub level: Option<EffortLevel>,
+    pub fast: bool,
+    /// Thinking reported off; unknown counts as on.
+    pub no_thinking: bool,
+}
+
+/// Where the prompt cache stands at [`Line::at`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CacheState {
+    Warm {
+        /// Until it goes cold, ms.
+        expires_in: i64,
+        /// The local time it goes cold; `None` where the zone is unknown.
+        until: Option<Clock>,
+        ttl: Option<String>,
+        /// A minute or less left.
+        ending: bool,
+    },
+    Cold,
+}
+
+/// The cache goes cold within this: drawn in the warning color.
+pub const CACHE_ENDING_MS: i64 = 60_000;
+
+/// The spend limit behind a gateway (Step 12q): a window with its dollars, which come about
+/// five minutes apart from the percentage and may be missing.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Spend {
+    pub window: Window,
+    pub used_usd: Option<f64>,
+    pub limit_usd: Option<f64>,
 }
 
 /// The state the settings preview draws its sample in.
@@ -209,6 +339,7 @@ impl Line {
             zone: Zone::System,
             compacts: None,
             auto_compact: None,
+            spend_limit: None,
         }
     }
 
@@ -273,7 +404,46 @@ impl Line {
             zone: Zone::System,
             compacts: reply.and_then(|r| r.session.as_ref()?.compacts),
             auto_compact: None,
+            spend_limit: payload.and_then(|p| spend(p, now)),
         }
+    }
+
+    /// The effort and its flags; `None` when the model takes no effort parameter.
+    pub fn effort(&self) -> Option<Effort> {
+        let raw = self.facts.effort.clone()?;
+        Some(Effort {
+            level: EffortLevel::parse(&raw),
+            raw,
+            fast: self.facts.fast_mode,
+            no_thinking: self.facts.thinking == Some(false),
+        })
+    }
+
+    /// Where the prompt cache stands; `None` when this session saw no caching (it is off, or
+    /// the provider does not report it). Warm needs all three: `warm`, an expiry, and the
+    /// expiry still ahead.
+    pub fn cache_state(&self) -> Option<CacheState> {
+        let cache = self.facts.cache.as_ref().filter(|c| c.observed)?;
+        let expires_in = cache
+            .expires_at
+            .map(|t| t.as_millis() - self.at.as_millis())
+            .filter(|ms| cache.warm && *ms > 0);
+        Some(match expires_in {
+            Some(ms) => CacheState::Warm {
+                expires_in: ms,
+                until: self.reset_clock(ms),
+                ttl: cache.ttl.clone(),
+                ending: ms <= CACHE_ENDING_MS,
+            },
+            None => CacheState::Cold,
+        })
+    }
+
+    /// The last miss's first cause and how many more there were; `None` without a known one.
+    pub fn miss_cause(&self) -> Option<(&str, usize)> {
+        let causes = &self.facts.cache.as_ref()?.causes;
+        let first = causes.first()?;
+        Some((first.as_str(), causes.len() - 1))
     }
 
     /// The weekly window's room left, shared out over the days to its reset: at least one day,
@@ -361,10 +531,10 @@ impl Line {
     /// with the app's values gone stale.
     pub fn sample_in(at: Timestamp, five_hour: bool, state: SampleState) -> Self {
         const MIN: i64 = 60_000;
-        let (five, seven, context) = match state {
-            SampleState::Normal | SampleState::Stale => (72.0, 41.0, 38.0),
-            SampleState::Warn => (84.0, 78.0, 81.0),
-            SampleState::Crit => (96.0, 93.0, 92.0),
+        let (five, seven, context, spend) = match state {
+            SampleState::Normal | SampleState::Stale => (72.0, 41.0, 38.0, 42.0),
+            SampleState::Warn => (84.0, 78.0, 81.0, 80.0),
+            SampleState::Crit => (96.0, 93.0, 92.0, 95.0),
         };
         let app_at = match state {
             SampleState::Stale => Timestamp::from_millis(at.as_millis() - 15 * MIN),
@@ -410,27 +580,7 @@ impl Line {
             }),
             cost: Some(Reading::now(4.12, Source::Statusline, at)),
             model: Some(Reading::now("Opus 5.5".into(), Source::Statusline, at)),
-            facts: Facts {
-                model_id: Some("claude-opus-5-5".into()),
-                tokens_in: Some(76_000),
-                tokens_out: Some(1_200),
-                context_size: Some(200_000),
-                duration_ms: Some(1_234_567),
-                api_duration_ms: Some(345_678),
-                lines: Some((156, 23)),
-                vim_mode: Some("NORMAL".into()),
-                version: Some("2.1.310".into()),
-                agent_name: Some("reviewer".into()),
-                session_id: Some("a813d09f-4c1e-4b7a-9d2f-6e5b0c3a1f88".into()),
-                cwd: Some("/home/ada/projects/alpha/src".into()),
-                project_dir: Some("/home/ada/projects/alpha".into()),
-                git_branch: Some("main".into()),
-                home: Some("/home/ada".into()),
-                session_name: Some("refactor parser".into()),
-                output_style: Some("Explanatory".into()),
-                cache_ratio: Some(88.8),
-                context_used: Some(76_000),
-            },
+            facts: Self::sample_facts(at),
             zone: Zone::System,
             compacts: Some(CompactCount {
                 auto: 2,
@@ -438,8 +588,95 @@ impl Line {
                 other: 0,
             }),
             auto_compact: Some(AutoCompact::Window(300_000)),
+            spend_limit: Some(Spend {
+                window: Window {
+                    eta: None,
+                    elapsed: None,
+                    ..w(spend, 12 * 24 * 60 * MIN, WEEK_MS)
+                },
+                used_usd: Some(spend / 2.0),
+                limit_usd: Some(50.0),
+            }),
         }
     }
+
+    /// The session facts of [`Line::sample_in`].
+    fn sample_facts(at: Timestamp) -> Facts {
+        const MIN: i64 = 60_000;
+        Facts {
+            model_id: Some("claude-opus-5-5".into()),
+            tokens_in: Some(76_000),
+            tokens_out: Some(1_200),
+            context_size: Some(200_000),
+            duration_ms: Some(1_234_567),
+            api_duration_ms: Some(345_678),
+            lines: Some((156, 23)),
+            vim_mode: Some("NORMAL".into()),
+            version: Some("2.1.310".into()),
+            agent_name: Some("reviewer".into()),
+            session_id: Some("a813d09f-4c1e-4b7a-9d2f-6e5b0c3a1f88".into()),
+            cwd: Some("/home/ada/projects/alpha/src".into()),
+            project_dir: Some("/home/ada/projects/alpha".into()),
+            git_branch: Some("main".into()),
+            home: Some("/home/ada".into()),
+            session_name: Some("refactor parser".into()),
+            output_style: Some("Explanatory".into()),
+            cache_ratio: Some(88.8),
+            context_used: Some(76_000),
+            effort: Some("high".into()),
+            fast_mode: false,
+            thinking: Some(true),
+            cache: Some(PromptCache {
+                observed: true,
+                warm: true,
+                ttl: Some("1h".into()),
+                expires_at: Some(Timestamp::from_millis(at.as_millis() + 47 * MIN)),
+                misses: Some(2),
+                hit_ratio: Some(91.0),
+                causes: vec!["tools_changed".into()],
+                recache: Some(45_000),
+            }),
+            pr: Some(PullRequest {
+                number: 123,
+                review: Some(Review::Approved),
+                mr: false,
+            }),
+            worktree: Some("feature-x".into()),
+            repo: Some(Repo {
+                host: Some("github.com".into()),
+                owner: Some("ada".into()),
+                name: "alpha".into(),
+            }),
+            added_dirs: 2,
+        }
+    }
+}
+
+/// The spend limit in `p`, as a window that starts over at its reset.
+fn spend(p: &StatuslinePayload, now: Timestamp) -> Option<Spend> {
+    let s = p.spend_limit()?;
+    let usd = |v: Option<f64>| v.filter(|v| v.is_finite() && *v >= 0.0);
+    // Above 100 once the limit is exceeded.
+    let percent = usd(s.used_percentage)?;
+    let resets_in = until(super::payload::epoch(s.resets_at), now);
+    let window = settle(
+        Window {
+            percent,
+            resets_in,
+            eta: None,
+            elapsed: None,
+            source: Source::Statusline,
+            observed_at: now,
+        },
+        now,
+    );
+    // After a reset the old dollars no longer hold either.
+    let fresh = !window.estimated();
+    Some(Spend {
+        window,
+        used_usd: usd(s.used_usd).filter(|_| fresh),
+        limit_usd: usd(s.limit_usd).filter(|v| *v > 0.0),
+    })
 }
 
 /// The payload's metadata for [`Facts`]; numbers that are not usable counts are left out.
@@ -499,6 +736,44 @@ fn facts(p: &StatuslinePayload) -> Facts {
             (all > 0).then(|| read as f64 / all as f64 * 100.0)
         }),
         context_used: usage.map(|(fresh, written, read)| fresh + written + read),
+        effort: text(p.effort.as_ref().and_then(|e| e.level.as_ref())),
+        fast_mode: p.fast_mode == Some(true),
+        thinking: p.thinking.as_ref().and_then(|t| t.enabled),
+        cache: p.prompt_cache.as_ref().map(|c| PromptCache {
+            observed: c.caching_observed == Some(true),
+            warm: c.warm == Some(true),
+            ttl: text(c.ttl.as_ref()),
+            expires_at: super::payload::epoch(c.expires_at),
+            misses: count(c.misses),
+            hit_ratio: c
+                .hit_ratio
+                .filter(|r| r.is_finite() && (0.0..=1.0).contains(r))
+                .map(|r| r * 100.0),
+            causes: c
+                .last_miss_cause
+                .as_ref()
+                .and_then(|m| m.causes.as_ref())
+                .map(|all| all.iter().filter_map(|s| text(Some(s))).take(8).collect())
+                .unwrap_or_default(),
+            recache: count(c.recache_tokens_if_cold),
+        }),
+        pr: p.pr.as_ref().and_then(|pr| {
+            Some(PullRequest {
+                number: count(pr.number).filter(|n| *n > 0)?,
+                review: text(pr.review_state.as_ref()).map(|s| Review::parse(&s)),
+                mr: pr.kind.as_deref() == Some("mr"),
+            })
+        }),
+        worktree: text(p.worktree.as_ref().and_then(|w| w.name.as_ref()))
+            .or_else(|| text(workspace.and_then(|w| w.git_worktree.as_ref()))),
+        repo: workspace.and_then(|w| w.repo.as_ref()).and_then(|r| {
+            Some(Repo {
+                name: text(r.name.as_ref())?,
+                host: text(r.host.as_ref()),
+                owner: text(r.owner.as_ref()),
+            })
+        }),
+        added_dirs: workspace.and_then(|w| w.added_dirs).unwrap_or(0),
     }
 }
 

@@ -48,6 +48,8 @@ fn the_nerd_set_puts_a_symbol_before_every_value_it_has_one_for() {
                         | SegmentKind::Cost
                         | SegmentKind::VimMode
                         | SegmentKind::Compact
+                        // `$` in every set (Step 12q).
+                        | SegmentKind::SpendLimit
                 ),
                 "{kind:?} has no icon"
             ),

@@ -29,14 +29,16 @@
 //! rest goes to the right, between two the middle region is centred. The line may be
 //! [`CLAUDE_CODE_RESERVED`] plus the margin narrower than the terminal.
 
+use std::fmt::Write as _;
+
 use serde::Serialize;
 use specta::Type;
 use tokenradar_i18n::{Arg, Localizer};
 use unicode_width::UnicodeWidthStr;
 
 use super::{
-    AnsiColor, BarStyle, Format, IconSet, Item, Line, Reading, ResetFormat, SegmentKind,
-    StatuslinePrefs, Theme, Window,
+    AnsiColor, BarStyle, CacheState, Format, IconSet, Item, Line, Reading, ResetFormat,
+    SegmentKind, StatuslinePrefs, Theme, Window,
 };
 use crate::limits::Severity;
 use crate::statusline::auto_compact::AutoCompact;
@@ -139,6 +141,8 @@ struct Look {
     style: BarStyle,
     /// Drawn in a Powerline block: every cell takes the block's text color.
     block: bool,
+    /// The spend limit's dollars, used and limit, in place of the percentage (Step 12q).
+    amount: Option<(f64, f64)>,
 }
 
 impl Look {
@@ -148,6 +152,7 @@ impl Look {
         cells: BAR_CELLS,
         style: BarStyle::Blocks,
         block: false,
+        amount: None,
     };
 
     fn of(ctx: &Ctx<'_>, item: &Item, d: Detail) -> Self {
@@ -158,6 +163,7 @@ impl Look {
             cells: if d.wide { cells } else { cells.min(BAR_CELLS) },
             style: item.bar_style,
             block: ctx.theme != Theme::Plain,
+            amount: None,
         }
     }
 }
@@ -597,6 +603,7 @@ fn severity(ctx: &Ctx<'_>, kind: SegmentKind) -> Option<Severity> {
                 b.source != crate::domain::Source::Estimate && !line.is_stale(b.observed_at)
             })
             .map(|b| b.severity),
+        SegmentKind::SpendLimit => line.spend_limit.as_ref().and_then(|s| of_window(&s.window)),
         _ => None,
     }
 }
@@ -620,7 +627,9 @@ pub fn default_label(l: &Localizer, kind: SegmentKind) -> String {
         SegmentKind::Duration => "sl-label-duration",
         SegmentKind::ApiDuration => "sl-label-api-duration",
         SegmentKind::GitBranch => "sl-label-git",
-        SegmentKind::CacheRatio => "sl-label-cache",
+        SegmentKind::CacheRatio | SegmentKind::CacheTimer => "sl-label-cache",
+        SegmentKind::SpendLimit => "sl-label-spend",
+        SegmentKind::Worktree => "sl-label-worktree",
         _ => return String::new(),
     };
     l.msg(key)
@@ -754,6 +763,16 @@ fn piece(ctx: &Ctx<'_>, i: usize, d: Detail) -> Option<Vec<Span>> {
             let r = line.model.as_ref()?;
             let name = match item.format {
                 Some(Format::Full) => facts.model_id.clone().unwrap_or_else(|| r.value.clone()),
+                Some(Format::WithEffort) => match line.effort() {
+                    Some(effort) => l.fmt(
+                        "sl-model-with-effort",
+                        &[
+                            ("model", Arg::Str(&r.value)),
+                            ("effort", Arg::Str(&effort_word(l, &effort))),
+                        ],
+                    ),
+                    None => r.value.clone(),
+                },
                 _ => r.value.clone(),
             };
             Some(vec![span(
@@ -811,6 +830,9 @@ fn piece(ctx: &Ctx<'_>, i: usize, d: Detail) -> Option<Vec<Span>> {
             let text = match item.format {
                 Some(Format::Full) => path.clone(),
                 Some(Format::Home) => home_short(path, facts.home.as_deref()),
+                Some(Format::WithAdded) if facts.added_dirs > 0 => {
+                    format!("{} +{}", basename(path), facts.added_dirs)
+                }
                 _ => basename(path).to_owned(),
             };
             plain(labeled(&lbl(), &text))
@@ -845,11 +867,146 @@ fn piece(ctx: &Ctx<'_>, i: usize, d: Detail) -> Option<Vec<Span>> {
         SegmentKind::SessionName => plain(labeled(&lbl(), facts.session_name.as_ref()?)),
         SegmentKind::OutputStyle => plain(labeled(&lbl(), facts.output_style.as_ref()?)),
         SegmentKind::CacheRatio => {
-            let pct = facts.cache_ratio?;
+            // The whole session's ratio, or (the default) the last request's.
+            let (key, pct) = if item.format == Some(Format::Session) {
+                ("sl-cache-session", facts.cache.as_ref()?.hit_ratio?)
+            } else {
+                ("sl-percent", facts.cache_ratio?)
+            };
             plain(labeled(
                 &lbl(),
-                &l.fmt("sl-percent", &[("pct", Arg::Num(pct.round()))]),
+                &l.fmt(key, &[("pct", Arg::Num(pct.round()))]),
             ))
+        }
+        SegmentKind::Effort => {
+            let e = line.effort()?;
+            let label = lbl();
+            let mut out = vec![span(
+                labeled(&label, &effort_word(l, &e)),
+                effort_paint(e.level),
+            )];
+            if item.format == Some(Format::Flags) {
+                if e.fast {
+                    let mark = match ctx.icons {
+                        IconSet::Nerd => FAST_NERD.to_owned(),
+                        _ => l.msg("sl-effort-fast"),
+                    };
+                    out.push(span(format!(" {mark}"), Paint::Plain));
+                }
+                if e.no_thinking {
+                    out.push(span(
+                        format!(" {}", l.msg("sl-effort-no-thinking")),
+                        Paint::Dim,
+                    ));
+                }
+            }
+            Some(out)
+        }
+        SegmentKind::CacheTimer => {
+            let label = lbl();
+            Some(match line.cache_state()? {
+                CacheState::Warm {
+                    until, ttl, ending, ..
+                } => {
+                    let mut parts: Vec<String> = Vec::new();
+                    if let Some(c) = until {
+                        let time = format!("{:02}:{:02}", c.hour, c.minute);
+                        parts.push(l.fmt("sl-cache-until", &[("time", Arg::Str(&time))]));
+                    }
+                    parts.extend(ttl);
+                    // Neither the time nor the TTL: still worth saying it is warm.
+                    if parts.is_empty() {
+                        parts.push(l.msg("sl-cache-warm"));
+                    }
+                    let paint = if ending { Paint::Warn } else { Paint::Plain };
+                    vec![span(labeled(&label, &parts.join(" ")), paint)]
+                }
+                CacheState::Cold => {
+                    vec![span(labeled(&label, &l.msg("sl-cache-cold")), Paint::Dim)]
+                }
+            })
+        }
+        SegmentKind::CacheMisses => {
+            let n = facts.cache.as_ref()?.misses.filter(|n| *n > 0)?;
+            #[allow(clippy::cast_precision_loss)] // a few misses
+            let mut text = l.fmt("sl-cache-misses", &[("n", Arg::Num(n as f64))]);
+            if item.format != Some(Format::Count)
+                && let Some((first, more)) = line.miss_cause()
+            {
+                let name = MISS_CAUSES
+                    .iter()
+                    .find(|(cause, _)| *cause == first)
+                    .map_or_else(|| first.to_owned(), |(_, key)| l.msg(key));
+                text.push_str(" · ");
+                text.push_str(&name);
+                if more > 0 {
+                    let _ = write!(text, " +{more}");
+                }
+            }
+            plain(labeled(&lbl(), &text))
+        }
+        SegmentKind::RecacheCost => {
+            // Claude Code's own count: no `≈`; the words say when it applies.
+            let n = facts.cache.as_ref()?.recache?;
+            let n = count(l, n, Format::Compact);
+            plain(labeled(
+                &lbl(),
+                &l.fmt("sl-recache", &[("n", Arg::Str(&n))]),
+            ))
+        }
+        SegmentKind::SpendLimit => {
+            let s = line.spend_limit.as_ref()?;
+            let amount = (item.format == Some(Format::Amount))
+                .then_some((s.used_usd, s.limit_usd))
+                .and_then(|(used, limit)| Some((used?, limit?)));
+            let look = Look {
+                amount,
+                ..Look::of(ctx, item, d)
+            };
+            let d = Detail {
+                bar: d.bar && ctx.bars(item.bar_style) && item.format == Some(Format::Bar),
+                pace: false,
+                eta: false,
+                resets: d.resets && item.reset,
+                ..d
+            };
+            // The dollars carry their own `$`: the default label would say it twice.
+            let label = if amount.is_some() && item.label.is_empty() {
+                String::new()
+            } else {
+                lbl()
+            };
+            Some(window(ctx, &label, &s.window, d, look))
+        }
+        SegmentKind::Pr => {
+            let pr = facts.pr.as_ref()?;
+            let sign = if pr.mr { '!' } else { '#' };
+            let mut out = vec![span(
+                labeled(&lbl(), &format!("{sign}{}", pr.number)),
+                Paint::Plain,
+            )];
+            if let Some(review) = &pr.review {
+                let (text, paint) = review_mark(l, review, item.format, ctx.icons);
+                out.push(span(format!(" {text}"), paint));
+            }
+            Some(out)
+        }
+        SegmentKind::Worktree => plain(labeled(&lbl(), facts.worktree.as_ref()?)),
+        SegmentKind::Repo => {
+            let repo = facts.repo.as_ref()?;
+            let owned = repo
+                .owner
+                .as_ref()
+                .map_or_else(|| repo.name.clone(), |o| format!("{o}/{}", repo.name));
+            let text = match item.format {
+                Some(Format::Name) => repo.name.clone(),
+                Some(Format::Host) => repo
+                    .host
+                    .as_ref()
+                    .map_or_else(|| owned.clone(), |h| format!("{h}/{owned}")),
+                _ => owned,
+            };
+            plain(labeled(&lbl(), &text))
         }
         SegmentKind::Compact => {
             let text = compact(l, line, item.format, d.compact_limit, ctx.icons)?;
@@ -874,6 +1031,74 @@ fn piece(ctx: &Ctx<'_>, i: usize, d: Detail) -> Option<Vec<Span>> {
         SegmentKind::Flex => Some(Vec::new()),
         SegmentKind::LineBreak => None,
     }
+}
+
+/// Fast mode in the Nerd set (oct-rocket). The other sets say it in words: `⚡` is in neither
+/// Cascadia font and East Asian Wide (Step 12q).
+const FAST_NERD: &str = "\u{F427}";
+
+/// The miss causes Claude Code documents, with their messages; another is shown by its name.
+const MISS_CAUSES: [(&str, &str); 4] = [
+    ("tools_changed", "sl-miss-tools-changed"),
+    ("system_prompt_changed", "sl-miss-system-prompt-changed"),
+    ("ttl_expired_5m", "sl-miss-ttl-expired-5m"),
+    ("likely_server_side", "sl-miss-likely-server-side"),
+];
+
+/// The effort level in words; a level this build does not know as it came.
+fn effort_word(l: &Localizer, e: &super::Effort) -> String {
+    use super::EffortLevel as E;
+    let key = match e.level {
+        Some(E::Low) => "sl-effort-low",
+        Some(E::Medium) => "sl-effort-medium",
+        Some(E::High) => "sl-effort-high",
+        Some(E::XHigh) => "sl-effort-xhigh",
+        Some(E::Max) => "sl-effort-max",
+        None => return e.raw.clone(),
+    };
+    l.msg(key)
+}
+
+/// Low faint, medium plain, high and extra high stand out, max in the warning color.
+fn effort_paint(level: Option<super::EffortLevel>) -> Paint {
+    use super::EffortLevel as E;
+    match level {
+        Some(E::Low) => Paint::Dim,
+        Some(E::High | E::XHigh) => Paint::Ok,
+        Some(E::Max) => Paint::Warn,
+        Some(E::Medium) | None => Paint::Plain,
+    }
+}
+
+/// The review state after the PR number. Short: a mark (`✓ ⨯ ∙`, Octicons in the Nerd set),
+/// draft in words outside the Nerd set; full: words. The marks are in Cascadia and not
+/// "Ambiguous" in width: `✗` and `•` are not (Step 12q).
+fn review_mark(
+    l: &Localizer,
+    review: &super::Review,
+    format: Option<Format>,
+    icons: IconSet,
+) -> (String, Paint) {
+    use super::Review as R;
+    let (paint, key, mark, nerd) = match review {
+        R::Approved => (Paint::Ok, "sl-pr-approved", Some("\u{2713}"), "\u{F42E}"),
+        R::ChangesRequested => (
+            Paint::Crit,
+            "sl-pr-changes-requested",
+            Some("\u{2A2F}"),
+            "\u{F467}",
+        ),
+        R::Pending => (Paint::Warn, "sl-pr-pending", Some("\u{2219}"), "\u{F444}"),
+        R::Draft => (Paint::Dim, "sl-pr-draft", None, "\u{F4DD}"),
+        R::Other(raw) => return (raw.clone(), Paint::Plain),
+    };
+    let text = match (format, icons, mark) {
+        (Some(Format::Full), _, _) => l.msg(key),
+        (_, IconSet::Nerd, _) => nerd.to_owned(),
+        (_, _, Some(m)) => m.to_owned(),
+        (_, _, None) => l.msg(key),
+    };
+    (text, paint)
 }
 
 /// `paint`, or dim when the value is stale.
@@ -908,7 +1133,12 @@ fn window(ctx: &Ctx<'_>, label: &str, w: &Window, d: Detail, look: Look) -> Vec<
         out.push(span(" ", Paint::Plain));
     }
     out.push(span(
-        if look.remaining {
+        if let Some((used, limit)) = look.amount {
+            l.fmt(
+                "sl-spend-amount",
+                &[("used", Arg::Num(used)), ("limit", Arg::Num(limit))],
+            )
+        } else if look.remaining {
             let left = (100.0 - w.percent).max(0.0);
             l.fmt("sl-remaining", &[("pct", Arg::Num(left))])
         } else {
