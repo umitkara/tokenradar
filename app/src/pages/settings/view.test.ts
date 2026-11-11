@@ -37,6 +37,7 @@ import {
   glyphRuns,
   groupKey,
   HISTORY_LIMIT,
+  hotkeyFromKey,
   ICON_SETS,
   iconSetKey,
   itemRuns,
@@ -79,6 +80,7 @@ describe("targetFor", () => {
     expect(targetFor("accounts")).toEqual({ tab: "sources", anchor: "dirs" });
     expect(targetFor("diagnostics")).toEqual({ tab: "privacy", anchor: "diagnostics" });
     expect(targetFor("updates")).toEqual({ tab: "about", anchor: "updates" });
+    expect(targetFor("widget")).toEqual({ tab: "general", anchor: "widget" });
   });
 
   it("falls back to General for anything else", () => {
@@ -762,5 +764,37 @@ describe("statusline message keys", () => {
     ];
     const missing = keys.filter((k) => !new RegExp(`^${k} =`, "m").test(ftl));
     expect(missing).toEqual([]);
+  });
+});
+
+describe("hotkeyFromKey", () => {
+  const press = (code: string, mods: Partial<Record<"ctrl" | "alt" | "shift" | "meta", boolean>>) =>
+    hotkeyFromKey({
+      code,
+      ctrlKey: mods.ctrl ?? false,
+      altKey: mods.alt ?? false,
+      shiftKey: mods.shift ?? false,
+      metaKey: mods.meta ?? false,
+    });
+
+  it("writes the shortcut like the core, whatever the keyboard layout", () => {
+    expect(press("KeyR", { ctrl: true, alt: true, shift: true })).toEqual({
+      kind: "ok",
+      text: "Ctrl+Alt+Shift+R",
+    });
+    expect(press("Digit7", { meta: true })).toEqual({ kind: "ok", text: "Win+7" });
+    expect(press("F24", { alt: true })).toEqual({ kind: "ok", text: "Alt+F24" });
+  });
+
+  it("waits while only modifiers are down", () => {
+    expect(press("ControlLeft", { ctrl: true })).toEqual({ kind: "pending" });
+    expect(press("ShiftRight", { shift: true })).toEqual({ kind: "pending" });
+  });
+
+  it("refuses keys the user types and keys the core does not take", () => {
+    expect(press("KeyR", { shift: true })).toEqual({ kind: "invalid" });
+    expect(press("KeyR", {})).toEqual({ kind: "invalid" });
+    expect(press("Space", { ctrl: true })).toEqual({ kind: "invalid" });
+    expect(press("F25", { ctrl: true })).toEqual({ kind: "invalid" });
   });
 });

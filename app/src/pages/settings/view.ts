@@ -57,6 +57,7 @@ const TARGETS: Record<SettingsSection, Target> = {
   api: { tab: "sources", anchor: "api" },
   diagnostics: { tab: "privacy", anchor: "diagnostics" },
   updates: { tab: "about", anchor: "updates" },
+  widget: { tab: "general", anchor: "widget" },
 };
 
 /** The target of a URL fragment (`settings.html#api`) or a `settings-section-requested` event. */
@@ -813,4 +814,40 @@ export function createSaver<T>(
     },
     pending: () => waiting !== null || running !== null,
   };
+}
+
+/** The widget's background opacity steps, the same as its context menu (widget/system.rs). */
+export const WIDGET_OPACITY_STEPS = [100, 85, 70, 55, 40] as const;
+
+/** The keys of a keyboard event the shortcut recorder reads. */
+export interface KeyPress {
+  ctrlKey: boolean;
+  altKey: boolean;
+  shiftKey: boolean;
+  metaKey: boolean;
+  /** The physical key (`KeyR`, `Digit1`, `F5`), so the keyboard layout does not matter. */
+  code: string;
+}
+
+/**
+ * A key press as a global shortcut, written like the core's `Hotkey` (`Ctrl+Alt+Shift+R`).
+ * `pending` while only modifiers are down; `invalid` without Ctrl, Alt or Win, or for a key the
+ * core does not take (letters, digits and F1–F24 only).
+ */
+export function hotkeyFromKey(
+  e: KeyPress,
+): { kind: "pending" } | { kind: "invalid" } | { kind: "ok"; text: string } {
+  if (/^(Control|Alt|Shift|Meta|OS)(Left|Right)?$/.test(e.code)) return { kind: "pending" };
+  const key =
+    /^Key([A-Z])$/.exec(e.code)?.[1] ??
+    /^Digit([0-9])$/.exec(e.code)?.[1] ??
+    /^(F(?:[1-9]|1[0-9]|2[0-4]))$/.exec(e.code)?.[1];
+  if (!key || !(e.ctrlKey || e.altKey || e.metaKey)) return { kind: "invalid" };
+  const mods = [
+    e.ctrlKey && "Ctrl",
+    e.altKey && "Alt",
+    e.shiftKey && "Shift",
+    e.metaKey && "Win",
+  ].filter(Boolean);
+  return { kind: "ok", text: [...mods, key].join("+") };
 }

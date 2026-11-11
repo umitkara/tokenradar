@@ -39,6 +39,25 @@ general-warm-hint = Kapatılan panel bu süre boyunca bellekte kalır ve anında
 general-warm-off = Hemen boşalt
 general-warm-option = { DUR($ms) }
 
+## Genel: masaüstü widget'ı (Adım 18)
+
+general-widget = Masaüstü widget'ı
+general-widget-enabled = Widget'ı göster
+general-widget-enabled-hint = Limit çubuklarını gösteren, hep üstte duran küçük bir şerit. İstediğiniz yere sürükleyin; çift tıklama paneli açar, sağ tıklama menüsünü gösterir.
+general-widget-opacity = Arka plan opaklığı
+general-widget-opacity-option = { PCT($pct) }
+general-widget-pace = Zaman işareti
+general-widget-pace-hint = Her çubuktaki işaret, pencerenin süresinin ne kadarının geçtiğini gösterir.
+general-widget-fullscreen = Tam ekran uygulamalarda gizle
+general-widget-fullscreen-hint = Oyunların, videoların ve sunumların üstüne çıkmaz.
+general-widget-click-through = Tıklama geçirgenliği
+# $hotkey kısayoldur, örneğin "Ctrl+Alt+Shift+R".
+general-widget-click-through-hint = Tıklamalar alttaki pencerelere gider. { $hotkey } ya da tray menüsü widget'ı yeniden tıklanabilir yapar.
+general-widget-hotkey = Tıklama geçirgenliği kısayolu
+general-widget-hotkey-hint = Widget görünürken her yerde çalışır. Tıklayın, sonra tuşlara basın.
+general-widget-hotkey-recording = Tuşlara basın…
+general-widget-hotkey-invalid = Ctrl, Alt ya da Win ile bir harf, rakam veya F1–F24 kullanın. Esc vazgeçer.
+
 ## Veri kaynakları: Claude Code klasörleri
 
 sources-dirs = Claude Code klasörleri

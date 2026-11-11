@@ -19,7 +19,7 @@
 
 #[cfg(any(debug_assertions, feature = "spike"))]
 pub mod fake;
-mod place;
+pub(crate) mod place;
 #[cfg(any(debug_assertions, feature = "spike"))]
 pub mod scenario;
 mod system;

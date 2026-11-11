@@ -13,6 +13,7 @@ use tauri::{AppHandle, Manager};
 use tauri_specta::Event;
 use tokenradar_core::config::{
     self, AdvancedConfig, AppConfig, DataConfig, LocalePref, LogLevel, PanelView, ThemePref,
+    WidgetPosition, WidgetPrefs,
 };
 use tokenradar_core::domain::{LimitKind, Timestamp, WindowPresence};
 use tokenradar_core::notifier::NotifyPrefs;
@@ -121,6 +122,8 @@ pub struct PrefsView {
     pub panel_warm_ttl_s: u32,
     /// What `tokenradar statusline` shows (`[statusline]`).
     pub statusline: StatuslinePrefs,
+    /// The compact strip (`[widget]`, Step 18).
+    pub widget: WidgetPrefs,
 }
 
 /// Sent to every open window when [`PrefsView`] changed.
@@ -153,6 +156,7 @@ impl Stored {
                 log_level: c.advanced.log_level,
                 panel_warm_ttl_s: c.general.panel_warm_ttl_s(),
                 statusline: c.statusline.clone().normalized(),
+                widget: c.widget.prefs.clone().normalized(),
             },
         }
     }
@@ -259,9 +263,20 @@ pub fn reload(app: &AppHandle) {
     if after != before {
         crate::chrome::apply_theme(app, after.theme_pref);
         crate::tray::send(app, crate::tray::TrayMsg::Locale(after.locale.into()));
-        let _ = SettingsChanged(after).emit(app);
+        let _ = SettingsChanged(after.clone()).emit(app);
     }
     let after_prefs = prefs.prefs_view();
+    crate::widget::set_locale(app, after.locale.into());
+    crate::widget::set_theme(app, after.theme_pref);
+    crate::widget::apply(
+        app,
+        &after_prefs.widget,
+        loaded.widget.position.map(WidgetPosition::normalized),
+    );
+    crate::tray::send(
+        app,
+        crate::tray::TrayMsg::Widget(after_prefs.widget.clone()),
+    );
     if after_prefs != before_prefs {
         let _ = PrefsChanged(after_prefs).emit(app);
     }
@@ -275,6 +290,7 @@ pub fn set_locale(app: &AppHandle, pref: LocalePref) -> Result<SettingsView, Str
     let view = prefs.view();
     let locale: Locale = view.locale.into();
     crate::tray::send(app, crate::tray::TrayMsg::Locale(locale));
+    crate::widget::set_locale(app, locale);
     crate::core_bridge::with_core(app, |core| core.set_notify_locale(locale));
     let _ = SettingsChanged(view.clone()).emit(app);
     Ok(view)
@@ -286,6 +302,7 @@ pub fn set_theme(app: &AppHandle, pref: ThemePref) -> Result<SettingsView, Strin
     let prefs = app.state::<Prefs>();
     prefs.update(|s| s.theme = pref);
     crate::chrome::apply_theme(app, pref);
+    crate::widget::set_theme(app, pref);
     let view = prefs.view();
     let _ = SettingsChanged(view.clone()).emit(app);
     Ok(view)
@@ -339,6 +356,32 @@ pub fn set_statusline(app: &AppHandle, prefs: StatuslinePrefs) -> Result<PrefsVi
     let prefs = prefs.normalized();
     with_config(|path| config::save_statusline_prefs(path, &prefs))?;
     Ok(changed(app, |p| p.statusline = prefs))
+}
+
+/// Stores `[widget]` and applies it: starts, updates or stops the widget, and tells the tray
+/// menu and every open window.
+pub fn set_widget(app: &AppHandle, prefs: WidgetPrefs) -> Result<PrefsView, String> {
+    let prefs = prefs.normalized();
+    with_config(|path| config::save_widget(path, &prefs))?;
+    crate::widget::apply(app, &prefs, None);
+    crate::tray::send(app, crate::tray::TrayMsg::Widget(prefs.clone()));
+    Ok(changed(app, |p| p.widget = prefs))
+}
+
+/// Changes one widget setting from the tray menu.
+pub fn update_widget(app: &AppHandle, f: impl FnOnce(&mut WidgetPrefs)) {
+    let mut widget = app.state::<Prefs>().prefs_view().widget;
+    f(&mut widget);
+    if let Err(error) = set_widget(app, widget) {
+        tracing::warn!(%error, "widget setting not saved");
+    }
+}
+
+/// Stores where the user left the widget. Not a setting: no window is told.
+pub fn save_widget_position(position: &WidgetPosition) {
+    if let Err(error) = with_config(|path| config::save_widget_position(path, position)) {
+        tracing::warn!(%error, "widget position not saved");
+    }
 }
 
 /// The statusline preview in the settings window.

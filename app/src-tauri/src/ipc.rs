@@ -9,7 +9,9 @@ use specta::Type;
 use tauri::{AppHandle, EventTarget, Manager};
 use tauri_plugin_autostart::ManagerExt as _;
 use tauri_specta::{Builder, Event, collect_commands, collect_events};
-use tokenradar_core::config::{DataConfig, LocalePref, LogLevel, PanelView, ThemePref};
+use tokenradar_core::config::{
+    DataConfig, LocalePref, LogLevel, PanelView, ThemePref, WidgetPrefs,
+};
 use tokenradar_core::events::CoreEvent;
 use tokenradar_core::limits::{PanelDetail, PanelSnapshot};
 use tokenradar_core::notifier::{self, NotifyPrefs};
@@ -64,6 +66,7 @@ pub fn builder() -> Builder<tauri::Wry> {
             set_data_prefs,
             set_log_level,
             set_panel_warm_ttl,
+            set_widget_prefs,
             set_statusline_prefs,
             preview_statusline,
             statusline_catalog,
@@ -239,6 +242,13 @@ async fn set_log_level(app: AppHandle, level: LogLevel) -> Result<PrefsView, Str
 #[specta::specta]
 async fn set_panel_warm_ttl(app: AppHandle, seconds: u32) -> Result<PrefsView, String> {
     prefs::set_panel_warm_ttl(&app, seconds)
+}
+
+/// Stores the widget settings and starts, updates or stops it.
+#[tauri::command]
+#[specta::specta]
+async fn set_widget_prefs(app: AppHandle, prefs: WidgetPrefs) -> Result<PrefsView, String> {
+    prefs::set_widget(&app, prefs)
 }
 
 #[tauri::command]

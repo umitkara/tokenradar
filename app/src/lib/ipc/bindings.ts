@@ -23,6 +23,8 @@ export const commands = {
 	setDataPrefs: (data: DataConfig) => typedError<PrefsView, string>(__TAURI_INVOKE("set_data_prefs", { data })),
 	setLogLevel: (level: LogLevel) => typedError<PrefsView, string>(__TAURI_INVOKE("set_log_level", { level })),
 	setPanelWarmTtl: (seconds: number) => typedError<PrefsView, string>(__TAURI_INVOKE("set_panel_warm_ttl", { seconds })),
+	/**  Stores the widget settings and starts, updates or stops it. */
+	setWidgetPrefs: (prefs: WidgetPrefs) => typedError<PrefsView, string>(__TAURI_INVOKE("set_widget_prefs", { prefs })),
 	setStatuslinePrefs: (prefs: StatuslinePrefs) => typedError<PrefsView, string>(__TAURI_INVOKE("set_statusline_prefs", { prefs })),
 	/**
 	 *  The statusline drawn with `prefs` on sample values in `state`, `width` columns wide, as
@@ -770,6 +772,8 @@ export type PrefsView = {
 	panel_warm_ttl_s: number,
 	/**  What `tokenradar statusline` shows (`[statusline]`). */
 	statusline: StatuslinePrefs,
+	/**  The compact strip (`[widget]`, Step 18). */
+	widget: WidgetPrefs,
 };
 
 export type Preset = 
@@ -927,7 +931,9 @@ export type SettingsSection = "general" |
 /**  Consent for the usage API. */
 "api" | "diagnostics" | 
 /**  About: a found update and "Install and restart". */
-"updates";
+"updates" | 
+/**  General: the compact strip (Step 18). */
+"widget";
 
 /**
  *  Sent to an open settings window that should switch to `0`. A new window reads the section
@@ -1166,6 +1172,30 @@ export type UpdateView = {
 	checked_at: number | null,
 	/**  `false` for portable copies and development builds: no installer to run. */
 	can_install: boolean,
+};
+
+/**  Where the widget lives. */
+export type WidgetMode = 
+/**  On the desktop, always on top, draggable. */
+"floating" | 
+/**  Docked on the primary taskbar (Step 18b). Until then it behaves like `Floating`. */
+"taskbar";
+
+/**  The widget settings the user changes; the position is kept apart ([`WidgetPosition`]). */
+export type WidgetPrefs = {
+	/**  Off by default (ADR-003): the tray is the only surface until the user asks for more. */
+	enabled?: boolean,
+	mode?: WidgetMode,
+	/**  Background opacity in percent; the text and bars stay opaque. */
+	opacity?: number,
+	/**  Mouse input passes through to the windows below. */
+	click_through?: boolean,
+	/**  Hide while a full-screen app, game or presentation runs. */
+	hide_in_fullscreen?: boolean,
+	/**  The time mark (ADR-044) across each bar. */
+	pace_mark?: boolean,
+	/**  The global shortcut that toggles click-through, as [`Hotkey`] text. */
+	hotkey?: string,
 };
 
 /* Tauri Specta runtime */

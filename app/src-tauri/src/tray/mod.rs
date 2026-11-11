@@ -8,7 +8,7 @@
 mod render;
 pub(crate) mod system;
 mod tooltip;
-mod visual;
+pub(crate) mod visual;
 
 #[cfg(any(debug_assertions, feature = "spike"))]
 pub mod fake;
@@ -21,7 +21,7 @@ use tauri::image::Image;
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Manager, Wry};
-use tokenradar_core::config::AppConfig;
+use tokenradar_core::config::{AppConfig, WidgetPrefs};
 use tokenradar_core::domain::Timestamp;
 use tokenradar_core::limits::PanelSnapshot;
 use tokenradar_core::notifier::KV_MUTED_UNTIL;
@@ -30,6 +30,7 @@ use tokenradar_core::store::Store;
 use tokenradar_i18n::{Arg, Domain, Locale, Localizer};
 
 use crate::ipc::MuteChanged;
+use crate::widget::WidgetModel;
 use crate::{onboarding, panel, settings};
 #[cfg(test)]
 use render::Theme;
@@ -44,6 +45,8 @@ const MENU_ONBOARDING: &str = "onboarding";
 const MENU_ABOUT: &str = "about";
 const MENU_UPDATE: &str = "update";
 const MENU_QUIT: &str = "quit";
+const MENU_WIDGET: &str = "widget";
+const MENU_WIDGET_INTERACTIVE: &str = "widget-interactive";
 #[cfg(debug_assertions)]
 const MENU_GALLERY: &str = "gallery";
 
@@ -69,6 +72,26 @@ pub enum TrayMsg {
     Update(Option<String>),
     /// Theme, scale or high contrast may have changed.
     Environment,
+    /// The widget settings changed: the menu offers to show, hide or unlock it.
+    Widget(WidgetPrefs),
+}
+
+/// The widget items of the tray menu.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct WidgetMenu {
+    pub enabled: bool,
+    /// Click-through is on: the menu is one way back (Step 18).
+    pub click_through: bool,
+}
+
+impl WidgetMenu {
+    fn of(prefs: &WidgetPrefs) -> Self {
+        let (enabled, click_through) = crate::widget::menu_state(prefs);
+        Self {
+            enabled,
+            click_through,
+        }
+    }
 }
 
 /// Sends to the `tray` thread; managed by Tauri.
@@ -106,7 +129,7 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
     let now = Timestamp::now();
     let model = TrayModel::default();
     let tip = tooltip::tooltip(&model, &l10n, &SystemClock, now);
-    let (menu, mute_item) = build_menu(app, &l10n, false, None)?;
+    let (menu, mute_item) = build_menu(app, &l10n, false, None, WidgetMenu::default())?;
 
     let tray = TrayIconBuilder::with_id(TRAY_ID)
         .icon(icon_image(visual, env))
@@ -122,6 +145,10 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
                 Some(settings::SettingsSection::Updates),
             )),
             MENU_ONBOARDING => panel::report(onboarding::show(app)),
+            MENU_WIDGET => crate::prefs::update_widget(app, |p| p.enabled = !p.enabled),
+            MENU_WIDGET_INTERACTIVE => {
+                crate::prefs::update_widget(app, |p| p.click_through = false);
+            }
             MENU_QUIT => app.exit(0),
             #[cfg(debug_assertions)]
             MENU_GALLERY => panel::report(crate::gallery::show(app)),
@@ -162,7 +189,9 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
             locale: l10n.locale(),
             muted: false,
             update: None,
+            widget: WidgetMenu::default(),
         }),
+        widget: None,
     };
     let sink = TauriSink {
         app: app.clone(),
@@ -181,6 +210,7 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
                 env,
                 store: None,
                 update: None,
+                widget: WidgetMenu::default(),
                 presenter,
                 sink,
             };
@@ -199,14 +229,21 @@ fn build_menu(
     l10n: &Localizer,
     muted: bool,
     update: Option<&str>,
+    widget: WidgetMenu,
 ) -> tauri::Result<(Menu<Wry>, MenuItem<Wry>)> {
     let item = |id: &str, key: &str| MenuItem::with_id(app, id, l10n.msg(key), true, None::<&str>);
     let mute = item(MENU_MUTE, mute_key(muted))?;
+    let widget_key = if widget.enabled {
+        "tray-menu-widget-hide"
+    } else {
+        "tray-menu-widget-show"
+    };
     let menu = Menu::with_items(
         app,
         &[
             &item(MENU_OPEN_PANEL, "tray-menu-open-panel")?,
             &mute,
+            &item(MENU_WIDGET, widget_key)?,
             &PredefinedMenuItem::separator(app)?,
             &item(MENU_SETTINGS, "tray-menu-settings")?,
             &item(MENU_ONBOARDING, "tray-menu-onboarding")?,
@@ -215,9 +252,19 @@ fn build_menu(
             &item(MENU_QUIT, "tray-menu-quit")?,
         ],
     )?;
-    // Development builds only: the component gallery (Step 09).
+    // A click-through widget cannot be clicked: the tray is the way back (Step 18).
+    if widget.click_through {
+        menu.insert(
+            &item(MENU_WIDGET_INTERACTIVE, "tray-menu-widget-interactive")?,
+            3,
+        )?;
+    }
+    // Development builds only: the component gallery (Step 09), before "About".
     #[cfg(debug_assertions)]
-    menu.insert(&item(MENU_GALLERY, "tray-menu-gallery")?, 6)?;
+    {
+        let at = if widget.click_through { 8 } else { 7 };
+        menu.insert(&item(MENU_GALLERY, "tray-menu-gallery")?, at)?;
+    }
     // A found update goes first, so it is seen without being in the way (Step 12).
     if let Some(version) = update {
         let text = l10n.fmt("tray-menu-update", &[("version", Arg::Str(version))]);
@@ -244,24 +291,36 @@ struct Frame {
     tooltip: String,
     muted: bool,
     update: Option<String>,
+    widget: WidgetMenu,
+    /// What the widget shows; the tray is its only source.
+    widget_model: WidgetModel,
 }
 
-/// What the menu was built for; a change of language or update rebuilds it.
+/// What the menu was built for; a change of language, update or widget rebuilds it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct MenuKey {
     locale: Locale,
     muted: bool,
     update: Option<String>,
+    widget: WidgetMenu,
 }
 
 /// Where frames go: Tauri in the app, a recorder in tests.
 trait Sink {
     fn set_icon(&mut self, visual: TrayVisual, env: Environment);
     fn set_tooltip(&mut self, text: &str);
-    fn rebuild_menu(&mut self, l10n: &Localizer, muted: bool, update: Option<&str>);
+    fn rebuild_menu(
+        &mut self,
+        l10n: &Localizer,
+        muted: bool,
+        update: Option<&str>,
+        widget: WidgetMenu,
+    );
     fn set_mute_label(&mut self, l10n: &Localizer, muted: bool);
     /// The user muted or unmuted; the core's notifier must know.
     fn mute_changed(&mut self, until: Option<Timestamp>);
+    /// What the widget shows changed.
+    fn widget_model(&mut self, model: WidgetModel);
 }
 
 /// The update throttle: remembers what is on screen and skips calls that would not change it.
@@ -270,6 +329,7 @@ struct Presenter {
     icon: Option<(TrayVisual, Environment)>,
     tooltip: Option<String>,
     menu: Option<MenuKey>,
+    widget: Option<WidgetModel>,
 }
 
 impl Presenter {
@@ -284,18 +344,27 @@ impl Presenter {
             self.tooltip = Some(frame.tooltip);
         }
         match &self.menu {
-            Some(key) if key.locale == l10n.locale() && key.update == frame.update => {
+            Some(key)
+                if key.locale == l10n.locale()
+                    && key.update == frame.update
+                    && key.widget == frame.widget =>
+            {
                 if key.muted != frame.muted {
                     sink.set_mute_label(l10n, frame.muted);
                 }
             }
-            _ => sink.rebuild_menu(l10n, frame.muted, frame.update.as_deref()),
+            _ => sink.rebuild_menu(l10n, frame.muted, frame.update.as_deref(), frame.widget),
         }
         self.menu = Some(MenuKey {
             locale: l10n.locale(),
             muted: frame.muted,
             update: frame.update,
+            widget: frame.widget,
         });
+        if self.widget.as_ref() != Some(&frame.widget_model) {
+            sink.widget_model(frame.widget_model.clone());
+            self.widget = Some(frame.widget_model);
+        }
     }
 }
 
@@ -330,8 +399,14 @@ impl Sink for TauriSink {
         }
     }
 
-    fn rebuild_menu(&mut self, l10n: &Localizer, muted: bool, update: Option<&str>) {
-        match build_menu(&self.app, l10n, muted, update) {
+    fn rebuild_menu(
+        &mut self,
+        l10n: &Localizer,
+        muted: bool,
+        update: Option<&str>,
+        widget: WidgetMenu,
+    ) {
+        match build_menu(&self.app, l10n, muted, update, widget) {
             Ok((menu, mute_item)) => {
                 if let Err(error) = self.tray.set_menu(Some(menu)) {
                     tracing::warn!(%error, "could not replace the tray menu");
@@ -353,6 +428,10 @@ impl Sink for TauriSink {
     fn mute_changed(&mut self, until: Option<Timestamp>) {
         crate::core_bridge::with_core(&self.app, |core| core.set_muted_until(until));
     }
+
+    fn widget_model(&mut self, model: WidgetModel) {
+        crate::widget::update(&self.app, model);
+    }
 }
 
 struct Driver<S: Sink> {
@@ -363,6 +442,7 @@ struct Driver<S: Sink> {
     store: Option<Store>,
     /// The newer release the menu offers.
     update: Option<String>,
+    widget: WidgetMenu,
     presenter: Presenter,
     sink: S,
 }
@@ -444,6 +524,7 @@ impl<S: Sink> Driver<S> {
             TrayMsg::Locale(locale) => self.set_locale(locale),
             TrayMsg::Update(version) => self.update = version,
             TrayMsg::Environment => self.env = system::environment(),
+            TrayMsg::Widget(prefs) => self.widget = WidgetMenu::of(&prefs),
         }
     }
 
@@ -454,6 +535,8 @@ impl<S: Sink> Driver<S> {
             tooltip: tooltip::tooltip(&self.model, &self.l10n, &SystemClock, now),
             muted: self.model.is_muted(now),
             update: self.update.clone(),
+            widget: self.widget,
+            widget_model: WidgetModel::of(&self.model),
         };
         self.presenter.present(frame, &self.l10n, &mut self.sink);
     }

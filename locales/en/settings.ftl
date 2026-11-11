@@ -39,6 +39,25 @@ general-warm-hint = A closed panel stays in memory this long, so it opens instan
 general-warm-off = Free it at once
 general-warm-option = { DUR($ms) }
 
+## General: the desktop widget (Step 18)
+
+general-widget = Desktop widget
+general-widget-enabled = Show the widget
+general-widget-enabled-hint = A small strip with the limit bars that stays on top. Drag it anywhere; double-click opens the panel, right-click shows its menu.
+general-widget-opacity = Background opacity
+general-widget-opacity-option = { PCT($pct) }
+general-widget-pace = Time mark
+general-widget-pace-hint = A mark on each bar shows how much of the window's time has passed.
+general-widget-fullscreen = Hide during full-screen apps
+general-widget-fullscreen-hint = Games, videos and presentations are not covered.
+general-widget-click-through = Click-through
+# $hotkey is the shortcut, e.g. "Ctrl+Alt+Shift+R".
+general-widget-click-through-hint = Clicks go to the windows below. { $hotkey } or the tray menu makes the widget clickable again.
+general-widget-hotkey = Click-through shortcut
+general-widget-hotkey-hint = Works anywhere while the widget is shown. Click, then press the keys.
+general-widget-hotkey-recording = Press the keys…
+general-widget-hotkey-invalid = Use Ctrl, Alt or Win with a letter, a digit or F1–F24. Esc cancels.
+
 ## Data sources: Claude Code folders
 
 sources-dirs = Claude Code folders

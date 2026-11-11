@@ -10,6 +10,7 @@
 //!   10-minute CPU measurement.
 //! - `stress`: 10,000 `set_icon` calls in a row; logs GDI and USER handle counts.
 //! - `panel:<scene>`: a fixed panel state (`crate::panel::fake`).
+//! - `widget:<scene>`: the widget shown with a fixed state (`crate::widget::fake`).
 //!
 //! `TOKENRADAR_FAKE_LOG=<file>` also writes the log lines to a file (release builds have no
 //! console).
@@ -45,6 +46,9 @@ pub fn start(app: &AppHandle, mode: &str) {
             panel if panel.starts_with("panel:") => {
                 crate::panel::fake::start(&app, &panel["panel:".len()..]);
             }
+            widget if widget.starts_with("widget:") => {
+                crate::widget::fake::start(&app, &widget["widget:".len()..]);
+            }
             "cycle" => cycle(&app),
             "sweep" => sweep(&app),
             "stress" => stress(&app),
@@ -55,7 +59,7 @@ pub fn start(app: &AppHandle, mode: &str) {
     }
 }
 
-fn log(line: &str) {
+pub(crate) fn log(line: &str) {
     let line = format!("[{}] tray-fake: {line}", Timestamp::now());
     eprintln!("{line}");
     if let Some(path) = std::env::var_os("TOKENRADAR_FAKE_LOG")
@@ -68,7 +72,12 @@ fn log(line: &str) {
     }
 }
 
-fn limit(kind: LimitKind, percent: f64, freshness: Freshness, resets_in_min: i64) -> LimitView {
+pub(crate) fn limit(
+    kind: LimitKind,
+    percent: f64,
+    freshness: Freshness,
+    resets_in_min: i64,
+) -> LimitView {
     let now = Timestamp::now().as_millis();
     let age = if freshness == Freshness::Stale {
         45 * 60_000
@@ -91,7 +100,7 @@ fn limit(kind: LimitKind, percent: f64, freshness: Freshness, resets_in_min: i64
     }
 }
 
-fn snapshot(limits: Vec<LimitView>, api: ApiState) -> Box<PanelSnapshot> {
+pub(crate) fn snapshot(limits: Vec<LimitView>, api: ApiState) -> Box<PanelSnapshot> {
     Box::new(PanelSnapshot {
         account: None,
         limits,
@@ -108,7 +117,12 @@ fn snapshot(limits: Vec<LimitView>, api: ApiState) -> Box<PanelSnapshot> {
     })
 }
 
-fn both(five_hour: f64, weekly: f64, freshness: Freshness, api: ApiState) -> Box<PanelSnapshot> {
+pub(crate) fn both(
+    five_hour: f64,
+    weekly: f64,
+    freshness: Freshness,
+    api: ApiState,
+) -> Box<PanelSnapshot> {
     snapshot(
         vec![
             limit(LimitKind::Session, five_hour, freshness, 108),
@@ -119,7 +133,7 @@ fn both(five_hour: f64, weekly: f64, freshness: Freshness, api: ApiState) -> Box
 }
 
 /// An account without a 5-hour window (ADR-041): weekly only, the session window absent.
-fn without_five_hour(weekly: f64) -> Box<PanelSnapshot> {
+pub(crate) fn without_five_hour(weekly: f64) -> Box<PanelSnapshot> {
     let mut s = snapshot(
         vec![limit(
             LimitKind::WeeklyAll,

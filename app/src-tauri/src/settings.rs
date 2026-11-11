@@ -24,6 +24,8 @@ pub enum SettingsSection {
     Diagnostics,
     /// About: a found update and "Install and restart".
     Updates,
+    /// General: the compact strip (Step 18).
+    Widget,
 }
 
 impl SettingsSection {
@@ -35,6 +37,7 @@ impl SettingsSection {
             Self::Api => "api",
             Self::Diagnostics => "diagnostics",
             Self::Updates => "updates",
+            Self::Widget => "widget",
         }
     }
 }

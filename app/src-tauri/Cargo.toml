@@ -42,11 +42,23 @@ tauri-plugin-updater = { version = "2.14", default-features = false, features = 
 [target.'cfg(windows)'.dependencies]
 webview2-com = "0.39"
 # Toasts with protocol activation, so an Action Center click opens the panel (ADR-040).
-windows = { version = "0.62", features = ["Data_Xml_Dom", "UI_Notifications"] }
+# Widget text: DirectWrite rendered through Direct2D into a WIC bitmap (Step 18, ADR-058).
+windows = { version = "0.62", features = [
+    "Data_Xml_Dom",
+    "UI_Notifications",
+    "Win32_Graphics_Direct2D",
+    "Win32_Graphics_Direct2D_Common",
+    "Win32_Graphics_DirectWrite",
+    "Win32_Graphics_Dxgi_Common",
+    "Win32_Graphics_Imaging",
+    "Win32_System_Com",
+] }
 windows-core = "0.62"
+windows-numerics = "0.3"
 # Tray: local time, icon size (DPI), taskbar theme, high contrast and the change watcher window.
 # Panel: monitor work area, taskbar edge and rounded corners.
 # Tray pin helper: the notification-icon registry keys and known folders (Step 11c).
+# Widget: layered window, global hotkey and full-screen detection (Step 18).
 windows-sys = { version = "0.61", features = [
     "Win32_Foundation",
     "Win32_Globalization",
@@ -59,6 +71,7 @@ windows-sys = { version = "0.61", features = [
     "Win32_System_Time",
     "Win32_UI_Accessibility",
     "Win32_UI_HiDpi",
+    "Win32_UI_Input_KeyboardAndMouse",
     "Win32_UI_Shell",
     "Win32_UI_WindowsAndMessaging",
 ] }

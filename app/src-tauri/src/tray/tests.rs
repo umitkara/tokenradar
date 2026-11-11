@@ -15,6 +15,7 @@ struct Recorder {
     labels: Vec<bool>,
     /// Mute changes told to the core: `true` muted.
     mutes: Vec<bool>,
+    widget_models: Vec<WidgetModel>,
 }
 
 impl Sink for Recorder {
@@ -24,7 +25,13 @@ impl Sink for Recorder {
     fn set_tooltip(&mut self, text: &str) {
         self.tooltips.push(text.to_owned());
     }
-    fn rebuild_menu(&mut self, l10n: &Localizer, muted: bool, update: Option<&str>) {
+    fn rebuild_menu(
+        &mut self,
+        l10n: &Localizer,
+        muted: bool,
+        update: Option<&str>,
+        _widget: WidgetMenu,
+    ) {
         self.menus
             .push((l10n.locale(), muted, update.map(str::to_owned)));
     }
@@ -33,6 +40,9 @@ impl Sink for Recorder {
     }
     fn mute_changed(&mut self, until: Option<Timestamp>) {
         self.mutes.push(until.is_some());
+    }
+    fn widget_model(&mut self, model: WidgetModel) {
+        self.widget_models.push(model);
     }
 }
 
@@ -59,12 +69,15 @@ fn driver() -> (Driver<Recorder>, Sender<TrayMsg>) {
                 locale: Locale::En,
                 muted: false,
                 update: None,
+                widget: WidgetMenu::default(),
             }),
+            widget: Some(WidgetModel::default()),
         },
         l10n,
         env: ENV,
         store: None,
         update: None,
+        widget: WidgetMenu::default(),
         sink: Recorder::default(),
     };
     (driver, tx)
@@ -191,4 +204,30 @@ fn tray_mute_survives_a_restart() {
     assert_eq!(read_mute(&store), None);
     drop(store);
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn tray_forwards_the_widget_model_only_when_it_changes() {
+    let (mut d, _tx) = driver();
+    d.handle(TrayMsg::Snapshot(snap(40.0)));
+    d.present(NOW);
+    d.handle(TrayMsg::Snapshot(snap(40.0)));
+    d.present(NOW);
+    assert_eq!(d.sink.widget_models.len(), 1);
+    assert!(d.sink.widget_models[0].five_hour.is_some());
+}
+
+#[test]
+fn tray_widget_settings_rebuild_the_menu_once() {
+    let (mut d, _tx) = driver();
+    d.present(NOW);
+    let before = d.sink.menus.len();
+    d.handle(TrayMsg::Widget(WidgetPrefs {
+        enabled: true,
+        click_through: true,
+        ..WidgetPrefs::default()
+    }));
+    d.present(NOW);
+    d.present(NOW);
+    assert_eq!(d.sink.menus.len(), before + 1);
 }

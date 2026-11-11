@@ -40,3 +40,21 @@ tray-menu-update = Güncelleme var: { $version }…
 # Yalnızca geliştirme derlemelerinde.
 tray-menu-gallery = Bileşen galerisi (geliştirme)
 tray-menu-quit = Çıkış
+tray-menu-widget-show = Widget'ı göster
+tray-menu-widget-hide = Widget'ı gizle
+# Widget tıklamaları geçirirken görünür; onu yeniden tıklanabilir yapar.
+tray-menu-widget-interactive = Widget'ı etkileşimli yap
+
+## Widget: masaüstündeki küçük şerit (Adım 18). Etiketler çok kısa tutulur.
+
+widget-label-weekly = 7g
+widget-label-five-hour = 5s
+# Okuması olmayan bir limit.
+widget-value-none = –
+widget-menu-open-panel = Paneli aç
+# $hotkey onu yeniden kapatan kısayoldur, örneğin "Ctrl+Alt+Shift+R". Sekme onu sağa yaslar.
+widget-menu-click-through = Tıklama geçirgenliği	{ $hotkey }
+widget-menu-opacity = Opaklık
+widget-menu-opacity-option = { PCT($pct) }
+widget-menu-settings = Widget ayarları…
+widget-menu-hide = Widget'ı gizle

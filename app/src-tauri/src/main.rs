@@ -11,6 +11,7 @@ mod ipc;
 mod logging;
 mod notify;
 mod onboarding;
+mod paint;
 mod panel;
 mod prefs;
 mod privacy;
@@ -22,6 +23,7 @@ mod terminal_font;
 mod tray;
 mod tray_pin;
 mod updater;
+mod widget;
 
 use tauri::RunEvent;
 
@@ -62,6 +64,8 @@ fn main() {
             panel::init(app.handle());
             tray::create(app.handle())?;
             bridge.mount_events(app);
+            // Before the settings: reading them may start the widget.
+            widget::init(app.handle());
             prefs::init(app.handle());
             sources::init(app.handle());
             terminal_font::init(app.handle());

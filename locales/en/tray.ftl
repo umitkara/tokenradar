@@ -40,3 +40,21 @@ tray-menu-update = Update available: { $version }…
 # Development builds only.
 tray-menu-gallery = Component gallery (development)
 tray-menu-quit = Quit
+tray-menu-widget-show = Show widget
+tray-menu-widget-hide = Hide widget
+# Shown while the widget lets clicks through; makes it clickable again.
+tray-menu-widget-interactive = Make widget interactive
+
+## Widget: the compact strip on the desktop (Step 18). Labels are kept very short.
+
+widget-label-weekly = 7d
+widget-label-five-hour = 5h
+# A limit without a reading.
+widget-value-none = –
+widget-menu-open-panel = Open panel
+# $hotkey is the shortcut that turns it off again, e.g. "Ctrl+Alt+Shift+R". The tab puts it on the right.
+widget-menu-click-through = Click-through	{ $hotkey }
+widget-menu-opacity = Opacity
+widget-menu-opacity-option = { PCT($pct) }
+widget-menu-settings = Widget settings…
+widget-menu-hide = Hide widget
