@@ -1197,3 +1197,30 @@
   - **Explorer yeniden başlatma** (kullanıcı onayıyla, iki kez): Görev çubuğu yokken widget yüzer. Yeni görev çubuğu ≈ 5 sn içinde bulunur (yoklama veya `TaskbarCreated`) ve widget yeniden kenetlenir. Pencere sahibiyle birlikte yok olmadı; yok olursa thread pencereyi yeniden kurar.
   - **Bilinen bedel.** Süreçler arası sahiplik, widget thread'inin giriş kuyruğunu Explorer'ın görev çubuğu thread'iyle bağlayabilir (ölçülmedi). Widget thread'i bu yüzden hiçbir zaman bloklanmaz; uzun iş yapmaz.
   - **Ölçüm** (`docs/perf/2026-11-11-widget-taskbar.md`, sahte mod, 10 dk): Görev çubuğu modunda ek private working set **+1,77 MB** (yüzen modla aynı düzey), boşta CPU +%0,023 (bütçe < %0,1). CPU yüzen modun ≈ 2 katı; koşu bellek baskısı altında yapıldı ve aynı build ile yüzen karşılaştırması yarıda kaldı.
+
+### ADR-059 — Statusline payload'ın yeni alanlarını okur; belgeye dayalı alanlar, canlı yenileme ve daemon'da git durumu
+**Durum:** Kabul (2026-11-11, Adım 12q ve 12r planı, kullanıcı kararlarıyla: kapsam, cache süresinin biçimi, belgeye dayalı alanlar, git durumunun yeri ve yenilemenin varsayılanı).
+- **Bağlam:**
+  - Claude Code'un statusline stdin JSON'una yeni alanlar eklendi ve 12m'deki prob bunların çoğunu gördü: `effort.level`, `thinking.enabled`, `fast_mode`, `prompt_cache.*`, `workspace.repo.*`, `workspace.added_dirs`. Satır bunları okumuyor.
+  - Rakip araçlar (ccstatusline, claude-code-tool-manager) efor, cache zamanlayıcısı, cache kaçırmaları, harcama limiti ve git durumu gösteriyor. Kullanıcı efor seviyesini ve cache süresini istedi, ardından araştırmadaki öğelerin hepsini.
+  - Bazı alanlar bu hesapta gözlenemiyor. `rate_limits.spend_limit` yalnızca Claude apps gateway arkasında, `pr.*` yalnızca açık bir PR varken geliyor.
+  - Claude Code satırı yalnızca olaylarda yeniden çizer. Geri sayımlar boştayken donar; `refreshInterval` bunu çözer ama satırı periyodik olarak çalıştırır.
+  - `git status` Windows'ta bir süreç başlatmak demektir (≈ 20–80 ms) ve statusline p95 ≤ 30 ms bütçesini tek başına aşabilir.
+- **Karar:**
+  - **Yeni alanlar yalnızca satır için okunur** (`skip_serializing`, 12i deseni). Push ve spool biçimi değişmez. Harcama limiti limit motoruna girmez.
+  - **Belgeye dayalı alanlar.** Resmi şemada tanımlı ama gözlenemeyen bir alan, resmi örnekten üretilen sentetik fixture'larla ve esnek okumayla uygulanabilir. `data-sources.md`'de "belgeye dayalı, gözlenmedi" diye işaretlenir. Bu, 12m'deki "gözlemsiz kod yok" kuralının bu alanlar için gevşetilmesidir.
+  - **Cache süresi önce saat biçimiyle gelir.** `prompt_cache.expires_at` yerel saat olarak gösterilir; yenileme gerektirmez ve boştayken de doğrudur. Geri sayım biçimi 12r'de gelir, yenileme kapalıysa editör onun donacağını söyler.
+  - **Canlı yenileme isteğe bağlıdır ve varsayılan olarak kapalıdır.** Seçenekler 5, 10 ve 30 saniye. `settings.json` değişikliği diff → onay → backup → atomic write ile yapılır. Kullanıcının `statusLine` nesnesindeki diğer anahtarlar korunur. Aynı payload'ın tekrarı store'a ve spool'a yazılmaz.
+  - **Git durumu daemon'da hesaplanır.** CLI sorguyla `cwd` gönderir, daemon önbellekli (HEAD/index mtime + 5 s TTL) ve arka planda `git --no-optional-locks status --porcelain=v2` çalıştırır. Daemon kapalıyken öğe gizlenir. Dosya adları saklanmaz, yalnızca sayılar tutulur.
+  - **Ağ gerektiren öğeler yok** (ADR-013): servis durumu ve `gh` ile PR/CI sorgusu.
+- **Bedel:**
+  - Belgeye dayalı alanlar şema değişirse sessizce boş kalabilir. Esnek okuma çökmeyi önler ama yanlışlığı göstermez.
+  - Yenileme açıkken her aralıkta bir CLI süreci ve bir pipe turu çalışır. Zincirlenmiş önceki komut da çalışır.
+  - Git durumu ilk çizimde görünmez (önbellek soğuk), daemon kapalıyken hiç görünmez.
+  - Payload struct'ı ve öğe sayısı büyür; soğuk başlatma her adımda yeniden ölçülür.
+- **Alternatifler:**
+  - Yalnızca gözlenen alanlar: harcama limiti ve PR öğeleri, gözlenene kadar ertelenirdi. Kullanıcı hepsini istedi.
+  - Geri sayımı yenilemesiz sunmak: boştayken donmuş bir sayı gerçeği yansıtmaz ("dürüst sayılar").
+  - Git durumunu CLI'da senkron hesaplamak: bütçeyi aşar.
+  - CLI'da dosya önbellekli, ayrıntılı bir alt süreç ile git durumu: daemon kapalıyken de çalışırdı, ama her satır çağrısına dosya kilidi ve süreç yönetimi ekler; daemon zaten uzun ömürlü ve tek yazıcı.
+  - `.git/index`'i doğrudan ayrıştırmak: izlenmeyen dosyalar ve upstream farkı için yetersiz, sürüm uyumluluğu kırılgan.
