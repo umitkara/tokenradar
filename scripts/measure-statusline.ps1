@@ -116,8 +116,24 @@ function New-Payload([double]$percent) {
             current_usage   = @{ input_tokens = 8500; cache_creation_input_tokens = 5000; cache_read_input_tokens = 62500 }
         }
         rate_limits     = @{
-            five_hour = @{ used_percentage = $percent; resets_at = $now + 7200 }
-            seven_day = @{ used_percentage = 41.2; resets_at = $now + 3 * 86400 }
+            five_hour   = @{ used_percentage = $percent; resets_at = $now + 7200 }
+            seven_day   = @{ used_percentage = 41.2; resets_at = $now + 3 * 86400 }
+            # Step 12q: documented, not yet observed (ADR-059).
+            spend_limit = @{ used_percentage = 42; resets_at = $now + 12 * 86400; used_usd = 21; limit_usd = 50; period = 'monthly' }
+        }
+        # Step 12q: the newer fields, so their parsing is part of the measured path.
+        effort          = @{ level = 'high' }
+        thinking        = @{ enabled = $true }
+        fast_mode       = $false
+        prompt_cache    = @{
+            warm = $true; caching_observed = $true; ttl = '1h'; expires_at = $now + 2820
+            misses = 2; hit_ratio = 0.91; recache_tokens_if_cold = 45000
+            last_miss_cause = @{ causes = @('tools_changed') }
+        }
+        pr              = @{ number = 123; url = 'https://github.com/example/alpha/pull/123'; review_state = 'approved' }
+        workspace       = @{
+            current_dir = $Cwd; project_dir = $Cwd; added_dirs = @('C:\Work\Beta', 'C:\Work\Gamma')
+            repo        = @{ host = 'github.com'; owner = 'example'; name = 'alpha' }
         }
     } | ConvertTo-Json -Compress -Depth 5
 }
