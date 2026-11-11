@@ -6,11 +6,17 @@
 //! 5s ████████░░ %72 · 1:48
 //! ```
 //!
+//! Docked on a short taskbar (Step 18b) the rows become one line, without reset texts:
+//!
+//! ```text
+//! 7g %34 ███░░ · 5s %72 ████░
+//! ```
+//!
 //! Every length is a logical pixel times the scale. Bars are whole pixels tall and sit on the
 //! pixel grid, so they stay sharp at 100 %. Colors are the panel's tokens, so a bar means the
 //! same thing in the widget and in the panel.
 
-use tiny_skia::{Color, FillRule, Paint, Path, PathBuilder, Pixmap, Rect, Transform};
+use tiny_skia::{BlendMode, Color, FillRule, Paint, Path, PathBuilder, Pixmap, Rect, Transform};
 use tokenradar_core::limits::Severity;
 
 use super::model::{Row, WidgetVisual};
@@ -35,6 +41,13 @@ const MARK_OVER: f32 = 3.0;
 const DOT_R: f32 = 2.5;
 const LABEL_PX: f32 = 11.0;
 const VALUE_PX: f32 = 12.0;
+/// The compact line's bars, and the room around its `·` separators.
+const COMPACT_BAR: f32 = 40.0;
+const COMPACT_GAP: f32 = 8.0;
+/// The hover highlight leaves this much of the taskbar's height free above and below, with
+/// the corner radius of the taskbar's own buttons.
+const HOVER_INSET: f32 = 4.0;
+const HOVER_RADIUS: f32 = 4.0;
 
 /// The colors the strip is drawn in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -56,6 +69,22 @@ pub struct Style {
     pub scale_pct: u32,
     /// Background opacity in percent; text and bars stay opaque.
     pub opacity: u8,
+    pub shape: Shape,
+}
+
+/// What the strip stands on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Shape {
+    /// On the desktop: a rounded plate in the theme's surface color.
+    Floating,
+    /// On the taskbar (Step 18b): as tall as the taskbar (`height`, physical pixels), no
+    /// plate, so the taskbar shows through. `compact` is the one-line layout of a short
+    /// taskbar; `hover` draws the highlight of the taskbar's own buttons.
+    Docked {
+        height: u32,
+        compact: bool,
+        hover: bool,
+    },
 }
 
 impl Style {
@@ -110,6 +139,8 @@ struct Palette {
     est: Color,
     /// High contrast: the track is an outline, so filled and empty differ by shape.
     outline: bool,
+    /// The docked hover highlight: the subtle fill of `WinUI` (`SubtleFillColorSecondary`).
+    hover: Color,
 }
 
 impl Palette {
@@ -130,6 +161,7 @@ impl Palette {
                 crit: rgb(255, 111, 105),
                 est: rgb(179, 184, 190),
                 outline: false,
+                hover: Color::from_rgba8(255, 255, 255, 15),
             },
             Theme::Light => Self {
                 surface: [243, 245, 248],
@@ -143,6 +175,7 @@ impl Palette {
                 crit: rgb(190, 34, 42),
                 est: rgb(73, 78, 82),
                 outline: false,
+                hover: Color::from_rgba8(0, 0, 0, 10),
             },
             Theme::HighContrast {
                 ink: [r, g, b],
@@ -161,6 +194,7 @@ impl Palette {
                     crit: ink,
                     est: ink,
                     outline: true,
+                    hover: Color::TRANSPARENT,
                 }
             }
         }
@@ -175,17 +209,37 @@ impl Palette {
     }
 }
 
-/// The strip's size in physical pixels for `rows` rows.
-pub fn size(rows: usize, style: Style) -> (u32, u32) {
+/// The strip's size in physical pixels. Floating, it depends on the number of rows; docked,
+/// it is as tall as the taskbar, and the compact line as wide as its texts.
+pub fn size(visual: &WidgetVisual, style: Style, text: &mut dyn Text) -> (u32, u32) {
     let s = style.scale();
-    let h = if rows > 1 {
-        PAD_Y * 2.0 + ROW_H * 2.0
-    } else {
-        PAD_Y * 2.0 + ONE_ROW_H
-    };
     #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
     let px = |v: f32| (v * s).round().max(1.0) as u32;
-    (px(WIDTH), px(h))
+    match style.shape {
+        Shape::Floating => {
+            let h = if visual.rows.len() > 1 {
+                PAD_Y * 2.0 + ROW_H * 2.0
+            } else {
+                PAD_Y * 2.0 + ONE_ROW_H
+            };
+            (px(WIDTH), px(h))
+        }
+        Shape::Docked {
+            height,
+            compact: false,
+            ..
+        } => (px(WIDTH), height.max(1)),
+        Shape::Docked {
+            height,
+            compact: true,
+            ..
+        } => {
+            let cols = Columns::of(visual, s, text);
+            #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+            let w = cols.compact_width(visual.rows.len(), s).ceil().max(1.0) as u32;
+            (w, height.max(1))
+        }
+    }
 }
 
 /// Column widths shared by the rows, so the bars line up and do not jump as values change.
@@ -196,86 +250,173 @@ struct Columns {
     reset: f32,
 }
 
+impl Columns {
+    fn of(visual: &WidgetVisual, s: f32, text: &mut dyn Text) -> Self {
+        let (label_font, value_font) = fonts(s);
+        let widest = |items: &mut dyn Iterator<Item = &str>, font, text: &mut dyn Text| {
+            items.map(|t| text.width(t, font)).fold(0.0_f32, f32::max)
+        };
+        Self {
+            label: widest(
+                &mut visual.rows.iter().map(|r| r.label.as_str()),
+                label_font,
+                text,
+            ),
+            value: widest(
+                &mut visual
+                    .rows
+                    .iter()
+                    .map(|r| r.value.as_str())
+                    .chain(std::iter::once(visual.widest_value.as_str())),
+                value_font,
+                text,
+            ),
+            sep: text.width("·", label_font),
+            reset: widest(
+                &mut visual.reset_samples.iter().map(String::as_str),
+                label_font,
+                text,
+            ),
+        }
+    }
+
+    /// One compact item: label, value, bar.
+    fn compact_item(&self, s: f32) -> f32 {
+        self.label + GAP_LABEL * s + self.value + GAP_VALUE * s + COMPACT_BAR * s
+    }
+
+    #[allow(clippy::cast_precision_loss)]
+    fn compact_width(&self, rows: usize, s: f32) -> f32 {
+        let n = rows.max(1) as f32;
+        PAD_X * 2.0 * s + n * self.compact_item(s) + (n - 1.0) * (COMPACT_GAP * 2.0 * s + self.sep)
+    }
+}
+
+fn fonts(s: f32) -> (Font, Font) {
+    (
+        Font {
+            px: LABEL_PX * s,
+            weight: Weight::Regular,
+        },
+        Font {
+            px: VALUE_PX * s,
+            weight: Weight::Medium,
+        },
+    )
+}
+
 /// Renders `visual` as premultiplied RGBA.
 pub fn render(visual: &WidgetVisual, style: Style, text: &mut dyn Text) -> Pixmap {
-    let (w, h) = size(visual.rows.len(), style);
+    let (w, h) = size(visual, style, text);
     let mut pixmap = Pixmap::new(w, h).expect("non-zero widget size");
     let pal = Palette::of(style.theme);
     let s = style.scale();
     #[allow(clippy::cast_precision_loss)]
     let (wf, hf) = (w as f32, h as f32);
 
-    background(&mut pixmap, &pal, style, wf, hf, s);
-
-    let label_font = Font {
-        px: LABEL_PX * s,
-        weight: Weight::Regular,
-    };
-    let value_font = Font {
-        px: VALUE_PX * s,
-        weight: Weight::Medium,
-    };
-    let widest = |items: &mut dyn Iterator<Item = &str>, font, text: &mut dyn Text| {
-        items.map(|t| text.width(t, font)).fold(0.0_f32, f32::max)
-    };
-    let cols = Columns {
-        label: widest(
-            &mut visual.rows.iter().map(|r| r.label.as_str()),
-            label_font,
-            text,
-        ),
-        value: widest(
-            &mut visual
-                .rows
-                .iter()
-                .map(|r| r.value.as_str())
-                .chain(std::iter::once(visual.widest_value.as_str())),
-            value_font,
-            text,
-        ),
-        sep: text.width("·", label_font),
-        reset: widest(
-            &mut visual.reset_samples.iter().map(String::as_str),
-            label_font,
-            text,
-        ),
+    let ground = ground(&mut pixmap, &pal, style, wf, hf, s);
+    let cols = Columns::of(visual, s, text);
+    let compact = matches!(style.shape, Shape::Docked { compact: true, .. });
+    let painted = Painted {
+        pal: &pal,
+        cols: &cols,
+        s,
+        clear_halo: !ground.plate,
     };
 
-    let rows = visual.rows.len();
-    for (i, row) in visual.rows.iter().enumerate() {
-        #[allow(clippy::cast_precision_loss)]
-        let center = if rows > 1 {
-            (PAD_Y + ROW_H * (i as f32 + 0.5)) * s
-        } else {
-            hf / 2.0
-        };
-        draw_row(&mut pixmap, row, &pal, &cols, center, wf, s, text);
+    if compact {
+        let mut x = PAD_X * s;
+        for (i, row) in visual.rows.iter().enumerate() {
+            if i > 0 {
+                let (label_font, _) = fonts(s);
+                let baseline = (hf / 2.0 + VALUE_PX * s * 0.36).round();
+                text.draw(
+                    &mut pixmap,
+                    "·",
+                    label_font,
+                    x + COMPACT_GAP * s,
+                    baseline,
+                    pal.text2,
+                );
+                x += COMPACT_GAP * 2.0 * s + cols.sep;
+            }
+            draw_compact(&mut pixmap, row, &painted, x, hf / 2.0, text);
+            x += cols.compact_item(s);
+        }
+    } else {
+        let rows = visual.rows.len();
+        for (i, row) in visual.rows.iter().enumerate() {
+            // Rows are ROW_H apart, around the middle: for the floating plate this is
+            // PAD_Y + ROW_H * (i + 0.5), for the taskbar the middle of its height.
+            #[allow(clippy::cast_precision_loss)]
+            let center = hf / 2.0 + (i as f32 - (rows as f32 - 1.0) / 2.0) * ROW_H * s;
+            draw_row(&mut pixmap, row, &painted, center, wf, text);
+        }
     }
 
     if visual.error {
         let r = DOT_R * s;
-        if let Some(dot) = PathBuilder::from_circle(wf - r - 3.0 * s, r + 3.0 * s, r) {
+        if let Some(dot) = PathBuilder::from_circle(wf - r - 3.0 * s, ground.top + r + 3.0 * s, r) {
             fill(&mut pixmap, &dot, pal.crit);
         }
     }
     pixmap
 }
 
+/// What a row is drawn with.
+struct Painted<'a> {
+    pal: &'a Palette,
+    cols: &'a Columns,
+    s: f32,
+    /// Without a plate, the time mark's halo cuts the bar open instead of painting the
+    /// surface color: the taskbar shows through, whatever its color.
+    clear_halo: bool,
+}
+
+/// The ground's outcome: whether there is a plate, and where its top edge is.
+struct Ground {
+    plate: bool,
+    top: f32,
+}
+
 #[allow(clippy::many_single_char_names)] // sizes and channels
-fn background(pixmap: &mut Pixmap, pal: &Palette, style: Style, w: f32, h: f32, s: f32) {
+fn ground(pixmap: &mut Pixmap, pal: &Palette, style: Style, w: f32, h: f32, s: f32) -> Ground {
+    let (top, height, hover) = match style.shape {
+        Shape::Floating => (0.0, h, false),
+        Shape::Docked { hover, .. } => {
+            let inset = (HOVER_INSET * s).round().min(h / 4.0);
+            (inset, h - 2.0 * inset, hover)
+        }
+    };
+    // High contrast keeps its opaque plate on the taskbar too: the system colors only promise
+    // contrast against each other, not against the taskbar.
+    let plate = matches!(style.shape, Shape::Floating) || pal.outline;
+    if !plate {
+        // Almost invisible but not zero: a layered window lets fully clear pixels click
+        // through, and the docked strip must still take hover, clicks and drags.
+        pixmap.fill(Color::from_rgba8(0, 0, 0, 1));
+        if hover && let Some(shape) = rounded(0.0, top, w, height, HOVER_RADIUS * s) {
+            fill(pixmap, &shape, pal.hover);
+        }
+        return Ground { plate, top };
+    }
+    let radius = match style.shape {
+        Shape::Floating => RADIUS,
+        Shape::Docked { .. } => HOVER_RADIUS,
+    } * s;
     let alpha = if pal.outline {
         255
     } else {
         u8::try_from(u32::from(style.opacity.min(100)) * 255 / 100).unwrap_or(255)
     };
     let [r, g, b] = pal.surface;
-    if let Some(shape) = rounded(0.0, 0.0, w, h, RADIUS * s) {
+    if let Some(shape) = rounded(0.0, top, w, height, radius) {
         fill(pixmap, &shape, Color::from_rgba8(r, g, b, alpha));
     }
     // A hairline edge keeps the strip apart from a background of its own color.
     let line = s.round().max(1.0);
     let half = line / 2.0;
-    if let Some(edge) = rounded(half, half, w - line, h - line, RADIUS * s - half) {
+    if let Some(edge) = rounded(half, top + half, w - line, height - line, radius - half) {
         let mut paint = Paint::default();
         paint.set_color(pal.stroke);
         paint.anti_alias = true;
@@ -285,27 +426,48 @@ fn background(pixmap: &mut Pixmap, pal: &Palette, style: Style, w: f32, h: f32, 
         };
         pixmap.stroke_path(&edge, &paint, &stroke, Transform::identity(), None);
     }
+    Ground { plate, top }
 }
 
-#[allow(clippy::too_many_arguments)]
+/// One item of the compact line, starting at `x`: `7g %34 ███░░`.
+fn draw_compact(
+    pixmap: &mut Pixmap,
+    row: &Row,
+    p: &Painted<'_>,
+    x: f32,
+    center: f32,
+    text: &mut dyn Text,
+) {
+    let s = p.s;
+    let (label_font, value_font) = fonts(s);
+    let baseline = (center + VALUE_PX * s * 0.36).round();
+    text.draw(pixmap, &row.label, label_font, x, baseline, p.pal.text2);
+    let x_value_end = x + p.cols.label + GAP_LABEL * s + p.cols.value;
+    let vw = text.width(&row.value, value_font);
+    let value_color = if row.stale { p.pal.text3 } else { p.pal.text1 };
+    text.draw(
+        pixmap,
+        &row.value,
+        value_font,
+        x_value_end - vw,
+        baseline,
+        value_color,
+    );
+    let bar_x0 = (x_value_end + GAP_VALUE * s).round();
+    let bar_x1 = (bar_x0 + COMPACT_BAR * s).round();
+    layered_bar(pixmap, row, p, bar_x0, bar_x1, center);
+}
+
 fn draw_row(
     pixmap: &mut Pixmap,
     row: &Row,
-    pal: &Palette,
-    cols: &Columns,
+    p: &Painted<'_>,
     center: f32,
     w: f32,
-    s: f32,
     text: &mut dyn Text,
 ) {
-    let label_font = Font {
-        px: LABEL_PX * s,
-        weight: Weight::Regular,
-    };
-    let value_font = Font {
-        px: VALUE_PX * s,
-        weight: Weight::Medium,
-    };
+    let (pal, cols, s) = (p.pal, p.cols, p.s);
+    let (label_font, value_font) = fonts(s);
     // Digits are about 0.7 em tall: this baseline centers them on the bar.
     let baseline = (center + VALUE_PX * s * 0.36).round();
 
@@ -333,29 +495,36 @@ fn draw_row(
         let x_reset = x_sep + cols.sep + GAP_SEP * s;
         text.draw(pixmap, reset, label_font, x_reset, baseline, pal.text2);
     }
+    layered_bar(pixmap, row, p, bar_x0, bar_x1, center);
+}
 
-    if bar_x1 > bar_x0 {
-        let mut layer = Pixmap::new(pixmap.width(), pixmap.height()).expect("same size");
-        bar(&mut layer, row, pal, bar_x0, bar_x1, center, s);
-        if row.stale {
-            // Premultiplied pixels: halving every channel is exactly 50 % opacity (as the tray).
-            for b in layer.data_mut() {
-                *b /= 2;
-            }
-        }
-        pixmap.draw_pixmap(
-            0,
-            0,
-            layer.as_ref(),
-            &tiny_skia::PixmapPaint::default(),
-            Transform::identity(),
-            None,
-        );
+/// The bar on a layer of its own, so a stale bar fades as a whole and the mark's halo only
+/// cuts the bar.
+fn layered_bar(pixmap: &mut Pixmap, row: &Row, p: &Painted<'_>, x0: f32, x1: f32, center: f32) {
+    if x1 <= x0 {
+        return;
     }
+    let mut layer = Pixmap::new(pixmap.width(), pixmap.height()).expect("same size");
+    bar(&mut layer, row, p, x0, x1, center);
+    if row.stale {
+        // Premultiplied pixels: halving every channel is exactly 50 % opacity (as the tray).
+        for b in layer.data_mut() {
+            *b /= 2;
+        }
+    }
+    pixmap.draw_pixmap(
+        0,
+        0,
+        layer.as_ref(),
+        &tiny_skia::PixmapPaint::default(),
+        Transform::identity(),
+        None,
+    );
 }
 
 #[allow(clippy::many_single_char_names)] // geometry: x, y, h, r, s
-fn bar(pixmap: &mut Pixmap, row: &Row, pal: &Palette, x0: f32, x1: f32, center: f32, s: f32) {
+fn bar(pixmap: &mut Pixmap, row: &Row, p: &Painted<'_>, x0: f32, x1: f32, center: f32) {
+    let (pal, s) = (p.pal, p.s);
     let h = (BAR_H * s).round().max(2.0);
     let y = (center - h / 2.0).round();
     let len = x1 - x0;
@@ -433,12 +602,23 @@ fn bar(pixmap: &mut Pixmap, row: &Row, pal: &Palette, x0: f32, x1: f32, center: 
         if let Some(rect) =
             Rect::from_xywh(x - halo, top - halo, mw + 2.0 * halo, height + 2.0 * halo)
         {
-            let [r, g, b] = pal.surface;
-            fill(
-                pixmap,
-                &PathBuilder::from_rect(rect),
-                Color::from_rgba8(r, g, b, 255),
-            );
+            let area = PathBuilder::from_rect(rect);
+            if p.clear_halo {
+                let paint = Paint {
+                    blend_mode: BlendMode::Clear,
+                    ..Paint::default()
+                };
+                pixmap.fill_path(
+                    &area,
+                    &paint,
+                    FillRule::Winding,
+                    Transform::identity(),
+                    None,
+                );
+            } else {
+                let [r, g, b] = pal.surface;
+                fill(pixmap, &area, Color::from_rgba8(r, g, b, 255));
+            }
         }
         if let Some(rect) = Rect::from_xywh(x, top, mw, height) {
             fill(pixmap, &PathBuilder::from_rect(rect), pal.text1);

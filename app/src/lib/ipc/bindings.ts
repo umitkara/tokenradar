@@ -1103,6 +1103,13 @@ export type TargetState = {
 	can_undo: boolean,
 };
 
+/**  Where a docked widget is anchored on the taskbar. */
+export type TaskbarAlign = 
+/**  Just left of the notification area; the offset moves it further left. */
+"tray" | 
+/**  At the taskbar's left end; the offset moves it to the right. For centered icons. */
+"left";
+
 export type TerminalFontView = {
 	font: NerdFontView | null,
 	/**  Terminals the statusline was called from since the app started. */
@@ -1178,7 +1185,10 @@ export type UpdateView = {
 export type WidgetMode = 
 /**  On the desktop, always on top, draggable. */
 "floating" | 
-/**  Docked on the primary taskbar (Step 18b). Until then it behaves like `Floating`. */
+/**
+ *  Docked on the primary taskbar (Step 18b). Best effort: where docking fails the widget
+ *  floats and tries again later (ADR-058).
+ */
 "taskbar";
 
 /**  The widget settings the user changes; the position is kept apart ([`WidgetPosition`]). */
@@ -1196,6 +1206,10 @@ export type WidgetPrefs = {
 	pace_mark?: boolean,
 	/**  The global shortcut that toggles click-through, as [`Hotkey`] text. */
 	hotkey?: string,
+	/**  Taskbar mode: the anchor. */
+	taskbar_align?: TaskbarAlign,
+	/**  Taskbar mode: logical pixels away from the anchor, `0..=MAX_TASKBAR_OFFSET`. */
+	taskbar_offset?: number,
 };
 
 /* Tauri Specta runtime */

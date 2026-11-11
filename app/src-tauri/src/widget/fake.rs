@@ -6,11 +6,13 @@
 //! - `stale`: both rows, readings older than the stale threshold.
 //! - `estimate`: both rows from the estimate (dashed, `≈`).
 //!
-//! The widget is forced on and nothing is written to `config.toml`.
+//! A `:taskbar` suffix (`widget:both:taskbar`) docks it on the taskbar (Step 18b). The widget
+//! is forced on and nothing is written to `config.toml`.
 
 use std::time::Duration;
 
 use tauri::AppHandle;
+use tokenradar_core::config::WidgetMode;
 use tokenradar_core::domain::{LimitKind, Source, Timestamp};
 use tokenradar_core::limits::{Freshness, PanelSnapshot};
 use tokenradar_core::providers::claude::usage_api::ApiState;
@@ -60,13 +62,17 @@ fn with_window_starts(mut s: Box<PanelSnapshot>) -> Box<PanelSnapshot> {
 }
 
 pub fn start(app: &AppHandle, name: &str) {
+    let (name, mode) = match name.strip_suffix(":taskbar") {
+        Some(name) => (name, WidgetMode::Taskbar),
+        None => (name, WidgetMode::Floating),
+    };
     let Some(snap) = scene(name).map(with_window_starts) else {
         log(&format!("unknown widget scene '{name}'"));
         return;
     };
     // Let the tray and the settings settle first, so the forced widget starts from this scene.
     std::thread::sleep(Duration::from_secs(1));
-    log(&format!("widget scene {name}"));
+    log(&format!("widget scene {name} ({mode:?})"));
     send(app, TrayMsg::Snapshot(snap));
-    super::force(app);
+    super::force(app, mode);
 }

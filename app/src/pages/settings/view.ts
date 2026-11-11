@@ -819,6 +819,9 @@ export function createSaver<T>(
 /** The widget's background opacity steps, the same as its context menu (widget/system.rs). */
 export const WIDGET_OPACITY_STEPS = [100, 85, 70, 55, 40] as const;
 
+/** The taskbar offsets offered, in logical pixels; a drag on the taskbar sets any value. */
+export const TASKBAR_OFFSET_PRESETS = [0, 40, 80, 160, 320, 640] as const;
+
 /** The keys of a keyboard event the shortcut recorder reads. */
 export interface KeyPress {
   ctrlKey: boolean;

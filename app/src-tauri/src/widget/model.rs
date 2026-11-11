@@ -239,6 +239,29 @@ pub struct WidgetVisual {
     pub reset_samples: Vec<String>,
 }
 
+impl WidgetVisual {
+    /// What a screen reader says for the strip (the window's title): the limits in words,
+    /// with the same values and reset texts the strip shows.
+    pub fn spoken(&self, l10n: &Localizer) -> String {
+        let rows: Vec<String> = self
+            .rows
+            .iter()
+            .zip(["widget-a11y-weekly", "widget-a11y-five-hour"])
+            .map(|(row, key)| {
+                let limit = l10n.fmt(key, &[("value", Arg::Str(&row.value))]);
+                match &row.reset {
+                    Some(reset) => l10n.fmt(
+                        "widget-a11y-resets",
+                        &[("limit", Arg::Str(&limit)), ("reset", Arg::Str(reset))],
+                    ),
+                    None => limit,
+                }
+            })
+            .collect();
+        l10n.fmt("widget-a11y", &[("rows", Arg::Str(&rows.join("; ")))])
+    }
+}
+
 #[cfg(test)]
 pub(crate) mod tests {
     use tokenradar_core::domain::LimitKind;
@@ -382,6 +405,23 @@ pub(crate) mod tests {
         assert_eq!(m.next_change(NOW, false), at(15_000));
         // Without resets nothing moves by itself.
         assert_eq!(WidgetModel::default().next_change(NOW, true), None);
+    }
+
+    #[test]
+    fn the_spoken_name_reads_the_rows_in_words() {
+        let mut weekly = limit(LimitKind::WeeklyAll, 34.4, Freshness::Fresh);
+        weekly.resets_at = at(2 * DAY_MS);
+        let five = limit(LimitKind::Session, 71.6, Freshness::Fresh);
+        let tr = l10n(Locale::Tr);
+        let v =
+            WidgetModel::of(&tray(vec![five, weekly.clone()])).visual(&tr, &UtcFake, NOW, false);
+        assert_eq!(
+            v.spoken(&tr),
+            "TokenRadar: Haftalık limit %34, yenilenme: Çar; 5 saatlik limit %72"
+        );
+        let en = l10n(Locale::En);
+        let v = WidgetModel::of(&tray(vec![weekly])).visual(&en, &UtcFake, NOW, false);
+        assert_eq!(v.spoken(&en), "TokenRadar: Weekly limit 34%, resets: Wed");
     }
 
     #[test]

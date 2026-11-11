@@ -58,6 +58,21 @@ general-widget-hotkey-hint = Works anywhere while the widget is shown. Click, th
 general-widget-hotkey-recording = Press the keys…
 general-widget-hotkey-invalid = Use Ctrl, Alt or Win with a letter, a digit or F1–F24. Esc cancels.
 
+## General: the widget's taskbar mode (Step 18b)
+
+general-widget-mode = Position
+general-widget-mode-floating = Floating
+general-widget-mode-taskbar = On the taskbar
+general-widget-mode-taskbar-hint = The strip sits on the taskbar, left of the notification area. Where the taskbar is on a side or at the top, hides automatically or has no room, the widget floats instead.
+general-widget-align = Align
+general-widget-align-tray = Next to the notification area
+general-widget-align-left = At the left end
+general-widget-offset = Distance
+general-widget-offset-hint = How far the strip keeps from where it is aligned. Dragging it along the taskbar sets this too.
+# $px is a distance in logical pixels.
+general-widget-offset-option = { $px } px
+general-widget-fullscreen-docked-hint = On the taskbar the widget always hides during full-screen apps.
+
 ## Data sources: Claude Code folders
 
 sources-dirs = Claude Code folders

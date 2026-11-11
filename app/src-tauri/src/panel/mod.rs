@@ -22,7 +22,7 @@ pub mod fake;
 pub(crate) mod place;
 #[cfg(any(debug_assertions, feature = "spike"))]
 pub mod scenario;
-mod system;
+pub(crate) mod system;
 
 use std::io::Write as _;
 use std::sync::{Mutex, MutexGuard, PoisonError};

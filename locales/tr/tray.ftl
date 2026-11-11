@@ -58,3 +58,24 @@ widget-menu-opacity = Opaklık
 widget-menu-opacity-option = { PCT($pct) }
 widget-menu-settings = Widget ayarları…
 widget-menu-hide = Widget'ı gizle
+widget-menu-mode = Konum
+widget-menu-mode-floating = Masaüstünde yüzen
+widget-menu-mode-taskbar = Görev çubuğunda
+
+## Widget'ın görev çubuğu modu (Adım 18b).
+
+# Görev çubuğuna yerleşilemeyince bir kez gösterilen bildirim.
+widget-undocked-title = TokenRadar widget'ı
+widget-undocked-body = Görev çubuğuna yerleşilemedi; widget şimdilik masaüstünde yüzüyor. { $reason ->
+    [edge] Görev çubuğu ekranın altında değil.
+    [auto-hide] Görev çubuğu kendiliğinden gizleniyor.
+   *[room] Görev çubuğunda yeterli boş yer yok.
+}
+
+## Widget'ın ekran okuyucudaki adı. $value şeritteki değerdir (%34, ≈%72, –),
+## $reset şeritteki yenilenme metnidir (Çar ya da 1:48).
+
+widget-a11y = TokenRadar: { $rows }
+widget-a11y-weekly = Haftalık limit { $value }
+widget-a11y-five-hour = 5 saatlik limit { $value }
+widget-a11y-resets = { $limit }, yenilenme: { $reset }

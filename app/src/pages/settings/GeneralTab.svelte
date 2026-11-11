@@ -1,23 +1,31 @@
 <!--
   General: language, theme, starting with Windows, how long a closed panel stays ready and the
-  desktop widget (Step 18).
+  desktop widget (Step 18, taskbar mode Step 18b).
 -->
 <script lang="ts">
 import Card from "../../lib/components/Card.svelte";
+import Segmented from "../../lib/components/Segmented.svelte";
 import Select from "../../lib/components/Select.svelte";
 import Toggle from "../../lib/components/Toggle.svelte";
 import { t } from "../../lib/i18n/i18n.svelte";
 import {
   commands,
   type LocalePref,
+  type TaskbarAlign,
   type ThemePref,
+  type WidgetMode,
   type WidgetPrefs,
 } from "../../lib/ipc/bindings";
 import { settings } from "../../lib/settings.svelte";
 import Field from "./Field.svelte";
 import HotkeyRecorder from "./HotkeyRecorder.svelte";
 import { savePrefs, store } from "./state.svelte";
-import { optionsWith, WARM_TTL_PRESETS, WIDGET_OPACITY_STEPS } from "./view";
+import {
+  optionsWith,
+  TASKBAR_OFFSET_PRESETS,
+  WARM_TTL_PRESETS,
+  WIDGET_OPACITY_STEPS,
+} from "./view";
 
 let { onerror }: { onerror: (key: string | null) => void } = $props();
 
@@ -73,6 +81,22 @@ const opacities = $derived(
   })),
 );
 
+const modes = $derived<{ value: WidgetMode; label: string }[]>([
+  { value: "floating", label: t("general-widget-mode-floating") },
+  { value: "taskbar", label: t("general-widget-mode-taskbar") },
+]);
+const aligns = $derived<{ value: TaskbarAlign; label: string }[]>([
+  { value: "tray", label: t("general-widget-align-tray") },
+  { value: "left", label: t("general-widget-align-left") },
+]);
+// A drag on the taskbar sets any offset; the list keeps it as an option.
+const offsets = $derived(
+  optionsWith([...TASKBAR_OFFSET_PRESETS], store.prefs?.widget.taskbar_offset ?? 0).map((px) => ({
+    value: px,
+    label: t("general-widget-offset-option", { px }),
+  })),
+);
+
 // One command for every widget setting: the backend starts, updates or stops the widget.
 async function setWidget(change: Partial<WidgetPrefs>) {
   const current = store.prefs?.widget;
@@ -113,6 +137,7 @@ async function setWidget(change: Partial<WidgetPrefs>) {
 
 {#if store.prefs}
   {@const widget = store.prefs.widget}
+  {@const docked = widget.mode === "taskbar"}
   <section id="widget" tabindex="-1">
     <Card title={t("general-widget")}>
       <Field label={t("general-widget-enabled")} hint={t("general-widget-enabled-hint")}>
@@ -123,15 +148,52 @@ async function setWidget(change: Partial<WidgetPrefs>) {
           onchange={(enabled) => setWidget({ enabled })}
         />
       </Field>
-      <Field label={t("general-widget-opacity")} id="widget-opacity">
-        <Select
-          id="widget-opacity"
-          value={widget.opacity ?? 85}
-          options={opacities}
+      <Field
+        label={t("general-widget-mode")}
+        hint={docked ? t("general-widget-mode-taskbar-hint") : undefined}
+      >
+        <Segmented
+          value={widget.mode ?? "floating"}
+          options={modes}
+          label={t("general-widget-mode")}
           disabled={!widget.enabled}
-          onchange={(opacity) => setWidget({ opacity })}
+          onchange={(mode) => setWidget({ mode })}
         />
       </Field>
+      {#if docked}
+        <Field label={t("general-widget-align")} id="widget-align">
+          <Select
+            id="widget-align"
+            value={widget.taskbar_align ?? "tray"}
+            options={aligns}
+            disabled={!widget.enabled}
+            onchange={(taskbar_align) => setWidget({ taskbar_align })}
+          />
+        </Field>
+        <Field
+          label={t("general-widget-offset")}
+          id="widget-offset"
+          hint={t("general-widget-offset-hint")}
+        >
+          <Select
+            id="widget-offset"
+            value={widget.taskbar_offset ?? 0}
+            options={offsets}
+            disabled={!widget.enabled}
+            onchange={(taskbar_offset) => setWidget({ taskbar_offset })}
+          />
+        </Field>
+      {:else}
+        <Field label={t("general-widget-opacity")} id="widget-opacity">
+          <Select
+            id="widget-opacity"
+            value={widget.opacity ?? 85}
+            options={opacities}
+            disabled={!widget.enabled}
+            onchange={(opacity) => setWidget({ opacity })}
+          />
+        </Field>
+      {/if}
       <Field label={t("general-widget-pace")} hint={t("general-widget-pace-hint")}>
         <Toggle
           checked={widget.pace_mark ?? false}
@@ -141,12 +203,15 @@ async function setWidget(change: Partial<WidgetPrefs>) {
           onchange={(pace_mark) => setWidget({ pace_mark })}
         />
       </Field>
-      <Field label={t("general-widget-fullscreen")} hint={t("general-widget-fullscreen-hint")}>
+      <Field
+        label={t("general-widget-fullscreen")}
+        hint={docked ? t("general-widget-fullscreen-docked-hint") : t("general-widget-fullscreen-hint")}
+      >
         <Toggle
-          checked={widget.hide_in_fullscreen ?? true}
+          checked={docked || (widget.hide_in_fullscreen ?? true)}
           label={t("general-widget-fullscreen")}
           labelHidden
-          disabled={!widget.enabled}
+          disabled={!widget.enabled || docked}
           onchange={(hide_in_fullscreen) => setWidget({ hide_in_fullscreen })}
         />
       </Field>

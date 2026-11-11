@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use tiny_skia::Pixmap;
+use tiny_skia::{Pixmap, PremultipliedColorU8};
 use tokenradar_core::limits::Severity;
 
 use super::*;
@@ -158,7 +158,47 @@ fn style(theme: Theme, scale_pct: u32) -> Style {
         theme,
         scale_pct,
         opacity: 85,
+        shape: Shape::Floating,
     }
+}
+
+/// Docked on a taskbar of `logical` px at `scale_pct`.
+fn docked(theme: Theme, scale_pct: u32, logical: u32, compact: bool, hover: bool) -> Style {
+    Style {
+        shape: Shape::Docked {
+            height: logical * scale_pct / 100,
+            compact,
+            hover,
+        },
+        ..style(theme, scale_pct)
+    }
+}
+
+/// The docked cases: on a 48 px taskbar (Windows 11) one or two rows, on a 30 px taskbar
+/// (Windows 10, small buttons) the compact line; critical with the time mark, and hovered.
+fn docked_fixtures() -> Vec<(&'static str, WidgetVisual, u32, bool, bool)> {
+    let weekly = row("7g", 34, "Çar");
+    let five = row("5s", 72, "1:48");
+    let both = visual(vec![weekly.clone(), five.clone()]);
+    let crit = visual(vec![
+        Row {
+            mark: Some(0.6),
+            ..row("7g", 93, "Çar")
+        },
+        Row {
+            mark: Some(0.4),
+            ..row("5s", 80, "0:12")
+        },
+    ]);
+    vec![
+        ("both", both.clone(), 48, false, false),
+        ("single", visual(vec![weekly.clone()]), 48, false, false),
+        ("crit-mark", crit.clone(), 48, false, false),
+        ("hover", both.clone(), 48, false, true),
+        ("compact", both, 30, true, false),
+        ("compact-single", visual(vec![weekly]), 30, true, false),
+        ("compact-crit-mark", crit, 30, true, true),
+    ]
 }
 
 fn golden_dir() -> PathBuf {
@@ -183,6 +223,25 @@ fn widget_strips_match_golden_files() {
                 let name = format!("{theme_name}-{case}-{scale}.png");
                 let path = dir.join(&name);
                 let got = render(&v, style(theme, scale), &mut BoxText);
+                if update {
+                    std::fs::write(&path, got.encode_png().expect("encode")).expect("write");
+                    continue;
+                }
+                let Ok(want) = Pixmap::load_png(&path) else {
+                    failures.push(format!("{name}: missing (run with UPDATE_GOLDEN=1)"));
+                    continue;
+                };
+                if let Some(diff) = difference(&got, &want) {
+                    failures.push(format!("{name}: {diff}"));
+                }
+            }
+        }
+        for (case, v, logical, compact, hover) in docked_fixtures() {
+            for scale in [100, 150] {
+                let name = format!("docked-{theme_name}-{case}-{scale}.png");
+                let path = dir.join(&name);
+                let st = docked(theme, scale, logical, compact, hover);
+                let got = render(&v, st, &mut BoxText);
                 if update {
                     std::fs::write(&path, got.encode_png().expect("encode")).expect("write");
                     continue;
@@ -241,10 +300,66 @@ fn difference(got: &Pixmap, want: &Pixmap) -> Option<String> {
 #[test]
 fn widget_size_follows_rows_and_scale() {
     let s = |pct| style(Theme::Dark, pct);
-    assert_eq!(size(2, s(100)), (220, 44));
-    assert_eq!(size(1, s(100)), (220, 28));
-    assert_eq!(size(2, s(150)), (330, 66));
-    assert_eq!(size(1, s(125)), (275, 35));
+    let two = visual(vec![row("7g", 34, "Çar"), row("5s", 72, "1:48")]);
+    let one = visual(vec![row("7g", 34, "Çar")]);
+    assert_eq!(size(&two, s(100), &mut BoxText), (220, 44));
+    assert_eq!(size(&one, s(100), &mut BoxText), (220, 28));
+    assert_eq!(size(&two, s(150), &mut BoxText), (330, 66));
+    assert_eq!(size(&one, s(125), &mut BoxText), (275, 35));
+}
+
+#[test]
+fn docked_strips_are_as_tall_as_the_taskbar() {
+    let two = visual(vec![row("7g", 34, "Çar"), row("5s", 72, "1:48")]);
+    let one = visual(vec![row("7g", 34, "Çar")]);
+    let d = |pct, logical, compact| docked(Theme::Light, pct, logical, compact, false);
+    assert_eq!(size(&two, d(125, 48, false), &mut BoxText), (275, 60));
+    assert_eq!(size(&one, d(100, 48, false), &mut BoxText), (220, 48));
+    // The compact line is as wide as its texts: two items are wider than one, and the width
+    // does not depend on the values (the widest value sets the column).
+    let (w2, h2) = size(&two, d(100, 30, true), &mut BoxText);
+    let (w1, _) = size(&one, d(100, 30, true), &mut BoxText);
+    assert_eq!(h2, 30);
+    assert!(w2 > w1 + 60, "{w2} {w1}");
+    let other = visual(vec![row("7g", 5, "Çar"), row("5s", 100, "0:01")]);
+    assert_eq!(size(&other, d(100, 30, true), &mut BoxText).0, w2);
+}
+
+#[test]
+fn docked_ground_lets_the_taskbar_through_but_takes_the_mouse() {
+    let v = visual(vec![row("7g", 50, "Çar")]);
+    let p = render(&v, docked(Theme::Dark, 100, 48, false, false), &mut BoxText);
+    // A corner pixel: no plate, no edge, but not fully clear (clear pixels click through).
+    assert_eq!(p.pixel(1, 1).map(PremultipliedColorU8::alpha), Some(1));
+    let hovered = render(&v, docked(Theme::Dark, 100, 48, false, true), &mut BoxText);
+    // Inside the hover highlight (4 px from the top), above the text.
+    let a = hovered.pixel(3, 6).map_or(0, PremultipliedColorU8::alpha);
+    assert!(a > 1, "{a}");
+    // Outside it, at the very top: still the bare ground.
+    assert_eq!(
+        hovered.pixel(30, 0).map(PremultipliedColorU8::alpha),
+        Some(1)
+    );
+}
+
+#[test]
+fn docked_mark_halo_cuts_the_bar_instead_of_painting_a_box() {
+    let v = visual(vec![Row {
+        mark: Some(0.25),
+        ..row("7g", 50, "Çar")
+    }]);
+    let p = render(&v, docked(Theme::Dark, 100, 48, false, false), &mut BoxText);
+    let y = bar_y(&p);
+    // Somewhere on the bar row, a pixel left as bare ground right next to the fill.
+    let row_px: Vec<[u8; 4]> = (0..p.width()).map(|x| rgb_at(&p, x, y)).collect();
+    let fill_at = row_px
+        .iter()
+        .position(|c| c[..3] == [58, 223, 215])
+        .expect("a fill pixel");
+    assert!(
+        row_px[fill_at..].iter().any(|c| c[3] <= 1),
+        "no cut in the bar"
+    );
 }
 
 fn rgb_at(p: &Pixmap, x: u32, y: u32) -> [u8; 4] {

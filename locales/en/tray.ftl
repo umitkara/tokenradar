@@ -58,3 +58,24 @@ widget-menu-opacity = Opacity
 widget-menu-opacity-option = { PCT($pct) }
 widget-menu-settings = Widget settings…
 widget-menu-hide = Hide widget
+widget-menu-mode = Position
+widget-menu-mode-floating = Floating on the desktop
+widget-menu-mode-taskbar = On the taskbar
+
+## The widget's taskbar mode (Step 18b).
+
+# Shown once when the widget cannot dock on the taskbar.
+widget-undocked-title = TokenRadar widget
+widget-undocked-body = Could not dock on the taskbar; the widget floats on the desktop for now. { $reason ->
+    [edge] The taskbar is not at the bottom of the screen.
+    [auto-hide] The taskbar hides automatically.
+   *[room] There is not enough free room on the taskbar.
+}
+
+## The widget's name for screen readers. $value is the strip's value (34%, ≈72%, –),
+## $reset the strip's reset text (Wed or 1:48).
+
+widget-a11y = TokenRadar: { $rows }
+widget-a11y-weekly = Weekly limit { $value }
+widget-a11y-five-hour = 5-hour limit { $value }
+widget-a11y-resets = { $limit }, resets: { $reset }

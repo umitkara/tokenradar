@@ -55,8 +55,8 @@ struct Shared {
     position: Option<WidgetPosition>,
     locale: Option<Locale>,
     theme: ThemePref,
-    /// Fake mode: shown whatever the settings say, nothing persisted.
-    forced: bool,
+    /// Fake mode: shown whatever the settings say, in this mode, nothing persisted.
+    forced: Option<WidgetMode>,
     #[cfg(windows)]
     running: Option<system::Handle>,
 }
@@ -125,12 +125,12 @@ pub fn set_theme(app: &AppHandle, theme: ThemePref) {
     });
 }
 
-/// Fake mode (`TOKENRADAR_FAKE_LIMITS=widget:<scene>`): shows the widget without touching the
-/// settings.
+/// Fake mode (`TOKENRADAR_FAKE_LIMITS=widget:<scene>[:taskbar]`): shows the widget in `mode`
+/// without touching the settings.
 #[cfg(any(debug_assertions, feature = "spike"))]
-pub fn force(app: &AppHandle) {
+pub fn force(app: &AppHandle, mode: WidgetMode) {
     with(app, |s| {
-        s.forced = true;
+        s.forced = Some(mode);
         reconcile(app, s);
     });
 }
@@ -165,8 +165,9 @@ fn reconcile(app: &AppHandle, s: &mut Shared) {
     // Nothing happens before `config.toml` was read: the defaults would say "off" anyway.
     let Some(prefs) = s.prefs.clone() else { return };
     let mut prefs = prefs;
-    if s.forced {
+    if let Some(mode) = s.forced {
         prefs.enabled = true;
+        prefs.mode = mode;
     }
     match (&s.running, prefs.enabled) {
         (Some(handle), true) => handle.send(Msg::Prefs(prefs)),
@@ -183,7 +184,7 @@ fn reconcile(app: &AppHandle, s: &mut Shared) {
                     .locale
                     .unwrap_or_else(|| app.state::<crate::prefs::Prefs>().locale()),
                 theme: s.theme,
-                persist: !s.forced,
+                persist: s.forced.is_none(),
             };
             match system::spawn(app.clone(), init) {
                 Ok(handle) => s.running = Some(handle),

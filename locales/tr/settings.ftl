@@ -58,6 +58,21 @@ general-widget-hotkey-hint = Widget görünürken her yerde çalışır. Tıklay
 general-widget-hotkey-recording = Tuşlara basın…
 general-widget-hotkey-invalid = Ctrl, Alt ya da Win ile bir harf, rakam veya F1–F24 kullanın. Esc vazgeçer.
 
+## Genel: widget'ın görev çubuğu modu (Adım 18b)
+
+general-widget-mode = Konum
+general-widget-mode-floating = Yüzen
+general-widget-mode-taskbar = Görev çubuğunda
+general-widget-mode-taskbar-hint = Şerit görev çubuğunda, bildirim alanının solunda durur. Görev çubuğu yanda ya da üstteyse, kendiliğinden gizleniyorsa veya yer yoksa widget yüzer.
+general-widget-align = Hizalama
+general-widget-align-tray = Bildirim alanının yanında
+general-widget-align-left = Sol uçta
+general-widget-offset = Uzaklık
+general-widget-offset-hint = Şeridin hizalandığı yerden ne kadar uzak durduğu. Şeridi görev çubuğu boyunca sürüklemek de bunu ayarlar.
+# $px mantıksal piksel cinsinden bir uzaklıktır.
+general-widget-offset-option = { $px } px
+general-widget-fullscreen-docked-hint = Görev çubuğundayken widget tam ekran uygulamalarda her zaman gizlenir.
+
 ## Veri kaynakları: Claude Code klasörleri
 
 sources-dirs = Claude Code klasörleri

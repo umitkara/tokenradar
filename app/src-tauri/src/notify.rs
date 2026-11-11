@@ -52,10 +52,15 @@ fn is_panel_uri(arg: &str) -> bool {
 
 /// Shows `notice` as a toast.
 pub fn show(app: &AppHandle, notice: &Notice) {
+    show_text(app, &notice.title, &notice.body);
+}
+
+/// Shows a toast that no notifier rule decided (the widget's "could not dock", Step 18b).
+pub fn show_text(app: &AppHandle, title: &str, body: &str) {
     #[cfg(windows)]
     {
         let app_id = toast::app_id(&app.config().identifier);
-        let (title, body) = (notice.title.clone(), notice.body.clone());
+        let (title, body) = (title.to_owned(), body.to_owned());
         // WinRT activation can take a moment on first use; keep it off the event loop.
         tauri::async_runtime::spawn_blocking(move || {
             if let Err(error) = toast::show(&app_id, &title, &body) {
@@ -66,12 +71,7 @@ pub fn show(app: &AppHandle, notice: &Notice) {
     #[cfg(not(windows))]
     {
         use tauri_plugin_notification::NotificationExt as _;
-        let result = app
-            .notification()
-            .builder()
-            .title(&notice.title)
-            .body(&notice.body)
-            .show();
+        let result = app.notification().builder().title(title).body(body).show();
         if let Err(error) = result {
             tracing::warn!(%error, "could not show a notification");
         }
