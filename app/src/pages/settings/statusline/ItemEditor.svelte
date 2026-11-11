@@ -259,7 +259,7 @@ function swatchKey(e: KeyboardEvent) {
     </div>
   {/if}
 
-  {#if isWindow(item.kind)}
+  {#if resetFormats.length > 0}
     <div class="switches">
       <Toggle
         checked={item.reset}
@@ -277,12 +277,14 @@ function swatchKey(e: KeyboardEvent) {
           />
         </div>
       {/if}
-      <Toggle
-        checked={item.pace}
-        label={t("statusline-pace")}
-        onchange={(pace) => onchange({ pace }, null)}
-      />
-      <span class="caption">{t("statusline-pace-hint")}</span>
+      {#if isWindow(item.kind)}
+        <Toggle
+          checked={item.pace}
+          label={t("statusline-pace")}
+          onchange={(pace) => onchange({ pace }, null)}
+        />
+        <span class="caption">{t("statusline-pace-hint")}</span>
+      {/if}
     </div>
   {/if}
 </div>

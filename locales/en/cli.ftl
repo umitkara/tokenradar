@@ -59,6 +59,46 @@ sl-compact-off = auto off
 sl-compact-with-limit = { $count } · { $limit }
 # The setting alone, while the count is not known.
 sl-compact-limit-only = { $mark } { $limit }
+# Step 12q. The session's reasoning effort, as Claude Code names the levels.
+sl-effort-low = low
+sl-effort-medium = medium
+sl-effort-high = high
+sl-effort-xhigh = xhigh
+sl-effort-max = max
+# Fast mode is on; extended thinking is off.
+sl-effort-fast = fast
+sl-effort-no-thinking = no thinking
+# $model and $effort are already formatted (`Opus 5.5`, `high`).
+sl-model-with-effort = { $model } · { $effort }
+# When the prompt cache goes cold, as a local time ($time is `14:32`).
+sl-cache-until = →{ $time }
+# Warm, with neither the time nor the cache lifetime known.
+sl-cache-warm = warm
+sl-cache-cold = cold
+# Requests that missed the prompt cache this session.
+sl-cache-misses = { NUM($n, 0) } { $n ->
+    [one] miss
+   *[other] misses
+}
+# The likely cause of the last miss, as Claude Code reports it.
+sl-miss-tools-changed = tools changed
+sl-miss-system-prompt-changed = system prompt changed
+sl-miss-ttl-expired-5m = 5m cache expired
+sl-miss-likely-server-side = likely server side
+# The whole session's cache ratio, next to the last request's.
+sl-cache-session = { PCT($pct) } (session)
+# The tokens the next request writes to the cache again if it has gone cold. $n is `45k`.
+sl-recache = if cold { $n }
+# The spend limit behind a Claude apps gateway. `$` stays in every language.
+sl-label-spend = $
+sl-spend-amount = ${ NUM($used, 0) }/${ NUM($limit, 0) }
+# The open pull request's review state.
+sl-pr-approved = approved
+sl-pr-changes-requested = changes requested
+sl-pr-pending = pending
+sl-pr-draft = draft
+# A linked git worktree.
+sl-label-worktree = wt
 sl-no-limits = no limit data yet
 
 ## Tables

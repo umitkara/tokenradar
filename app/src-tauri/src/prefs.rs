@@ -493,7 +493,7 @@ pub fn statusline_catalog(app: &AppHandle, icons: IconSet) -> Vec<StatuslineKind
                 line::render(&l10n, &sample, &alone, plain)
             },
             absent: kind == SegmentKind::FiveHour && !five_hour,
-            reset_formats: if kind.is_window() {
+            reset_formats: if kind.has_reset() {
                 ResetFormat::ALL.to_vec()
             } else {
                 Vec::new()

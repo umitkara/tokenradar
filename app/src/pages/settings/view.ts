@@ -287,7 +287,13 @@ export const ANSI_COLORS: readonly AnsiColor[] = [
 const LAYOUT: readonly SegmentKind[] = ["separator", "line_break", "custom_text", "space", "flex"];
 
 /** Kinds whose warning and critical colors win over the user's color (ADR-049). */
-const THRESHOLD_COLORED: readonly SegmentKind[] = ["five_hour", "seven_day", "scoped", "context"];
+const THRESHOLD_COLORED: readonly SegmentKind[] = [
+  "five_hour",
+  "seven_day",
+  "scoped",
+  "spend_limit",
+  "context",
+];
 
 /** Kinds with a reset countdown and a time mark. */
 const WINDOWS: readonly SegmentKind[] = ["five_hour", "seven_day"];

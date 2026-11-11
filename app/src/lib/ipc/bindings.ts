@@ -452,7 +452,29 @@ export type Format =
 /**  Compactions: the total, `⟲ 3`. */
 "total" | 
 /**  Compactions: automatic and manual apart, `⟲ 2 auto 1 manual`. */
-"split";
+"split" | 
+/**  Effort: the level alone, `high` (Step 12q). */
+"level" | 
+/**  Effort: the level with fast mode and thinking off, `max fast`. */
+"flags" | 
+/**  Cache misses: the count alone, `2 misses`. */
+"count" | 
+/**  Cache misses: the count and the last miss's cause. */
+"cause" | 
+/**  Spend limit: the dollars, `$314/$500`. */
+"amount" | 
+/**  Repository: its name alone. */
+"name" | 
+/**  Repository: the host, the owner and the name. */
+"host" | 
+/**  Model: the name and the effort, `Opus 5.5 · high`. */
+"with_effort" | 
+/**  Cache ratio: the last request's. */
+"last" | 
+/**  Cache ratio: the whole session's, `cache 91% (session)`. */
+"session" | 
+/**  Folders: the name and how many folders were added, `alpha +2`. */
+"with_added";
 
 export type Freshness = 
 /**  Under 10 minutes old. */
@@ -536,7 +558,7 @@ export type Item = {
 	 *  the warning threshold; the warning and critical colors always win (ADR-049).
 	 */
 	color: AnsiColor | null,
-	/**  Limit windows: the reset countdown. */
+	/**  Limits with a reset ([`SegmentKind::has_reset`]): the reset countdown. */
 	reset: boolean,
 	/**  Limit windows: the time mark and the elapsed time (ADR-044). */
 	pace: boolean,
@@ -544,7 +566,7 @@ export type Item = {
 	text: string,
 	/**  `space`: the columns, 1–[`MAX_SPACE`]. 1 on every other kind. */
 	width: number,
-	/**  Limit windows: the reset as a countdown or a local time (Step 12m). */
+	/**  Limits with a reset: the reset as a countdown or a local time (Step 12m). */
 	reset_format: ResetFormat,
 	/**  Kinds with a bar: its cells, one of [`BAR_WIDTHS`]; 8 on every other kind. */
 	bar_width: number,
@@ -883,6 +905,22 @@ export type SegmentKind = "five_hour" | "seven_day" |
 "cache_ratio" | "output_style" | 
 /**  How many times the session was compacted and the auto-compact window (Step 12n). */
 "compact" | 
+/**  The session's reasoning effort, with fast mode and thinking (Step 12q). */
+"effort" | 
+/**  When the prompt cache goes cold, as a local time. */
+"cache_timer" | 
+/**  Requests that missed the prompt cache, and the last miss's likely cause. */
+"cache_misses" | 
+/**  The tokens the next request writes to the cache again if it went cold by then. */
+"recache_cost" | 
+/**  The spend limit behind a Claude apps gateway. */
+"spend_limit" | 
+/**  The branch's open pull request or merge request. */
+"pr" | 
+/**  The linked worktree's name. */
+"worktree" | 
+/**  The repository of the `origin` remote. */
+"repo" | 
 /**  A separator glyph of the user's choice. */
 "separator" | 
 /**  Starts a new output line. */
