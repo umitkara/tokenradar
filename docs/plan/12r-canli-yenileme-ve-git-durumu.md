@@ -103,16 +103,16 @@ Statusline'a zamanla değişen iki şey eklemek:
 
 ## Görevler
 
-- [ ] Core: `refresh_interval_sec` ayarı, esnek okuma; `CommandValue` ve `statusLine` birleştirmesi; kurulum kaydı ve kaldırma; testler (kullanıcı anahtarları korunur, kullanıcının kendi `refreshInterval`'ı korunur).
-- [ ] Core: push tekrarı tespiti (daemon ve spool); testler.
-- [ ] Core: `GitStatus`, porcelain v2 ayrıştırıcı (sentetik çıktılarla: detached HEAD, upstream yok, rename, conflict, submodule), önbellek, zaman aşımı, arka plan hesabı; testler.
-- [ ] IPC: `StatusQuery.cwd`, `StatusReply.git`; eski/yeni uygulama ve CLI uyumluluk testleri.
-- [ ] Render: `git_status` biçimleri, `cache_timer` `countdown`, `fit()` sırası; testler.
-- [ ] Doctor: yenileme aralığı, git bulunamadı, izlenmeyen dosya taraması kapandı.
-- [ ] Bindings ve düzenleyici: "Canlı yenileme" seçicisi, `countdown` uyarısı, `git_status` öğe editörü, Fluent.
-- [ ] Ölçümler (bkz. Doğrulama) ve `docs/perf/` kaydı.
+- [x] Core: `refresh_interval_sec` ayarı, esnek okuma; `CommandValue` ve `statusLine` birleştirmesi; kurulum kaydı ve kaldırma; testler (kullanıcı anahtarları korunur, kullanıcının kendi `refreshInterval`'ı korunur).
+- [x] Core: push tekrarı tespiti (daemon ve spool); testler.
+- [x] Core: `GitStatus`, porcelain v2 ayrıştırıcı (sentetik çıktılarla: detached HEAD, upstream yok, rename, conflict, submodule), önbellek, zaman aşımı, arka plan hesabı; testler.
+- [x] IPC: `StatusQuery.cwd`, `StatusReply.git`; eski/yeni uygulama ve CLI uyumluluk testleri.
+- [x] Render: `git_status` biçimleri, `cache_timer` `countdown`, `fit()` sırası; testler.
+- [x] Doctor: yenileme aralığı, git bulunamadı, izlenmeyen dosya taraması kapandı.
+- [x] Bindings ve düzenleyici: "Canlı yenileme" seçicisi, `countdown` uyarısı, `git_status` öğe editörü, Fluent.
+- [x] Ölçümler (bkz. Doğrulama) ve `docs/perf/` kaydı.
 - [ ] İlk çalışan hâlin ekran görüntüsü kullanıcıya gösterilir ve onaylanır, ardından cila.
-- [ ] ADR-059 sonuçları ve devir notu.
+- [x] ADR-059 sonuçları ve devir notu.
 
 ## Teknik notlar ve tuzaklar
 
@@ -141,4 +141,40 @@ Statusline'a zamanla değişen iki şey eklemek:
 
 ## Devir notu
 
-_(Oturum sonunda doldurulur: yapılanlar · sapmalar · açık konular · sonraki adıma notlar)_
+**Tarih:** 2026-11-11 · **Karar:** ADR-059 · **Ölçüm:** `docs/perf/2026-11-11-live-refresh-git-status.md` · **Ekran görüntüleri:** `img/12r-git-status-en.png`, `img/12r-refresh-dialog-en.png`, `img/12r-countdown-tr-dark.png`
+
+**Yapılanlar:**
+- **Canlı yenileme:** `[accounts.*.statusline] refresh_interval_sec` (kapalı, 5, 10, 30; esnek okuma, diğer değerler en yakına yuvarlanır, ≤ 0 kapalı). Kurulum mevcut bir `statusLine` nesnesine birleşir (`padding`, `hideVimModeIndicator`, kullanıcının `refreshInterval`'ı korunur; yalnızca `type`, `command` ve bizim aralığımız yazılır). Yeni `plan_refresh` yalnızca `statusLine.refreshInterval`'ı değiştirir (`settings::set_nested`). `effective_refresh` dosyadaki değeri okur.
+- **Uygulama:** Statusline sayfasında "Canlı yenileme" seçicisi (köprü kuruluyken); bedel metni, dosyadaki değer farklıysa uyarı. `settings.json` değişikliği mevcut diff diyaloğuyla (`plan_statusline_refresh` → `apply_statusline`), yalnızca uygulama ayarı değişiyorsa doğrudan kaydedilir. Zincirlenmiş komut varsa diyalog onun da her yenilemede çalışacağını söyler.
+- **Push tekrarı:** `StatuslinePayload::content_key` (serileştirilmiş payload'ın hash'i; süre alanları serileştirilmez). CLI köprüsü oturum başına son anahtarı hatırlar (en fazla 64), tekrar `LimitsMsg::StatuslineRepeat` olur; limit thread'i snapshot'ı tekrarda en fazla dakikada bir kurar. Spool son satıra bakar (16 KiB kuyruk, kilitsiz) ve aynı oturum + içerik heartbeat içinde gelirse yazmaz.
+- **`git_status`:** `statusline/git_status.rs`: porcelain v2 `-z` ayrıştırıcı, `--no-optional-locks` ile `run_git` (CREATE_NO_WINDOW, 2 s zaman aşımı, 32 MiB çıktı sınırı), `GitStatusCache` (repo kökü anahtarı, 8 repo LRU, 5 s TTL, `HEAD`/`index` mtime, 1 dk bayat sonuç, iki zaman aşımında `-uno`, git yoksa bir daha denenmez). IPC: `StatusQuery.{cwd, git_untracked}`, `StatusReply.git`. CLI klasörü yalnızca etkin bir `git_status` öğesi varken gönderir.
+- **Render:** `git_status` biçimleri `compact` (`+2 ~3 ?1 !1 ⇡1 ⇣2`, temizse `✓`), `dirty` (`*`, Nerd U+F444), `ahead_behind`; `cache_timer` `clock` (varsayılan) ve `countdown` (`4m`, son iki dakikada `1m12s`). Öğe alanı `untracked` (yalnızca `false` iken yazılır). Editör: biçimler, `untracked` anahtarı, yenileme kapalıyken `countdown` uyarısı.
+- **Doctor:** her Claude dizini için seçilen ve dosyadaki aralık (`statusline_refresh`), `git_available`, çalışma klasöründe `git_untracked_skipped`.
+- **Testler:** çekirdek 471, CLI 27 (klasör yalnızca öğeyle gider; uygulama yokken öğe gizli), uygulama 101, frontend 133. Yeni `line/tests/v12r.rs` (8 test), `git_status/tests.rs` (15 test, gerçek git dahil).
+
+- **Ekran görüntüleri:** debug build, portable mod ve sahte bir Claude dizini (`CLAUDE_CONFIG_DIR`) ile CDP üzerinden; `PrintWindow` ile yakalandı. Diff diyaloğundaki geçici yol, görüntü repoya girmeden önce DOM'da `C:\Users\you\.claude` ile değiştirildi (kullanıcı adı içeriyordu). Diyalog onaylanınca sahte `settings.json` yedeklenip yazıldı; `padding` korundu. Portable veri dizini ve işaret dosyası sonra silindi; kurulu uygulama yeniden başlatıldı.
+- **Görüntülerde bulunup düzeltilenler** (`fix(app)` commit'i):
+  - Önizlemede seçili `git_status` öğesinin parçaları arasındaki boşluklar gri kutu gibi boyanıyordu. Boşluk tonu artık yalnızca tümüyle boş öğelere (boşluk, esnek boşluk) uygulanıyor.
+  - Yenileme bildirimi ("Done. Backup of the old file: …") çözülmüş dizge olarak saklandığı için dil değişince İngilizce kalıyor ve kalıcı olduğu için bedel/kapalı açıklamasını gizliyordu. Artık çizimde çevriliyor ve 8 saniyede kayboluyor.
+  - Seçicinin görünür etiketi yoktu; "Canlı yenileme" etiketi eklendi.
+- **Görüntülerde kalan, bu adımdan önceki tuhaflıklar:** önizlemede 120 sütunda da yatay kaydırma çubuğu var (ekran `120ch` genişliğinde, panel daha dar); öğe listesinde uzun satırlar `…` ile kesiliyor (ör. haftalık limit). Türkçe arayüzde varsayılan etiket `cache` İngilizce kalıyor (önceki adımların kararı).
+
+**Sapmalar (ADR-059 sonuçlarında):**
+- Heartbeat kaldı (kullanıcı kararı); tekrarda snapshot dakikada bir kurulur.
+- Glifler: `⇡`/`⇣`/`*`/`??` (plan: `↑`/`↓`/`●`/`?…`; hepsi Ambiguous).
+- Bayat sonuç (en fazla 1 dk) yeniden hesap sürerken sunulur.
+- Kurulum kaydına alan eklenmedi; `previous` kullanıcının `refreshInterval`'ını zaten taşıyor.
+- Yalnızca uygulama ayarı değişiyorsa diff gösterilmez.
+
+**Açık konular:**
+- **Uygulama kapalıyken p95 aykırılığı:** 12r'nin 11 "kapalı" koşusundan 3'ü tümüyle yavaşladı (p95 59–65 ms, p50 de yükseldi), `main`'in 10 koşusunda görülmedi. Medyan bütçede (33,0 ms). Spool kuyruk okumasını kapatan bir A/B ile yeniden bakılmalı.
+- **Gerçek boşta koşu kullanıcıda:** açık ama boştaki bir Claude Code oturumu, canlı yenileme 5 sn, 10 dk: `.\scripts\measure-threads.ps1 -DurationSec 600` (kurulu uygulamada, yenileme açıkken; sürüm güncellemesinden sonra).
+- **Kaynağı belirsiz test:** `config::tests::the_refresh_interval_is_read_leniently` oturum sırasında, bilerek yazılmadan ve bozuk çok satırlı bir dizgeyle dosyada belirdi; başka oturum yoktu. Dizge düzeltilip test tutuldu (büyük olasılıkla bir heredoc kalıntısı).
+- Kurulu uygulama 12r'yi içermiyor; canlı yenileme ve `git_status` bir sonraki sürümle gelir.
+
+**Sonraki adıma notlar:**
+- `git_status` hiçbir şablonda yok (plan gereği). Yeni öğe ekleyen adımlar `SegmentKind::ALL` (39) ve `Format::ALL` (32) sayılarını günceller.
+- Glif seçerken `width_cjk() == Some(1)` testi şart; `…`, `↑`, `●` Ambiguous.
+- `CoreIpc.status` artık `query.cwd` varsa git önbelleğine bakar; `StatusQuery`'yi kuran her yer `..StatusQuery::default()` kullanmalı.
+- 5 sn yenileme + `git_status` git'i neredeyse her çizimde çalıştırır (TTL 5 sn). Büyük depolarda maliyet artarsa TTL'yi yenileme aralığına göre büyütmek düşünülebilir (ör. TTL = max(5 s, aralık × 2)); bu adımda değiştirilmedi.
+- Hiç istemci yokken `core-ipc` 10 dakikada 131 kez uyandı; `main` ile karşılaştırılmadı.

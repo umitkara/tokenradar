@@ -249,6 +249,9 @@ Native çizilir (`tiny-skia` + layered window, ADR-058). Üst çubuk haftalık, 
 | Spend limit | Harcama limiti | Satır etiketi `$` her dilde aynı; "Dolar" biçimi `$21/$50` |
 | Pull request / approved, changes requested, pending, draft | Pull request / onaylandı, değişiklik istendi, bekliyor, taslak | Satırda `#123 ✓`, `#45 ⨯`, `#45 ∙`; GitLab'da `!45`. "Pull request" ve "worktree" çevrilmez, etiket `wt` |
 | Repository | Depo | `owner/name`; "Sunucuyla" biçimi `github.com/owner/name` |
+| Live refresh | Canlı yenileme | Statusline sayfasındaki seçici: Kapalı / 5 sn / 10 sn / 30 sn; açıklama bedeli söyler: "her N saniyede bir TokenRadar çalışır" (ADR-059) |
+| Git status / dirty mark / ahead and behind | Git durumu / değişiklik işareti / ileride ve geride | `+2 ~3 ?1 !1 ⇡1 ⇣2`, temizse `✓`; işaret `*` (Nerd: oct-dot_fill); taranmayan izlenmeyen dosyalar `??`. "staged" → hazırlanmış, "untracked" → izlenmeyen |
+| Countdown (cache timer) | Geri sayım | `cache 4m`, son iki dakikada saniyeyle `cache 1m12s` / `cache 1dk12sn`; canlı yenileme kapalıyken boştayken durur, editör bunu söyler |
 | Terminal font | Terminal fontu | Ayarlardaki yardımcı ve diyalog başlığı (ADR-055) |
 | Nerd Font | Nerd Font | Çevrilmez. Kademeler: "Nerd Font değil" / "Nerd Font, 3.4 öncesi" / "Nerd Font" |
 | Select font / Undo | Fontu seç / Geri al | Terminal satırındaki eylemler; ikisi de diff ve onayla |

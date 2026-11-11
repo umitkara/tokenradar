@@ -124,6 +124,12 @@ Claude Code, `settings.json` içindeki `statusLine.command` komutunu çalıştı
 - **Harcama limiti:** `resets_at` geçmişse satır tahmini %0 gösterir ve eski dolar tutarını düşürür (5 saatlik pencereyle aynı kural). Dolar alanları yoksa "Dolar" biçimi yüzdeye döner.
 - **Worktree adı:** `worktree.name` (`--worktree` oturumu) önce gelir, yoksa `workspace.git_worktree` (bağlı bir worktree içinde başlatılmış oturum).
 
+**Canlı yenileme ve git durumu (Adım 12r, ADR-059):**
+- **`statusLine.refreshInterval`** (saniye) Claude Code'un satırı olaylardan bağımsız olarak periyodik çizmesini sağlar. TokenRadar yalnızca 5, 10 ve 30 sunar; ayar hesabın `[accounts.*.statusline] refresh_interval_sec` alanındadır. Yazarken yalnızca bu anahtar değişir; `padding`, `hideVimModeIndicator` gibi kullanıcı anahtarları korunur. Kurulumdan önce kullanıcının kendi `refreshInterval` değeri varsa kaldırma onu geri getirir (`previous` değer birebir saklanır).
+- **Boştaki oturumda payload değişmez**, yalnızca `cost.total_duration_ms` gibi süre alanları ilerler. Bu alanlar push'a serileştirilmediği için tekrar, serileştirilmiş payload'ın hash'iyle anlaşılır: daemon tekrarda snapshot'ı en fazla dakikada bir yeniden kurar, spool son satırla aynı oturum ve içerik heartbeat (5 dk) içinde gelirse yazılmaz. Limit motorunun 5 dakikalık heartbeat yazımı kalır (kullanıcı kararı).
+- **Git durumu payload'dan gelmez.** Uygulama `git --no-optional-locks status --porcelain=v2 --branch -z` çalıştırır (`-uno` isteğe bağlı) ve yalnızca sayıları tutar: hazırlanmış, değişmiş, izlenmeyen, çakışan dosyalar ve `# branch.ab` satırındaki ileride/geride farkı. Dosya adları okunur ama saklanmaz, log'a ve IPC'ye girmez. Rename kaydının ikinci yol alanı atlanır; upstream yoksa fark `None` olur ve `ahead_behind` biçimi gizlenir.
+- **Çalışma klasörü** `workspace.current_dir`, yoksa `cwd` alanından alınır ve uygulamaya yalnızca satırda etkin bir `git_status` öğesi varken gönderilir.
+
 ---
 
 ## S2 — OAuth usage API (tamamlayıcı, onaylı)
