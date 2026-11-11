@@ -1,0 +1,151 @@
+# Step 12r statusline measurements (2026-11-11). Branch names and git counts are replaced.
+
+## Sizes
+
+main size: 2631168  12r size: 2662400
+
+## Discarded: first 12r run while main was compiling in the background
+
+Mode Runs P50  P95  Max  Spooled
+---- ---- ---  ---  ---  -------
+off   200 57.9 80.6 94.3     199
+on    200 23.7 40.2 50.3       0
+
+off: 5h 49% ⏱ 60% · 1h59m │ 7d 41.2% ⏱ 57.1% · 2d23h │ ctx 38% │ API $4.12
+on: 5h 49% ⏱ 60% · 1h59m ▲3s │ 7d 41.2% ⏱ 57.1% · 2d23h │ ctx 38% │ API $4.12
+Budget: p95 <= 30 ms (on), <= 40 ms (off). 'Spooled' should equal Runs for off and 0 for on.
+
+## A/B default line: main, 12r, main, 12r
+
+=== run 1 main default ===
+
+Mode Runs P50  P95  Max  Spooled
+---- ---- ---  ---  ---  -------
+off   200 22.4 27.8 41.5     200
+on    200 12.5 15.6 27.2       0
+
+off: 5h 49% ⏱ 60% · 1h59m │ 7d 41.2% ⏱ 57.1% · 2d23h │ ctx 38% │ API $4.12
+on: 5h 49% ⏱ 60% · 1h59m │ 7d 41.2% ⏱ 57.1% · 2d23h │ ctx 38% │ API $4.12
+Budget: p95 <= 30 ms (on), <= 40 ms (off). 'Spooled' should equal Runs for off and 0 for on.
+
+=== run 2 12r default ===
+
+Mode Runs P50  P95  Max  Spooled
+---- ---- ---  ---  ---  -------
+off   200 21.6 33.2 47.1     199
+on    200 12.2 20.7 35.6       0
+
+off: 5h 49% ⏱ 60% · 1h59m │ 7d 41.2% ⏱ 57.1% · 2d23h │ ctx 38% │ API $4.12
+on: 5h 49% ⏱ 60% · 1h59m │ 7d 41.2% ⏱ 57.1% · 2d23h │ ctx 38% │ API $4.12
+Budget: p95 <= 30 ms (on), <= 40 ms (off). 'Spooled' should equal Runs for off and 0 for on.
+
+=== run 3 main default ===
+
+Mode Runs P50  P95  Max  Spooled
+---- ---- ---  ---  ---  -------
+off   200 21.9 32.5 59.9     200
+on    200 12.8 24.3 32.7       0
+
+off: 5h 49% ⏱ 60% · 1h59m │ 7d 41.2% ⏱ 57.1% · 2d23h │ ctx 38% │ API $4.12
+on: 5h 49% ⏱ 60% · 1h59m │ 7d 41.2% ⏱ 57.1% · 2d23h │ ctx 38% │ API $4.12
+Budget: p95 <= 30 ms (on), <= 40 ms (off). 'Spooled' should equal Runs for off and 0 for on.
+
+=== run 4 12r default ===
+
+Mode Runs P50  P95  Max  Spooled
+---- ---- ---  ---  ---  -------
+off   200 20.3 31.5 40.4     199
+on    200 12.4 20.3 53.8       0
+
+off: 5h 49% ⏱ 60% · 1h59m │ 7d 41.2% ⏱ 57.1% · 2d23h │ ctx 38% │ API $4.12
+on: 5h 49% ⏱ 60% · 1h59m │ 7d 41.2% ⏱ 57.1% · 2d23h │ ctx 38% │ API $4.12
+Budget: p95 <= 30 ms (on), <= 40 ms (off). 'Spooled' should equal Runs for off and 0 for on.
+
+## A/B git line (git_branch + git_status, this repository): 12r, main, 12r, main; then git itself
+
+=== run 1 12r git ===
+
+Mode Runs P50  P95  Max  Spooled
+---- ---- ---  ---  ---  -------
+off   200 26.0 59.2 74.9     200
+on    200 13.1 20.6 43.4       0
+
+off: 5h 49% ⏱ 60% · 1h59m 7d 41.2% ⏱ 57.1% · 2d23h ctx 38% git <branch>
+on: 5h 49% ⏱ 60% · 1h59m 7d 41.2% ⏱ 57.1% · 2d23h ctx 38% git <branch> <git status>
+Budget: p95 <= 30 ms (on), <= 40 ms (off). 'Spooled' should equal Runs for off and 0 for on.
+
+=== run 2 main git ===
+
+Mode Runs P50  P95  Max  Spooled
+---- ---- ---  ---  ---  -------
+off   200 20.8 30.9 42.6     200
+on    200 12.6 22.0 34.5       0
+
+off: 5h 49% ⏱ 60% · 1h59m 7d 41.2% ⏱ 57.1% · 2d23h ctx 38% git <branch>
+on: 5h 49% ⏱ 60% · 1h59m 7d 41.2% ⏱ 57.1% · 2d23h ctx 38% git <branch>
+Budget: p95 <= 30 ms (on), <= 40 ms (off). 'Spooled' should equal Runs for off and 0 for on.
+
+=== run 3 12r git ===
+
+Mode Runs P50  P95  Max  Spooled
+---- ---- ---  ---  ---  -------
+off   200 20.8 32.9 66.8     199
+on    200 12.8 21.6 38.7       0
+
+off: 5h 49% ⏱ 60% · 1h59m 7d 41.2% ⏱ 57.1% · 2d23h ctx 38% git <branch>
+on: 5h 49% ⏱ 60% · 1h59m 7d 41.2% ⏱ 57.1% · 2d23h ctx 38% git <branch> <git status>
+Budget: p95 <= 30 ms (on), <= 40 ms (off). 'Spooled' should equal Runs for off and 0 for on.
+
+=== run 4 main git ===
+
+Mode Runs P50  P95  Max  Spooled
+---- ---- ---  ---  ---  -------
+off   200 21.2 30.5 43.1     200
+on    200 12.7 22.4 39.3       0
+
+off: 5h 49% ⏱ 60% · 1h59m 7d 41.2% ⏱ 57.1% · 2d23h ctx 38% git <branch>
+on: 5h 49% ⏱ 60% · 1h59m 7d 41.2% ⏱ 57.1% · 2d23h ctx 38% git <branch>
+Budget: p95 <= 30 ms (on), <= 40 ms (off). 'Spooled' should equal Runs for off and 0 for on.
+
+=== git itself ===
+untracked on p50 40.6 ms  p95 48.1 ms  max 62.4 ms
+untracked off p50 37.5 ms  p95 67.3 ms  max 197.6 ms
+
+## Off mode only, git line: 12r, main, 12r, main, 12r
+
+run 1 12r off: off   200 23.2 29.8 54.3     199
+
+run 2 main off: off   200 22.8 29.6 47.2     200
+
+run 3 12r off: off   200 26.8 65.0 79.2     199
+
+run 4 main off: off   200 21.8 31.5 41.5     200
+
+run 5 12r off: off   200 20.9 33.0 44.5     199
+
+## Off mode only, git line, interleaved
+
+run 1 main off: off   200 23.9 29.2 48.5     200
+
+run 2 12r off: off   200 22.4 33.2 44.3     199
+
+run 3 12r off: off   200 20.9 31.3 43.4     199
+
+run 4 main off: off   200 20.8 28.8 42.1     200
+
+run 5 main off: off   200 23.6 32.0 71.5     200
+
+run 6 12r off: off   200 20.8 32.1 46.2     199
+
+run 7 12r off: off   200 27.2 65.1 78.7     199
+
+run 8 main off: off   200 21.3 34.6 67.8     200
+
+run 9 main off: off   200 20.9 29.4 39.7     200
+
+run 10 12r off: off   200 21.3 29.1 46.0     199
+
+run 11 12r off: off   200 20.9 34.1 54.2     199
+
+run 12 main off: off   200 20.9 33.2 44.4     200
+

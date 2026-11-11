@@ -1,0 +1,77 @@
+# Step 12r synthetic idle runs (2026-11-11): ipc_serve threads over 600 s.
+
+## Refresh off (no CLI)
+
+pid <n>, 11 threads; sampling 600 s ...
+
+  tid name                   switches cycles_m cpu_ms state
+  --- ----                   -------- -------- ------ -----
+20680 core-ipc                    131    22,19  15,60 
+20528 core-index-1                  5     1,32   0,00 
+ 8316                               3     0,42   0,00 new
+20852 core-watch                    2     0,47   0,00 
+21064                               2     0,11   0,00 new
+20252 store-writer                  1     0,04   0,00 
+ 7988 main                          0     0,00   0,00 
+ 9320 core-api-1                    0     0,00   0,00 
+ 9468 core-limits                   0     0,00   0,00 
+ 9920 notify-rs windows loop        0     0,00   0,00 
+ 5760                                                 exited
+22332                                                 exited
+ 4956                                                 exited
+
+
+total: 144 switches (14.4/min), 24.6 M cycles (~0.002 % of one 2100 MHz core), 16 ms tick-sampled CPU
+
+limit_snapshots written in the window: 0
+
+## Refresh 5 s, same payload
+
+pid <n>, 10 threads; sampling 600 s ...
+
+  tid name                   switches cycles_m cpu_ms state
+  --- ----                   -------- -------- ------ -----
+16380 core-ipc                    369    88,66  31,20 
+ 9688 core-limits                 140    28,78   0,00 
+ 5844 core-api-1                  121     2,24  15,60 
+16768 store-writer                  5     2,21   0,00 
+ 7144 core-index-1                  5     1,70   0,00 
+17976                               5     0,41   0,00 new
+13620 core-watch                    2     0,58   0,00 
+ 1372                               2     0,11   0,00 new
+16656 main                          0     0,00   0,00 
+ 4260 notify-rs windows loop        0     0,00   0,00 
+20752                                                 exited
+  776                                                 exited
+
+
+total: 649 switches (64.9/min), 124.7 M cycles (~0.010 % of one 2100 MHz core), 47 ms tick-sampled CPU
+
+limit_snapshots written in the window: 4
+draws=126 p50=18.5303 p95=37.6012
+
+## Refresh 5 s, line with git_status (real git, this repository)
+
+pid <n>, 10 threads; sampling 600 s ...
+
+  tid name                   switches cycles_m cpu_ms state
+  --- ----                   -------- -------- ------ -----
+20564 core-ipc                    393   127,50  93,80 
+ 7848 core-limits                 146    33,96  15,60 
+21196 core-api-1                  122     2,43  15,60 
+21556 store-writer                 10     2,25   0,00 
+11976 core-index-1                  5     1,28   0,00 
+ 9500 core-watch                    2     0,32   0,00 
+21804                               2     0,26   0,00 new
+14196                               2     0,04   0,00 new
+22436 main                          0     0,00   0,00 
+22068 notify-rs windows loop        0     0,00   0,00 
+14424                                                 exited
+11996                                                 exited
+
+
+total: 682 switches (68.2/min), 168.0 M cycles (~0.013 % of one 2100 MHz core), 125 ms tick-sampled CPU
+
+limit_snapshots written in the window: 4
+draws=126 p50=18.5428 p95=47.3506
+
