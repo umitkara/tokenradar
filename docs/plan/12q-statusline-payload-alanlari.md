@@ -135,15 +135,15 @@ Rakip araçlarla karşılaştırma (2026-11-11):
 
 ## Görevler
 
-- [ ] Prob: gözlenmemiş yollar için kurulum, gözlem ve geri dönüş; sonucu `data-sources.md` S1'e yaz, gözlenemeyenleri işaretle.
-- [ ] Core: `payload.rs` alanları, esnek okuma, `added_dirs` sayacı; resmi şema örneğinden sentetik fixture.
-- [ ] Core: `SegmentKind`, `Format`, block renkleri, `default_label`, simge setleri, esnek okuma ve yazma; testler.
-- [ ] Core: `Line`/`Facts` türetimleri (cache durumu, neden seçimi, harcama limiti, PR durumu); testler.
-- [ ] Render: yeni öğeler ve biçimler, `fit()` sırası, iki tema ve üç simge seti; testler.
-- [ ] Şablonlar ve örnek veri.
-- [ ] Bindings (`tauri-specta`) ve düzenleyici: palet, öğe editörü, Fluent, `view.test.ts` `KINDS` listesi.
-- [ ] İlk çalışan hâlin ekran görüntüsü kullanıcıya gösterilir ve onaylanır, ardından cila.
-- [ ] Statusline ölçümü, ADR-059 sonuçları ve devir notu.
+- [x] Prob: gözlenmemiş yollar için kurulum, gözlem ve geri dönüş; sonucu `data-sources.md` S1'e yaz, gözlenemeyenleri işaretle.
+- [x] Core: `payload.rs` alanları, esnek okuma, `added_dirs` sayacı; resmi şema örneğinden sentetik fixture.
+- [x] Core: `SegmentKind`, `Format`, block renkleri, `default_label`, simge setleri, esnek okuma ve yazma; testler.
+- [x] Core: `Line`/`Facts` türetimleri (cache durumu, neden seçimi, harcama limiti, PR durumu); testler.
+- [x] Render: yeni öğeler ve biçimler, `fit()` sırası, iki tema ve üç simge seti; testler.
+- [x] Şablonlar ve örnek veri.
+- [x] Bindings (`tauri-specta`) ve düzenleyici: palet, öğe editörü, Fluent, `view.test.ts` `KINDS` listesi.
+- [x] İlk çalışan hâlin ekran görüntüsü kullanıcıya gösterilir ve onaylanır, ardından cila.
+- [x] Statusline ölçümü, ADR-059 sonuçları ve devir notu.
 
 ## Teknik notlar ve tuzaklar
 
@@ -174,4 +174,44 @@ Rakip araçlarla karşılaştırma (2026-11-11):
 
 ## Devir notu
 
-_(Oturum sonunda doldurulur: yapılanlar · sapmalar · açık konular · sonraki adıma notlar)_
+**Tarih:** 2026-11-11 · **Karar:** ADR-059 · **Ölçüm:** `docs/perf/2026-11-11-statusline-payload-fields.md` · **Ekran görüntüleri:** `img/12q-statusline-en.png` (açık tema, EN; Ayrıntılı şablon + harcama limiti, kaçırmalar, PR ve depo; harcama limiti seçili: dört biçim, eşik notu, sıfırlanma bloğu, tempo anahtarı yok), `img/12q-statusline-tr-dark.png` (koyu tema, TR; Nerd simgeleri, efor seçili)
+
+### Yapılanlar
+- **Prob (bölüm 0):** Kurulum backup ve atomic write ile, geri dönüş SHA-256 aynı. Geçici worktree (Dependabot PR'ının dalı) açılıp kaldırıldı; hiçbir şey push edilmedi. Sonuç `data-sources.md` S1'de.
+- **Core `payload.rs`:** `lax` ve `seq_len` yardımcıları, `epoch()`. Yeni struct'lar: `RepoInfo`, `EffortInfo`, `ThinkingInfo`, `PromptCacheInfo`, `MissCauseInfo`, `PrInfo` (`url` okunmaz), `SpendLimitInfo`. `workspace.{added_dirs, git_worktree, repo}`, `worktree.name`. Hepsi `skip_serializing`; push ve spool biçimi değişmedi.
+- **Core `prefs.rs`:** Sekiz `SegmentKind`, on bir `Format`, `has_reset()`. Harcama limiti Limit grubunda; PR, worktree ve depo Proje grubunda. Nerd simgeleri, block renkleri. `normalized()` sıfırlanma ayarlarını yalnızca `has_reset`, tempo ayarını yalnızca pencere öğelerinde tutar.
+- **Core `line.rs`:** `Facts`'e efor, hızlı mod, düşünme, `PromptCache`, `PullRequest`, worktree, `Repo`, eklenen klasör sayısı. `CacheState` (sıcak/soğuk, son 60 sn uyarı), kaçırma nedeni seçimi, `Spend` (sıfırlanmada tahmini %0, dolar düşer). Örnek veri bütün yeni öğeleri dolduruyor.
+- **Render:** Yeni öğeler ve biçimler, efor rengi düzeye göre (düşük soluk, maks uyarı), PR inceleme işaretleri (`✓` yeşil, `⨯` kırmızı, `∙` sarı, taslak soluk sözcük), GitLab `!`.
+- **Şablonlar:** Ayrıntılı, efor (modelden sonra) ve cache süresi (sonda) aldı; diğerleri değişmedi.
+- **Uygulama:** Katalog `reset_formats`'ı `has_reset`'e göre veriyor; bindings yenilendi. `ItemEditor` sıfırlanma bloğunu `reset_formats` varsa, tempo anahtarını yalnızca pencerelerde gösteriyor. `spend_limit` eşik renkli öğeler arasında.
+- **Fluent (EN/TR):** CLI'da efor düzeyleri, `fast`/`no thinking`, cache metinleri, kaçırma nedenleri (EN çoğul), `if cold`/`soğursa`, harcama, PR durumları, `wt`. Ayarlarda sekiz öğe adı ve ipucu, on bir biçim adı.
+- **Testler:** `tests/v12q.rs` (24 test): kabul kriterindeki bütün sınır durumları, iki dil, Nerd seti, dar terminal, glif genişlikleri, TOML okuma ve yazma, şablonlar, belgedeki örnekten `from_sources`. Payload'da iki test (alanlar okunuyor ama iletilmiyor; yanlış tipte alan yalnızca kendini düşürüyor). Fixture `testdata/statusline/documented.json` (sahte adlar).
+- **Ölçüm betiği:** Sentetik payload yeni alanların hepsini taşıyor.
+- **Dokümanlar:** ADR-059 sonuçları, data-sources S1, architecture §11 madde 12, design-language sözlüğü, performance-budget, perf kaydı, CHANGELOG.
+
+### Sapmalar
+- **Glifler:** `✗` yerine `⨯` (U+2A2F), `•` yerine `∙` (U+2219). `⚡` Cascadia'da yok ve Wide; hızlı mod metin ve Unicode setlerinde `fast`/`hızlı` sözcüğü, Nerd setinde roket (U+F427).
+- **`cache_timer`'ın biçim listesi boş** (plan: `clock`). Tek seçenekli seçici göstermemek için; 12r geri sayımı eklerken `clock` ve `countdown` ile listeyi kurmalı.
+- **`pr.*` gözlenemedi,** denendiği hâlde (açık PR'lı dalın worktree'sine oturum ortasında geçildi). Belgeye dayalı.
+- **Harcama limitinde sıfırlanma var, tempo yok:** `has_reset()` eklendi; katalog ve editör buna göre.
+- **Efor rengi** planda yoktu: düşük soluk, orta düz, yüksek ve çok yüksek yeşil, maks sarı.
+- **Kurulu uygulama ölçüm ve ekran görüntüleri için kapatıldı,** sonra yeniden başlatıldı (kullanıcı onayıyla). Bu kez ilk denemeden önce kapatıldı.
+
+### Doğrulama
+- `cargo fmt --check`, `cargo clippy --workspace --all-targets -- -D warnings` temiz. `cargo test --workspace`: çekirdek 445, uygulama 101, CLI 25, diğerleri 24; 4 ignored.
+- `pnpm -C app check`, `lint` ve `test` temiz (133 test).
+- Boyut: CLI 2.631.168 B (+53.248 B). Statusline p95 açık 13,6–18,5 ms, kapalı 26,7–31,5 ms; `main` ile aynı düzey. Hepsi bütçede.
+- Debug build, portable mod ve CDP ile düzenleyici; `PrintWindow` ile yakalandı, kullanıcı onayladı. Portable veri dizini ve işaret dosyası sonra silindi.
+
+### Açık konular
+- **Gerçek terminalde görülmedi.** Yeni glifler (`⨯ ∙ ✓ →`, Nerd simgeleri) yalnızca testte ve önizlemede görüldü. 12p'deki `⏱` dersi: sayım 1 olsa da çizim taşabilir. WT'de ve VS Code'da bir kez bakılmalı.
+- **`pr.*`** açık PR'ı olan bir dalda başlayan bir oturumla gözlenmeli; şema farklıysa fixture ve okuma düzeltilir.
+- **Ayrıntılı şablonda efor etiketsiz** (`│ high │`); bağlamı olmadan belirsiz okunabilir. Kullanıcı görüntüyü olduğu gibi onayladı; varsayılan etiket gerekip gerekmediği karar bekliyor.
+- **Önizlemede seçili limitin çubuğuyla yüzdesi arasındaki boşluk kayboluyor** (haftalık limitte de; 12q'dan önce de vardı). Seçim vurgusunun çizimi; incelenmedi.
+- **Harcama limiti tray, panel ve limit motorunda yok** (kapsam dışı, ayrı adım).
+- **Prompt cache kaçırmaları store'a yazılmıyor:** Atıf motoruna (Adım 14) not.
+
+### Sonraki adıma notlar
+- 12r: `cache_timer`'a `clock` ve `countdown` biçimlerini ekleyin; `CacheState::Warm { expires_in, ending }` geri sayım için hazır. Yenileme kapalıyken geri sayımın donacağını söyleyen editör notu (ADR-059) 12r'nin işi.
+- Yeni bir payload alanı eklerken `lax` ile okuyun ve `skip_serializing` verin; spool biçimini değiştirmez.
+- Ölçümden önce kurulu uygulamayı yolundan kontrol edin. Debug uygulama portable modda: `target/debug/portable` işareti, ikinci başlatma paneli açar, panelden `open_settings` ile ayarlar. Yakalayıcı DPI-farkında olmalı (`SetProcessDPIAware`), yoksa %125'te kesik çıkar.

@@ -242,6 +242,13 @@ Native çizilir (`tiny-skia` + layered window, ADR-058). Üst çubuk haftalık, 
 | Icons: Text / Unicode / Nerd Font | Simgeler: Metin / Unicode / Nerd Font | Etiketin yerine geçen simge seti; kullanıcının etiketi her zaman önde. `≈`, `API` ve "bu oturum" hiçbir sette değişmez (ADR-056) |
 | Compactions / Total / Auto and manual | Compact sayısı / Toplam / Oto ve elle | Satırda `⟲ 2 auto 1 manual · 300k` / `⟲ 2 oto 1 elle · 300k`; "compact" çevrilmez. Bilinmeyen tetikleyici `other` / `diğer` |
 | Auto off | Oto kapalı | Auto-compact kapalıysa pencere yerine: `⟲ 3 · auto off` / `⟲ 3 · oto kapalı` |
+| Effort / low, medium, high, xhigh, max | Efor / düşük, orta, yüksek, çok yüksek, maks | Oturumun `/effort` düzeyi (Adım 12q). "Hızlı ve düşünme ile" biçimi: `max fast no thinking` / `maks hızlı düşünme yok` |
+| Cache timer / cold | Cache süresi / soğuk | Prompt cache'in soğuyacağı yerel saat: `cache →14:32 1h`; soğuduysa `cache cold` / `cache soğuk` |
+| Cache misses / miss | Cache kaçırmaları / kaçırma | `2 misses · tools changed` / `2 kaçırma · araçlar değişti`. Nedenler: tools changed / araçlar değişti, system prompt changed / sistem istemi değişti, 5m cache expired / 5 dk süre doldu, likely server side / muhtemelen sunucu |
+| Recache cost / if cold | Yeniden cache maliyeti / soğursa | `if cold 45k` / `soğursa 45k`; tahmin değil, Claude Code'un sayısı (`≈` yok) |
+| Spend limit | Harcama limiti | Satır etiketi `$` her dilde aynı; "Dolar" biçimi `$21/$50` |
+| Pull request / approved, changes requested, pending, draft | Pull request / onaylandı, değişiklik istendi, bekliyor, taslak | Satırda `#123 ✓`, `#45 ⨯`, `#45 ∙`; GitLab'da `!45`. "Pull request" ve "worktree" çevrilmez, etiket `wt` |
+| Repository | Depo | `owner/name`; "Sunucuyla" biçimi `github.com/owner/name` |
 | Terminal font | Terminal fontu | Ayarlardaki yardımcı ve diyalog başlığı (ADR-055) |
 | Nerd Font | Nerd Font | Çevrilmez. Kademeler: "Nerd Font değil" / "Nerd Font, 3.4 öncesi" / "Nerd Font" |
 | Select font / Undo | Fontu seç / Geri al | Terminal satırındaki eylemler; ikisi de diff ve onayla |

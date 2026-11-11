@@ -108,6 +108,22 @@ Claude Code, `settings.json` içindeki `statusLine.command` komutunu çalıştı
 - **Cache oranı:** `cache_read / (input + cache_creation + cache_read)`, son istek için. `prompt_cache.hit_ratio` oturum geneli bir alternatif; belgesiz olduğu için bu adımda kullanılmadı.
 - Prob değer kaydetmediği için varsayılan stilin adı doğrulanmadı (büyük olasılıkla `default`). Satır adı olduğu gibi gösterir.
 
+**Payload şeması (gözlem, 2026-11-11, Adım 12q, ADR-059):**
+- 12m'deki prob aynı yöntemle (yalnızca anahtar yolu ve JSON tipi, değer yok) yeniden kuruldu. Gözlemden sonra `settings.json` backup'tan birebir geri döndü (SHA-256 aynı).
+- Açık bir PR'ı olan dalın geçici bir worktree'si açıldı; oturum bu worktree'ye geçti.
+- **Yeni gözlenen yollar:** `worktree.{name, path, branch, original_cwd}` (string; belgedeki `original_branch` gelmedi) ve `workspace.git_worktree` (string).
+- **Yeniden gözlenenler:** `effort.level`, `thinking.enabled`, `fast_mode`, `prompt_cache.*` (`last_miss_cause` ve `last_miss_at` yine null), `workspace.repo.{host, owner, name}`, `workspace.added_dirs` (array), `prompt_id`.
+- **Belgeye dayalı, gözlenmedi** (resmi şemadan, `testdata/statusline/documented.json` ile test edilir):
+  - `pr.{number, url, review_state, kind}`: Oturum ortasında worktree'ye geçildikten sonra gelmedi. Claude Code PR aramasını büyük olasılıkla oturum başında yapıyor; açık PR'ı olan bir dalda başlayan oturumla yeniden denenmeli.
+  - `prompt_cache.last_miss_cause.causes`: Gözlemde hiç cache kaçırması olmadı.
+  - `rate_limits.spend_limit.{used_percentage, resets_at, used_usd, limit_usd, period}`: Yalnızca Claude apps gateway arkasında gelir; bu hesapta yok.
+- **Yalnızca satır için yeni okunanlar** (12i deseni, `skip_serializing`; push ve spool biçimi değişmez): yukarıdaki alanlar, `workspace.added_dirs` yalnızca sayı olarak. `pr.url` okunmaz.
+- **Esnek okuma:** Yeni bir alan beklenmeyen tipte gelirse yalnızca o alan boş kalır; payload'ın geri kalanı okunur. Bilinmeyen bir efor düzeyi, kaçırma nedeni ya da inceleme durumu geldiği gibi gösterilir.
+- **Cache durumu:** `caching_observed = false` ise öğe gizlenir. `warm = false`, `expires_at = null` ya da geçmiş bir `expires_at` "soğuk" demektir. Son 60 sn uyarı rengiyle gösterilir.
+- **`prompt_cache.hit_ratio` (0–1)** artık `cache_ratio` öğesinin "Tüm oturum" biçimi olarak okunur. Varsayılan biçim 12m'deki son istek oranıdır.
+- **Harcama limiti:** `resets_at` geçmişse satır tahmini %0 gösterir ve eski dolar tutarını düşürür (5 saatlik pencereyle aynı kural). Dolar alanları yoksa "Dolar" biçimi yüzdeye döner.
+- **Worktree adı:** `worktree.name` (`--worktree` oturumu) önce gelir, yoksa `workspace.git_worktree` (bağlı bir worktree içinde başlatılmış oturum).
+
 ---
 
 ## S2 — OAuth usage API (tamamlayıcı, onaylı)
