@@ -75,7 +75,9 @@ let importDialog = $state<ImportDialog>();
 let fontDialog = $state<TerminalFontDialog>();
 let refreshDialog = $state<StatuslineDialog>();
 /** "Saved." after a refresh change that needed no diff, or the backup's path. */
-let refreshNotice = $state<string | null>(null);
+/** The last refresh change, translated when drawn so a language switch reaches it; it fades. */
+let refreshNotice = $state<{ backup: string | null } | null>(null);
+let refreshTimer: ReturnType<typeof setTimeout> | undefined;
 /** The terminal font state (Step 12o); `null` until loaded. */
 let fontView = $state<TerminalFontView | null>(null);
 let copied = $state<string | null>(null);
@@ -160,6 +162,7 @@ onMount(() => {
   return () => {
     document.removeEventListener("visibilitychange", hidden);
     clearTimeout(copiedTimer);
+    clearTimeout(refreshTimer);
     void editor.flush();
   };
 });
@@ -241,17 +244,21 @@ async function setRefresh(n: number) {
   onerror(null);
   if (r.data.outcome === "ready") refreshDialog?.openRefresh(seconds, r.data);
   else {
-    if (r.data.outcome === "saved") refreshNotice = t("statusline-refresh-saved");
+    if (r.data.outcome === "saved") notify(null);
     await loadSources();
   }
 }
 
 async function refreshDone(result: { backup: string | null } | null) {
   if (!result) return;
-  refreshNotice = result.backup
-    ? t("statusline-done", { path: result.backup })
-    : t("statusline-refresh-saved");
+  notify(result.backup);
   await loadSources();
+}
+
+function notify(backup: string | null) {
+  refreshNotice = { backup };
+  clearTimeout(refreshTimer);
+  refreshTimer = setTimeout(() => (refreshNotice = null), 8000);
 }
 
 async function exportLine() {
@@ -302,6 +309,7 @@ function keydown(e: KeyboardEvent) {
     {/if}
     {#if installed}
       <div class="refresh">
+        <span class="refresh-label">{t("statusline-refresh")}</span>
         <Segmented
           label={t("statusline-refresh")}
           value={refreshPick}
@@ -309,10 +317,13 @@ function keydown(e: KeyboardEvent) {
           onchange={setRefresh}
         />
         <p class="caption" role="status">
-          {refreshNotice ??
-            (refreshPick === 0
+          {refreshNotice
+            ? refreshNotice.backup
+              ? t("statusline-done", { path: refreshNotice.backup })
+              : t("statusline-refresh-saved")
+            : refreshPick === 0
               ? t("statusline-refresh-off-hint")
-              : t("statusline-refresh-cost", { n: refreshPick }))}
+              : t("statusline-refresh-cost", { n: refreshPick })}
         </p>
       </div>
       {#if refreshDiffers}
@@ -529,6 +540,9 @@ function keydown(e: KeyboardEvent) {
     font: inherit;
     text-decoration: underline;
     cursor: pointer;
+  }
+  .refresh-label {
+    color: var(--text-2);
   }
   .margin {
     display: inline-flex;

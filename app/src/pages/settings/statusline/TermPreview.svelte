@@ -4,7 +4,7 @@
   scrolls sideways; `reserved` shades the columns at its right that the line keeps free (Claude
   Code's and the user's margin, ADR-051). With `onpick`, a span selects its item, and hovering
   highlights the item's spans here and its row in the list (`hovered` comes back from the list
-  the same way). Blank spans (spaces, flexible spaces) get a tint so they can be seen.
+  the same way). Blank items (spaces, flexible spaces) get a tint so they can be seen.
 -->
 <script lang="ts">
 import type { Span } from "../../../lib/ipc/bindings";
@@ -39,8 +39,22 @@ function itemOf(e: Event): number | null {
   return el ? Number(el.dataset.item) : null;
 }
 
-/** A span of an item that draws only blanks: a space, a flexible space (not a solid bar's cells). */
-const blank = (span: Span) => span.item !== null && span.text.trim() === "" && span.bg === null;
+const empty = (span: Span) => span.text.trim() === "" && span.bg === null;
+
+/**
+ * Items that draw only blanks: a space, a flexible space (not a solid bar's cells). The gaps
+ * inside an item with text (the parts of `git_status`) are not tinted; its text shows it.
+ */
+const drawnItems = $derived(
+  new Set(
+    lines
+      .flat()
+      .filter((s) => !empty(s))
+      .map((s) => s.item),
+  ),
+);
+
+const blank = (span: Span) => span.item !== null && empty(span) && !drawnItems.has(span.item);
 
 function click(e: MouseEvent) {
   const item = itemOf(e);
