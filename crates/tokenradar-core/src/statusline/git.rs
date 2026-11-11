@@ -1,7 +1,7 @@
 //! The git branch for the statusline's `git_branch` item (Step 12i, ADR-049).
 //!
 //! Only `.git/HEAD` is read; no git process is started, so the cost stays within the
-//! statusline's latency budget. `git status` is out of scope for the same reason.
+//! statusline's latency budget. `git status` runs in the app instead ([`super::git_status`]).
 
 use std::fs;
 use std::io::Read;
@@ -17,14 +17,21 @@ const MAX_FILE: u64 = 4096;
 /// The branch checked out in the repository holding `start`, or the first 7 characters of
 /// the commit on a detached HEAD. `None` outside a repository and on any read error.
 pub fn branch(start: &Path) -> Option<String> {
+    head(&locate(start)?.1)
+}
+
+/// The working tree holding `start` and its git directory: `.git` itself, or where a `.git`
+/// file points (a linked worktree's `.git/worktrees/<name>`, a submodule's
+/// `.git/modules/<name>`). Each has its own `HEAD` and `index`.
+pub fn locate(start: &Path) -> Option<(PathBuf, PathBuf)> {
     let mut dir = Some(start);
     for _ in 0..MAX_DEPTH {
         let d = dir?;
         let dotgit = d.join(".git");
         match fs::metadata(&dotgit) {
-            Ok(m) if m.is_dir() => return head(&dotgit),
+            Ok(m) if m.is_dir() => return Some((d.to_path_buf(), dotgit)),
             // A linked worktree or a submodule: `gitdir: <path>`.
-            Ok(m) if m.is_file() => return head(&gitdir(&dotgit, d)?),
+            Ok(m) if m.is_file() => return Some((d.to_path_buf(), gitdir(&dotgit, d)?)),
             _ => dir = d.parent(),
         }
     }

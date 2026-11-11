@@ -157,6 +157,21 @@ fn deliver(push: StatuslinePush, deps: &Deps<'_>) -> Option<StatusReply> {
         return None;
     };
     let session_uuid = push.payload.session_id.clone();
+    // The working folder goes to the app only when the line shows `git_status` (Step 12r).
+    let git_item = deps
+        .prefs
+        .items
+        .iter()
+        .find(|i| i.enabled && i.kind == SegmentKind::GitStatus);
+    let cwd = git_item.and_then(|_| {
+        let p = &push.payload;
+        p.workspace
+            .as_ref()
+            .and_then(|w| w.current_dir.clone())
+            .or_else(|| p.cwd.clone())
+            .filter(|c| !c.trim().is_empty())
+    });
+    let git_untracked = git_item.is_none_or(|i| i.untracked);
     let requests = [
         Request::new(
             1,
@@ -171,6 +186,8 @@ fn deliver(push: StatuslinePush, deps: &Deps<'_>) -> Option<StatusReply> {
             Op::StatusGet(StatusQuery {
                 session_uuid,
                 terminal: deps.terminal,
+                cwd,
+                git_untracked,
             }),
         ),
     ];

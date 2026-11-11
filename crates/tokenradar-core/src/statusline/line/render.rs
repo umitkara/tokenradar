@@ -42,6 +42,7 @@ use super::{
 };
 use crate::limits::Severity;
 use crate::statusline::auto_compact::AutoCompact;
+use crate::statusline::git_status::GitStatus;
 
 /// Cells in a bar when it has to narrow (and by default); each stands for 12.5 %.
 const BAR_CELLS: usize = 8;
@@ -906,6 +907,12 @@ fn piece(ctx: &Ctx<'_>, i: usize, d: Detail) -> Option<Vec<Span>> {
             let label = lbl();
             Some(match line.cache_state()? {
                 CacheState::Warm {
+                    expires_in, ending, ..
+                } if item.format == Some(Format::Countdown) => {
+                    let paint = if ending { Paint::Warn } else { Paint::Plain };
+                    vec![span(labeled(&label, &countdown(l, expires_in)), paint)]
+                }
+                CacheState::Warm {
                     until, ttl, ending, ..
                 } => {
                     let mut parts: Vec<String> = Vec::new();
@@ -992,6 +999,25 @@ fn piece(ctx: &Ctx<'_>, i: usize, d: Detail) -> Option<Vec<Span>> {
             Some(out)
         }
         SegmentKind::Worktree => plain(labeled(&lbl(), facts.worktree.as_ref()?)),
+        SegmentKind::GitStatus => {
+            let g = line.git.as_ref()?;
+            let marks = git_marks(g, item.format, ctx.icons);
+            if marks.is_empty() {
+                return None;
+            }
+            let label = lbl();
+            let mut out = Vec::with_capacity(marks.len() * 2);
+            if !label.is_empty() {
+                out.push(span(format!("{label} "), Paint::Plain));
+            }
+            for (i, (text, paint)) in marks.into_iter().enumerate() {
+                if i > 0 {
+                    out.push(span(" ", Paint::Plain));
+                }
+                out.push(span(text, paint));
+            }
+            Some(out)
+        }
         SegmentKind::Repo => {
             let repo = facts.repo.as_ref()?;
             let owned = repo
@@ -1404,6 +1430,73 @@ fn compact(
         )),
         (None, None) => None,
     }
+}
+
+/// The marks of a `git_status` item, each with its paint. Empty: nothing to show (a clean
+/// tree in the `dirty` format, no upstream or no distance in `ahead_behind`). Every glyph is
+/// one cell wide in every terminal: none is East Asian "Ambiguous" (`↑`, `●` are, so `⇡`,
+/// `*` stand in; Step 12r).
+fn git_marks(g: &GitStatus, format: Option<Format>, icons: IconSet) -> Vec<(String, Paint)> {
+    let distance = |out: &mut Vec<(String, Paint)>| {
+        if let Some(n) = g.ahead.filter(|n| *n > 0) {
+            out.push((format!("\u{21E1}{n}"), Paint::Plain));
+        }
+        if let Some(n) = g.behind.filter(|n| *n > 0) {
+            out.push((format!("\u{21E3}{n}"), Paint::Plain));
+        }
+    };
+    let mut out = Vec::new();
+    match format {
+        Some(Format::Dirty) => {
+            if g.is_dirty() {
+                let mark = match icons {
+                    IconSet::Nerd => "\u{F444}", // oct-dot_fill
+                    _ => "*",
+                };
+                out.push((mark.to_owned(), Paint::Warn));
+            }
+        }
+        Some(Format::AheadBehind) => distance(&mut out),
+        _ => {
+            if g.staged > 0 {
+                out.push((format!("+{}", g.staged), Paint::Ok));
+            }
+            if g.modified > 0 {
+                out.push((format!("~{}", g.modified), Paint::Warn));
+            }
+            if g.untracked_skipped {
+                // Not scanned: unknown, never 0. Not `?…`: `…` is East Asian "Ambiguous".
+                out.push(("??".to_owned(), Paint::Dim));
+            } else if g.untracked > 0 {
+                out.push((format!("?{}", g.untracked), Paint::Dim));
+            }
+            if g.conflicted > 0 {
+                out.push((format!("!{}", g.conflicted), Paint::Crit));
+            }
+            distance(&mut out);
+            if out.is_empty() {
+                out.push(("\u{2713}".to_owned(), Paint::Ok));
+            }
+        }
+    }
+    out
+}
+
+/// The time left until the cache goes cold: whole minutes (`4m`, `1h2m`), with the seconds
+/// only under two minutes (`1m12s`, `45s`), when they matter.
+fn countdown(l: &Localizer, ms: i64) -> String {
+    const MIN: i64 = 60_000;
+    if !(MIN..2 * MIN).contains(&ms) {
+        return l.fmt("sl-cache-in", &[("ms", ms_arg_i(ms))]);
+    }
+    let secs = ms % MIN;
+    if secs < 1000 {
+        return l.fmt("sl-cache-in", &[("ms", ms_arg_i(MIN))]);
+    }
+    l.fmt(
+        "sl-cache-in-precise",
+        &[("min", ms_arg_i(MIN)), ("sec", ms_arg_i(secs))],
+    )
 }
 
 /// `1:48:03`.

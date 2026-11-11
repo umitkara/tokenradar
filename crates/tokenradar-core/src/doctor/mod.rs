@@ -69,6 +69,8 @@ pub fn bundle(input: &Input<'_>, now: Timestamp) -> Vec<(String, Vec<u8>)> {
         "system": sys::info(),
         "files": files(paths),
         "claude_dirs": claude_dirs(&config),
+        // The `git_status` item needs git on PATH (Step 12r).
+        "git_available": crate::statusline::git_status::git_available(),
         "database": database(paths, now, &mut errors),
         "live": input.live,
         "errors": errors,
@@ -237,6 +239,7 @@ fn claude_dirs(config: &AppConfig) -> Value {
                 "has_projects": a.projects_dir().is_dir(),
                 "has_credentials": a.config_dir.join(".credentials.json").is_file(),
                 "has_settings": a.config_dir.join("settings.json").is_file(),
+                "statusline_refresh": refresh(config, &a.config_dir),
             })
         })
         .collect();
@@ -245,6 +248,20 @@ fn claude_dirs(config: &AppConfig) -> Value {
         "chosen_exists": chosen.map(Path::is_dir),
         "env_set": std::env::var_os("CLAUDE_CONFIG_DIR").is_some(),
         "found": dirs,
+    })
+}
+
+/// The statusline's live refresh (Step 12r): what the user picked in TokenRadar and what
+/// `settings.json` says, which Claude Code follows. They differ after a hand edit.
+fn refresh(config: &AppConfig, dir: &Path) -> Value {
+    let picked = config
+        .account(dir)
+        .and_then(|a| a.statusline.refresh_interval_sec);
+    let settings = crate::statusline::install::effective_refresh(dir);
+    json!({
+        "picked_sec": picked,
+        "settings_sec": settings,
+        "differs": picked.map(u64::from) != settings,
     })
 }
 

@@ -342,6 +342,16 @@ impl StatuslinePayload {
         serde_json::from_slice(bytes)
     }
 
+    /// A hash of what a push or a spool line carries (the fields that are serialized), to
+    /// tell a repeat from a change (Step 12r). The clock-driven line-only fields, such as the
+    /// session's duration, are not serialized and so not part of it.
+    pub fn content_key(&self) -> u64 {
+        use std::hash::{DefaultHasher, Hasher};
+        let mut h = DefaultHasher::new();
+        h.write(&serde_json::to_vec(self).unwrap_or_default());
+        h.finish()
+    }
+
     pub fn five_hour(&self) -> Option<&RateWindow> {
         self.rate_limits.as_ref()?.five_hour.as_ref()
     }

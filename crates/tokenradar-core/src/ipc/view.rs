@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 use crate::domain::{LimitObservation, LimitRef, Source, Timestamp};
 use crate::limits::{Freshness, LimitView, PanelSnapshot, SessionShareView};
 use crate::live_sessions::LiveStatus;
+use crate::statusline::git_status::GitStatus;
 
 /// Version of the `--json` output and of these replies.
 pub const JSON_SCHEMA: u8 = 1;
@@ -134,6 +135,11 @@ pub struct StatusReply {
     /// `off`, `active`, `token_stale`, `backoff`, `offline`, `error`; `None` from the database.
     pub api_state: Option<String>,
     pub generated_at: Timestamp,
+    /// The working tree of the query's `cwd` (Step 12r, ADR-059), when the app has a current
+    /// result. Absent from older apps, from the database and while the first run goes on:
+    /// the item is hidden then, never shown with a guess.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub git: Option<GitStatus>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -179,6 +185,7 @@ impl StatusReply {
             statusline_last_seen: s.statusline.last_seen,
             api_state: Some(enum_name(&s.api.state, "state")),
             generated_at: s.generated_at,
+            git: None,
         }
     }
 
@@ -195,6 +202,7 @@ impl StatusReply {
             statusline_last_seen: None,
             api_state: None,
             generated_at: now,
+            git: None,
         }
     }
 

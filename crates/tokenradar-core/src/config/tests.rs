@@ -94,6 +94,7 @@ fn statusline_state_round_trips_and_keeps_unknown_content() {
         previous_command: Some("py 's.py'".into()),
         chain: true,
         chain_position: ChainPosition::Before,
+        refresh_interval_sec: Some(10),
     };
     save_statusline(&path, &claude, &state).expect("save");
     let text = std::fs::read_to_string(&path).expect("read");
@@ -109,6 +110,29 @@ fn statusline_state_round_trips_and_keeps_unknown_content() {
     let cfg = AppConfig::load(&path).expect("load");
     assert_eq!(cfg.accounts.len(), 1);
     assert_eq!(cfg.account(&claude).map(|a| &a.statusline), Some(&cleared));
+}
+
+#[test]
+fn the_refresh_interval_is_read_leniently() {
+    let read = |v: &str| {
+        let text = format!(
+            "[[accounts]]\nprovider = \"claude\"\nconfig_dir = 'C:/a'\n\
+             [accounts.statusline]\ninstalled = true\nrefresh_interval_sec = {v}\n"
+        );
+        let cfg: AppConfig = toml::from_str(&text).expect("toml");
+        cfg.accounts[0].statusline.refresh_interval_sec
+    };
+    assert_eq!(read("5"), Some(5));
+    assert_eq!(read("7"), Some(5));
+    assert_eq!(read("8"), Some(10));
+    assert_eq!(read("1"), Some(5));
+    assert_eq!(read("25"), Some(30));
+    assert_eq!(read("600"), Some(30));
+    assert_eq!(read("12.6"), Some(10));
+    assert_eq!(read("0"), None);
+    assert_eq!(read("-3"), None);
+    assert_eq!(read("\"fast\""), None);
+    assert_eq!(read("true"), None);
 }
 
 #[test]

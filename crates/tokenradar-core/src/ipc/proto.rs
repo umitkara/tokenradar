@@ -75,7 +75,7 @@ pub struct HelloReply {
     pub protocol: u8,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StatusQuery {
     /// The statusline's session, to get its share of the window.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -84,6 +84,33 @@ pub struct StatusQuery {
     /// kind travels; an older app ignores it, an older CLI leaves it out.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub terminal: Option<TerminalKind>,
+    /// The statusline's working folder, sent only when the line shows `git_status` (Step 12r):
+    /// the app answers with [`super::StatusReply::git`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cwd: Option<String>,
+    /// `git_status` counts untracked files; `false` scans with `-uno`.
+    #[serde(default = "yes", skip_serializing_if = "is_yes")]
+    pub git_untracked: bool,
+}
+
+impl Default for StatusQuery {
+    fn default() -> Self {
+        Self {
+            session_uuid: None,
+            terminal: None,
+            cwd: None,
+            git_untracked: true,
+        }
+    }
+}
+
+const fn yes() -> bool {
+    true
+}
+
+#[allow(clippy::trivially_copy_pass_by_ref)] // serde's signature
+const fn is_yes(b: &bool) -> bool {
+    *b
 }
 
 /// The envelope as it travels.
@@ -301,6 +328,7 @@ mod tests {
         let new = StatusQuery {
             session_uuid: Some("s".into()),
             terminal: Some(TerminalKind::WindowsTerminal),
+            ..StatusQuery::default()
         };
         let json = serde_json::to_string(&new).expect("json");
         assert_eq!(
@@ -316,6 +344,37 @@ mod tests {
     }
 
     #[test]
+    fn the_git_fields_are_optional_both_ways() {
+        use crate::ipc::StatusReply;
+        use crate::statusline::git_status::GitStatus;
+        // An older CLI sends neither: no git work, untracked files counted.
+        let old: StatusQuery = serde_json::from_str(r#"{"session_uuid":"s"}"#).expect("old");
+        assert_eq!((old.cwd, old.git_untracked), (None, true));
+        let q = StatusQuery {
+            cwd: Some("C:/w".into()),
+            git_untracked: false,
+            ..StatusQuery::default()
+        };
+        let json = serde_json::to_string(&q).expect("json");
+        assert_eq!(json, r#"{"cwd":"C:/w","git_untracked":false}"#);
+        // An older app's reply has no `git`; an older CLI ignores a newer one's.
+        let mut reply = StatusReply::empty(crate::domain::Timestamp::from_millis(1));
+        let json = serde_json::to_value(&reply).expect("json");
+        assert!(json.get("git").is_none(), "left out when unknown");
+        let back: StatusReply = serde_json::from_value(json).expect("old app");
+        assert_eq!(back.git, None);
+        reply.git = Some(GitStatus {
+            staged: 2,
+            ahead: Some(1),
+            ..GitStatus::default()
+        });
+        let json = serde_json::to_value(&reply).expect("json");
+        assert_eq!(json["git"]["staged"], 2);
+        let back: StatusReply = serde_json::from_value(json).expect("new app");
+        assert_eq!(back.git, reply.git);
+    }
+
+    #[test]
     fn requests_round_trip() {
         let ops = [
             Op::Hello(Hello {
@@ -326,6 +385,8 @@ mod tests {
             Op::StatusGet(StatusQuery {
                 session_uuid: Some("s".into()),
                 terminal: Some(TerminalKind::Vscode),
+                cwd: Some("C:/work/alpha".into()),
+                git_untracked: false,
             }),
             Op::StatusGet(StatusQuery::default()),
             Op::LimitsGet,

@@ -73,6 +73,9 @@ pub const LIVENESS_INTERVAL: Duration = Duration::from_secs(15);
 
 /// The panel snapshot is rebuilt at most this often; statusline calls can arrive every second.
 pub const LIMITS_REBUILD_GAP: Duration = Duration::from_secs(2);
+/// A repeated statusline payload (live refresh of an idle session, Step 12r) rebuilds the
+/// snapshot at most this often, so "last seen" keeps moving without a rebuild per tick.
+pub const REPEAT_REBUILD_GAP: Duration = Duration::from_mins(1);
 
 #[derive(Debug, thiserror::Error)]
 pub enum RuntimeError {
@@ -313,6 +316,7 @@ impl CoreRuntime {
                 store: limits_store,
                 spool_dir,
                 account_dirs: limits_dirs,
+                repeat_built: None,
             };
             limits_loop(ctx, &limits_rx);
         })?);
@@ -324,6 +328,8 @@ impl CoreRuntime {
                 status: status.clone(),
                 accounts: account_dirs,
                 store: store.clone(),
+                last_push: Mutex::default(),
+                git: crate::statusline::git_status::GitStatusCache::default(),
             };
             let (tx, thread) = spawn_ipc(ipc, handler)?;
             ipc_stop = Some(tx);
@@ -1099,6 +1105,10 @@ enum LimitsMsg {
     Observe(LimitObservation),
     /// One statusline payload's readings (ADR-041: a missing window counts as evidence).
     Statusline(Vec<LimitObservation>),
+    /// The same payload as the session's previous push (Step 12r): taken in like
+    /// [`LimitsMsg::Statusline`] (the engine stores only changes and its heartbeat), but it
+    /// rebuilds the snapshot at most every [`REPEAT_REBUILD_GAP`].
+    StatuslineRepeat(Vec<LimitObservation>),
     Poll(Box<PollUpdate>),
     Live(Vec<LiveSession>),
     /// An indexing pass stored events, or the first scan finished.
@@ -1129,6 +1139,8 @@ struct LimitsCtx {
     store: Store,
     spool_dir: Option<PathBuf>,
     account_dirs: Vec<(AccountId, PathBuf)>,
+    /// When a repeated payload last asked for a rebuild.
+    repeat_built: Option<Instant>,
 }
 
 impl LimitsCtx {
@@ -1198,12 +1210,28 @@ impl LimitsCtx {
         }
     }
 
-    /// Applies one message. Returns `false` on [`LimitsMsg::Stop`].
-    fn handle(&mut self, msg: LimitsMsg, now: Timestamp) -> bool {
+    /// Applies one message. Returns `None` on [`LimitsMsg::Stop`], else whether the snapshot
+    /// is to be rebuilt.
+    fn handle(&mut self, msg: LimitsMsg, now: Timestamp) -> Option<bool> {
         match msg {
             LimitsMsg::Stop => {
                 self.broadcast(&PollerMsg::Stop);
-                return false;
+                return None;
+            }
+            LimitsMsg::StatuslineRepeat(readings) => {
+                self.engine.note_statusline(&readings);
+                let mut events = Vec::new();
+                for obs in &readings {
+                    events.extend(self.engine.ingest(obs, now));
+                }
+                let any = self.publish_all(events);
+                let due = self
+                    .repeat_built
+                    .is_none_or(|t| t.elapsed() >= REPEAT_REBUILD_GAP);
+                if due {
+                    self.repeat_built = Some(Instant::now());
+                }
+                return Some(any || due);
             }
             LimitsMsg::Observe(obs) => {
                 let events = self.engine.ingest(&obs, now);
@@ -1249,7 +1277,7 @@ impl LimitsCtx {
                 }
             }
         }
-        true
+        Some(true)
     }
 
     /// Rebuilds the snapshot, keeps it in [`CoreStatus`] and publishes it if it looks different.
@@ -1326,11 +1354,12 @@ fn limits_loop(mut ctx: LimitsCtx, rx: &mpsc::Receiver<LimitsMsg>) {
             },
         };
         // A timeout means time itself changed something (freshness, reset).
-        dirty = true;
-        if let Some(msg) = msg
-            && !ctx.handle(msg, Timestamp::now())
-        {
-            return;
+        match msg {
+            None => dirty = true,
+            Some(msg) => match ctx.handle(msg, Timestamp::now()) {
+                None => return,
+                Some(rebuild) => dirty |= rebuild,
+            },
         }
     }
 }

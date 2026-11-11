@@ -1,5 +1,6 @@
 //! The statusline bridge inside the runtime: the IPC handler and the spool import.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
@@ -8,6 +9,7 @@ use super::{CoreStatus, LimitsMsg, lock};
 use crate::domain::{AccountId, LimitObservation, Timestamp};
 use crate::ipc::proto::Handler;
 use crate::ipc::{CompactCount, LimitsReply, SessionInfo, SessionsReply, StatusQuery, StatusReply};
+use crate::statusline::git_status::GitStatusCache;
 use crate::statusline::{StatuslinePush, account_for, spool};
 use crate::store::Store;
 
@@ -26,6 +28,35 @@ pub(super) struct CoreIpc {
     pub accounts: Vec<(AccountId, PathBuf)>,
     /// For the asked session's compactions (Step 12n): one small indexed read per call.
     pub store: Store,
+    /// The last push's [`crate::statusline::StatuslinePayload::content_key`] per session.
+    pub last_push: Mutex<HashMap<String, u64>>,
+    /// `git status` per repository, for the `git_status` item (Step 12r).
+    pub git: GitStatusCache,
+}
+
+/// Sessions remembered for repeat detection; the map is cleared when it grows past this.
+const MAX_REMEMBERED: usize = 64;
+
+impl CoreIpc {
+    /// Whether `push` carries the same content as its session's previous one.
+    fn is_repeat(&self, push: &StatuslinePush) -> bool {
+        let Some(session) = push.payload.session_id.as_deref() else {
+            return false;
+        };
+        let key = push.payload.content_key();
+        let mut last = self
+            .last_push
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if last.get(session) == Some(&key) {
+            return true;
+        }
+        if last.len() >= MAX_REMEMBERED && !last.contains_key(session) {
+            last.clear();
+        }
+        last.insert(session.to_owned(), key);
+        false
+    }
 }
 
 impl CoreIpc {
@@ -56,9 +87,15 @@ pub(super) fn add_compacts(reply: &mut StatusReply, uuid: &str, store: &Store) {
 
 impl Handler for CoreIpc {
     fn push(&self, push: StatuslinePush) {
+        let repeat = self.is_repeat(&push);
         let readings = observations(&push, &self.accounts);
         if !readings.is_empty() {
-            let _ = self.limits_tx.send(LimitsMsg::Statusline(readings));
+            let msg = if repeat {
+                LimitsMsg::StatuslineRepeat(readings)
+            } else {
+                LimitsMsg::Statusline(readings)
+            };
+            let _ = self.limits_tx.send(msg);
         }
     }
 
@@ -69,6 +106,9 @@ impl Handler for CoreIpc {
         let mut reply = self.snapshot(query.session_uuid.as_deref());
         if let Some(uuid) = query.session_uuid.as_deref() {
             add_compacts(&mut reply, uuid, &self.store);
+        }
+        if let Some(cwd) = query.cwd.as_deref() {
+            reply.git = self.git.get(Path::new(cwd), query.git_untracked);
         }
         reply
     }
@@ -219,5 +259,50 @@ mod compact_tests {
         let mut reply = StatusReply::empty(Timestamp::from_millis(5));
         add_compacts(&mut reply, "new", &store);
         assert!(reply.session.is_none());
+    }
+}
+
+#[cfg(test)]
+mod repeat_tests {
+    use super::*;
+    use crate::statusline::StatuslinePayload;
+
+    fn push(session: &str, pct: u32, duration_ms: u32, at: i64) -> StatuslinePush {
+        let json = format!(
+            r#"{{"session_id":"{session}","cost":{{"total_cost_usd":1.5,"total_duration_ms":{duration_ms}}},
+            "rate_limits":{{"seven_day":{{"used_percentage":{pct},"resets_at":1793070000}}}}}}"#
+        );
+        StatuslinePush {
+            observed_at: Timestamp::from_millis(at),
+            payload: StatuslinePayload::parse(json.as_bytes()).expect("payload"),
+        }
+    }
+
+    #[test]
+    fn a_push_like_the_sessions_previous_one_is_a_repeat() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let (limits_tx, _rx) = mpsc::channel();
+        let ipc = CoreIpc {
+            limits_tx,
+            status: Arc::default(),
+            accounts: Vec::new(),
+            store: Store::open(dir.path().join("db.sqlite")).expect("store"),
+            last_push: Mutex::default(),
+            git: GitStatusCache::default(),
+        };
+        assert!(!ipc.is_repeat(&push("a", 40, 1_000, 1)));
+        // Live refresh: later, the session's clock moved on, nothing it carries changed.
+        assert!(ipc.is_repeat(&push("a", 40, 6_000, 5_001)));
+        assert!(ipc.is_repeat(&push("a", 40, 11_000, 10_001)));
+        // Another session has its own previous push.
+        assert!(!ipc.is_repeat(&push("b", 40, 1_000, 10_002)));
+        // A change is not a repeat, and becomes the one to compare with.
+        assert!(!ipc.is_repeat(&push("a", 41, 16_000, 15_001)));
+        assert!(ipc.is_repeat(&push("a", 41, 21_000, 20_001)));
+        // Without a session nothing can repeat.
+        let mut anon = push("a", 41, 1, 1);
+        anon.payload.session_id = None;
+        assert!(!ipc.is_repeat(&anon));
+        assert!(!ipc.is_repeat(&anon));
     }
 }

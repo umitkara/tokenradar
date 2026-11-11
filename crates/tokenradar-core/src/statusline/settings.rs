@@ -55,8 +55,39 @@ pub fn set_member_raw(text: &str, key: &str, raw: &str) -> Result<String, EditEr
 /// Removes top-level `key` with its separator. Unchanged if the key is absent.
 pub fn remove_member(text: &str, key: &str) -> Result<String, EditError> {
     let obj = scan(text)?;
-    let Some((idx, m)) = find(&obj, key) else {
-        return Ok(text.to_owned());
+    Ok(remove_in(text, &obj, key))
+}
+
+/// Sets (`Some`, a JSON value written verbatim) or removes (`None`) member `inner` of the
+/// object that top-level `key` holds (Step 12r). The rest of that object stays byte for byte,
+/// so keys the user added to it (`padding`, …) survive. `key` must hold an object.
+pub fn set_nested(
+    text: &str,
+    key: &str,
+    inner: &str,
+    raw: Option<&str>,
+) -> Result<String, EditError> {
+    let obj = scan(text)?;
+    let (_, m) = find(&obj, key).ok_or(EditError::Invalid)?;
+    let nested = scan_object(text, m.value_start)?;
+    match raw {
+        Some(raw) => {
+            serde_json::from_str::<Value>(raw).map_err(|_| EditError::Invalid)?;
+            let layout = Layout::detect(text, &nested);
+            set_raw(text, &nested, inner, raw, &layout)
+        }
+        None => Ok(remove_in(text, &nested, inner)),
+    }
+}
+
+/// Whether top-level `key` holds an object.
+pub fn holds_object(text: &str, key: &str) -> Result<bool, EditError> {
+    Ok(raw_member(text, key)?.is_some_and(|raw| raw.starts_with('{')))
+}
+
+fn remove_in(text: &str, obj: &Object, key: &str) -> String {
+    let Some((idx, m)) = find(obj, key) else {
+        return text.to_owned();
     };
     let (from, to) = if obj.members.len() == 1 {
         (obj.open + 1, obj.close)
@@ -66,7 +97,7 @@ pub fn remove_member(text: &str, key: &str) -> Result<String, EditError> {
     } else {
         (m.key_start, obj.members[1].1.key_start)
     };
-    Ok(splice(text, from, to, ""))
+    splice(text, from, to, "")
 }
 
 fn set_raw(
@@ -412,6 +443,48 @@ mod tests {
             set_member_raw("{}", KEY, "{not json"),
             Err(EditError::Invalid)
         );
+    }
+
+    #[test]
+    fn nested_members_change_alone_and_mirror() {
+        let text = "{\n  \"statusLine\": {\n    \"type\": \"command\",\n    \"command\": \"x\",\n    \
+                    \"padding\": 2\n  },\n  \"z\": 1\n}\n";
+        let set = set_nested(text, KEY, "refreshInterval", Some("5")).expect("set");
+        assert_eq!(
+            set,
+            "{\n  \"statusLine\": {\n    \"type\": \"command\",\n    \"command\": \"x\",\n    \
+             \"padding\": 2,\n    \"refreshInterval\": 5\n  },\n  \"z\": 1\n}\n"
+        );
+        let changed = set_nested(&set, KEY, "refreshInterval", Some("10")).expect("change");
+        assert!(changed.contains("\"refreshInterval\": 10\n"), "{changed}");
+        assert_eq!(
+            set_nested(&set, KEY, "refreshInterval", None).expect("remove"),
+            text
+        );
+        // Compact objects stay compact.
+        let compact = "{\"statusLine\":{\"type\":\"command\",\"command\":\"x\"}}";
+        let set = set_nested(compact, KEY, "command", Some("\"y\"")).expect("set");
+        assert_eq!(
+            set,
+            "{\"statusLine\":{\"type\":\"command\",\"command\":\"y\"}}"
+        );
+        let set = set_nested(compact, KEY, "refreshInterval", Some("30")).expect("add");
+        assert_eq!(
+            set,
+            "{\"statusLine\":{\"type\":\"command\",\"command\":\"x\", \"refreshInterval\": 30}}"
+        );
+        assert_eq!(
+            set_nested(&set, KEY, "refreshInterval", None).expect("remove"),
+            compact
+        );
+        // Not an object, or absent: refused.
+        assert_eq!(
+            set_nested("{\"statusLine\": 1}", KEY, "a", Some("1")),
+            Err(EditError::Invalid)
+        );
+        assert_eq!(set_nested("{}", KEY, "a", None), Err(EditError::Invalid));
+        assert!(holds_object(compact, KEY).expect("scan"));
+        assert!(!holds_object("{\"statusLine\": \"x\"}", KEY).expect("scan"));
     }
 
     #[test]

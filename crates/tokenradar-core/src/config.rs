@@ -349,6 +349,41 @@ pub struct StatuslineConfig {
     pub previous_command: Option<String>,
     pub chain: bool,
     pub chain_position: ChainPosition,
+    /// Live refresh (Step 12r, ADR-059): Claude Code re-runs the line every this many seconds,
+    /// also while the session is idle. `None`: only on events (the default). Read leniently:
+    /// another number goes to the nearest of [`REFRESH_INTERVALS`], 0 is off.
+    #[serde(deserialize_with = "lenient_refresh")]
+    pub refresh_interval_sec: Option<u16>,
+}
+
+/// The live refresh intervals offered, in seconds. 1 s is not: its cost is not defensible.
+pub const REFRESH_INTERVALS: [u16; 3] = [5, 10, 30];
+
+/// `n` seconds as one of [`REFRESH_INTERVALS`]; 0 or less is off.
+pub fn refresh_interval(n: i64) -> Option<u16> {
+    if n <= 0 {
+        return None;
+    }
+    REFRESH_INTERVALS
+        .into_iter()
+        .min_by_key(|&o| (i64::from(o) - n).abs())
+}
+
+/// Never fails: a value of the wrong type is off (ADR-042).
+fn lenient_refresh<'de, D: serde::Deserializer<'de>>(de: D) -> Result<Option<u16>, D::Error> {
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum Raw {
+        Int(i64),
+        Float(f64),
+        Other(serde::de::IgnoredAny),
+    }
+    Ok(match Raw::deserialize(de)? {
+        Raw::Int(n) => refresh_interval(n),
+        #[allow(clippy::cast_possible_truncation)] // rounded and clamped by the lookup
+        Raw::Float(f) if f.is_finite() => refresh_interval(f.round() as i64),
+        _ => None,
+    })
 }
 
 /// Where the previous command's output goes relative to TokenRadar's line.
@@ -605,6 +640,12 @@ pub fn save_statusline(
         }
         sl["chain"] = value(state.chain);
         sl["chain_position"] = value(state.chain_position.as_str());
+        match state.refresh_interval_sec {
+            Some(n) => sl["refresh_interval_sec"] = value(i64::from(n)),
+            None => {
+                sl.remove("refresh_interval_sec");
+            }
+        }
         Ok(())
     })
 }

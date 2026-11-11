@@ -18,6 +18,7 @@ use serde::{Deserialize, Serialize};
 use specta::Type;
 
 use super::auto_compact::AutoCompact;
+use super::git_status::GitStatus;
 use super::payload::{RateWindow, StatuslinePayload};
 use crate::domain::{Scope, Source, Timestamp};
 use crate::ipc::{CompactCount, LimitInfo, StatusReply};
@@ -113,6 +114,9 @@ pub struct Line {
     pub auto_compact: Option<AutoCompact>,
     /// `rate_limits.spend_limit` (Step 12q); the limit engine does not see it.
     pub spend_limit: Option<Spend>,
+    /// The working tree's state from the app (Step 12r); `None` without the app or before its
+    /// first run in this tree: the item is hidden, never guessed.
+    pub git: Option<GitStatus>,
 }
 
 /// The time zone a reset's wall-clock time is shown in.
@@ -340,6 +344,7 @@ impl Line {
             compacts: None,
             auto_compact: None,
             spend_limit: None,
+            git: None,
         }
     }
 
@@ -405,6 +410,7 @@ impl Line {
             compacts: reply.and_then(|r| r.session.as_ref()?.compacts),
             auto_compact: None,
             spend_limit: payload.and_then(|p| spend(p, now)),
+            git: reply.and_then(|r| r.git),
         }
     }
 
@@ -596,6 +602,15 @@ impl Line {
                 },
                 used_usd: Some(spend / 2.0),
                 limit_usd: Some(50.0),
+            }),
+            git: Some(GitStatus {
+                staged: 2,
+                modified: 3,
+                untracked: 1,
+                conflicted: 0,
+                ahead: Some(1),
+                behind: Some(0),
+                untracked_skipped: false,
             }),
         }
     }

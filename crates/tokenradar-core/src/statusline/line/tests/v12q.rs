@@ -664,8 +664,15 @@ fn the_new_kinds_and_formats_read_back_and_normalize() {
     }
     assert!(SegmentKind::SpendLimit.is_limit() && SegmentKind::SpendLimit.has_bar());
     assert!(SegmentKind::SpendLimit.has_reset() && !SegmentKind::SpendLimit.is_window());
-    // The cache timer's countdown comes in Step 12r: one look for now.
-    assert_eq!(SegmentKind::CacheTimer.formats(), &[] as &[Format]);
+    // Step 12r adds the countdown; the clock stays first so older lines keep their look.
+    assert_eq!(
+        SegmentKind::CacheTimer.formats(),
+        &[Format::Clock, Format::Countdown]
+    );
+    assert_eq!(
+        SegmentKind::CacheTimer.default_format(),
+        Some(Format::Clock)
+    );
     assert_eq!(SegmentKind::Effort.default_format(), Some(Format::Level));
     assert_eq!(
         SegmentKind::CacheMisses.default_format(),

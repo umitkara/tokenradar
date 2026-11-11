@@ -3,6 +3,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use tokenradar_core::ipc::{Handler, LimitsReply, SessionInfo, SessionsReply};
+use tokenradar_core::statusline::line::Item;
 use tokenradar_i18n::{Domain, Locale};
 
 use super::*;
@@ -162,6 +163,104 @@ fn with_the_app_the_reading_is_pushed_and_the_line_is_enriched() {
     );
     drop(stop);
     server.join().expect("server");
+}
+
+/// Records what each status query asked for and answers with a git status when asked.
+struct GitApp {
+    queries: std::sync::Mutex<Vec<(Option<String>, bool)>>,
+}
+
+impl Handler for GitApp {
+    fn push(&self, _push: StatuslinePush) {}
+    fn status(&self, query: &StatusQuery) -> StatusReply {
+        self.queries
+            .lock()
+            .expect("lock")
+            .push((query.cwd.clone(), query.git_untracked));
+        let mut r = StatusReply::empty(Timestamp::now());
+        r.git = query
+            .cwd
+            .as_ref()
+            .map(|_| tokenradar_core::statusline::git_status::GitStatus {
+                modified: 4,
+                ..Default::default()
+            });
+        r
+    }
+    fn limits(&self) -> LimitsReply {
+        StatusReply::empty(Timestamp::now()).limits_reply()
+    }
+    fn sessions(&self) -> SessionsReply {
+        StatusReply::empty(Timestamp::now()).sessions_reply()
+    }
+}
+
+fn git_prefs(untracked: bool) -> StatuslinePrefs {
+    let mut item = Item::new(SegmentKind::GitStatus);
+    item.untracked = untracked;
+    StatuslinePrefs {
+        items: vec![Item::new(SegmentKind::FiveHour), item],
+        ..StatuslinePrefs::default()
+    }
+    .normalized()
+}
+
+fn git_input(cwd: &str) -> Vec<u8> {
+    let resets = Timestamp::now().as_millis() / 1000 + 2 * 3600;
+    let cwd = serde_json::to_string(cwd).expect("json");
+    format!(
+        r#"{{"session_id":"s1","cwd":"C:\\other","workspace":{{"current_dir":{cwd}}},"rate_limits":{{"five_hour":{{"used_percentage":42,"resets_at":{resets}}}}}}}"#
+    )
+    .into_bytes()
+}
+
+#[test]
+fn the_working_folder_goes_to_the_app_only_for_a_git_status_item() {
+    use tokenradar_core::ipc::server::{ServerConfig, run, stop_channel};
+
+    let pipe = unique_pipe();
+    let app = Arc::new(GitApp {
+        queries: std::sync::Mutex::new(Vec::new()),
+    });
+    let (stop, stop_rx) = stop_channel();
+    let (ready_tx, ready_rx) = mpsc::channel();
+    let handler: Arc<dyn Handler> = app.clone();
+    let config = ServerConfig::new(pipe.clone(), "test".into());
+    let server = std::thread::spawn(move || {
+        run(&config, handler, stop_rx, move |r| {
+            let _ = ready_tx.send(r.is_ok());
+        });
+    });
+    assert!(ready_rx.recv().expect("ready"));
+
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let l10n = Localizer::new(Locale::En, &[Domain::Cli]);
+    let stdin = git_input(r"C:\work\alpha");
+    // Without the item the folder stays home.
+    let out = respond(Some(&stdin), &deps(&l10n, &pipe, tmp.path()));
+    assert!(!out.contains("~4"), "{out}");
+    // With it: the workspace's folder (not `cwd`) and the item's untracked switch.
+    let mut d = deps(&l10n, &pipe, tmp.path());
+    d.prefs = git_prefs(false);
+    let out = respond(Some(&stdin), &d);
+    assert!(out.ends_with("~4"), "{out}");
+    assert_eq!(
+        *app.queries.lock().expect("lock"),
+        [(None, true), (Some(r"C:\work\alpha".to_owned()), false)]
+    );
+    drop(stop);
+    server.join().expect("server");
+}
+
+#[test]
+fn without_the_app_the_git_status_is_hidden() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let l10n = Localizer::new(Locale::En, &[Domain::Cli]);
+    let mut d = deps(&l10n, &unique_pipe(), tmp.path());
+    d.prefs = git_prefs(true);
+    let out = respond(Some(&git_input(r"C:\work\alpha")), &d);
+    assert!(out.starts_with("5h"), "{out}");
+    assert!(!out.contains('~') && !out.contains('\u{2713}'), "{out}");
 }
 
 /// A payload whose transcript lives in `config`, so the user settings are read from there.

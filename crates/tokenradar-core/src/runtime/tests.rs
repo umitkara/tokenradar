@@ -555,6 +555,7 @@ fn a_statusline_push_over_ipc_reaches_the_panel_snapshot() {
             Op::StatusGet(StatusQuery {
                 session_uuid: None,
                 terminal: Some(crate::terminal_font::TerminalKind::Vscode),
+                ..StatusQuery::default()
             }),
         )])
         .expect("call");

@@ -95,6 +95,9 @@ pub enum SegmentKind {
     Worktree,
     /// The repository of the `origin` remote.
     Repo,
+    /// The working tree's staged, modified and untracked files and the upstream distance,
+    /// from the app (Step 12r).
+    GitStatus,
     /// A separator glyph of the user's choice.
     Separator,
     /// Starts a new output line.
@@ -176,6 +179,15 @@ pub enum Format {
     Session,
     /// Folders: the name and how many folders were added, `alpha +2`.
     WithAdded,
+    /// Cache timer: the local time it goes cold, `→14:32 1h` (Step 12r).
+    Clock,
+    /// Cache timer: the time left, `4m`, `1m12s`. Frozen between two draws without live
+    /// refresh.
+    Countdown,
+    /// Git status: one mark while anything is uncommitted, nothing when clean.
+    Dirty,
+    /// Git status: commits ahead of and behind the upstream, `⇡1 ⇣2`.
+    AheadBehind,
 }
 
 /// How a limit shows its reset (Step 12m).
@@ -286,7 +298,7 @@ pub const DEFAULT_SEPARATOR: &str = "│";
 pub const BAR_WIDTHS: [u8; 3] = [8, 4, 12];
 
 impl SegmentKind {
-    pub const ALL: [Self; 38] = [
+    pub const ALL: [Self; 39] = [
         Self::FiveHour,
         Self::SevenDay,
         Self::Scoped,
@@ -320,6 +332,7 @@ impl SegmentKind {
         Self::Pr,
         Self::Worktree,
         Self::Repo,
+        Self::GitStatus,
         Self::Separator,
         Self::LineBreak,
         Self::CustomText,
@@ -362,6 +375,7 @@ impl SegmentKind {
             Self::Pr => "pr",
             Self::Worktree => "worktree",
             Self::Repo => "repo",
+            Self::GitStatus => "git_status",
             Self::Separator => "separator",
             Self::LineBreak => "line_break",
             Self::CustomText => "custom_text",
@@ -437,7 +451,8 @@ impl SegmentKind {
             | Self::GitBranch
             | Self::Pr
             | Self::Worktree
-            | Self::Repo => Group::Project,
+            | Self::Repo
+            | Self::GitStatus => Group::Project,
             Self::Separator | Self::LineBreak | Self::CustomText | Self::Space | Self::Flex => {
                 Group::Layout
             }
@@ -481,6 +496,9 @@ impl SegmentKind {
             Self::CacheMisses => &[Format::Cause, Format::Count],
             Self::CacheRatio => &[Format::Last, Format::Session],
             Self::Repo => &[Format::Full, Format::Name, Format::Host],
+            // The clock first: without live refresh a countdown freezes (ADR-059).
+            Self::CacheTimer => &[Format::Clock, Format::Countdown],
+            Self::GitStatus => &[Format::Compact, Format::Dirty, Format::AheadBehind],
             _ => &[],
         }
     }
@@ -543,6 +561,7 @@ impl SegmentKind {
                 Self::Pr => Some("\u{F407}"),           // oct-git_pull_request
                 Self::Worktree => Some("\u{F414}"),     // oct-file_submodule
                 Self::Repo => Some("\u{F484}"),         // oct-globe
+                Self::GitStatus => Some("\u{F47F}"),    // oct-git_compare
                 _ => None,
             },
         }
@@ -571,7 +590,8 @@ impl SegmentKind {
             | Self::LinesChanged
             | Self::GitBranch
             | Self::Pr
-            | Self::Worktree => AnsiColor::Green,
+            | Self::Worktree
+            | Self::GitStatus => AnsiColor::Green,
             Self::SessionName | Self::OutputStyle | Self::Compact | Self::Effort => {
                 AnsiColor::BrightBlue
             }
@@ -583,7 +603,7 @@ impl SegmentKind {
 }
 
 impl Format {
-    pub const ALL: [Self; 28] = [
+    pub const ALL: [Self; 32] = [
         Self::Bar,
         Self::Percent,
         Self::Fraction,
@@ -612,6 +632,10 @@ impl Format {
         Self::Last,
         Self::Session,
         Self::WithAdded,
+        Self::Clock,
+        Self::Countdown,
+        Self::Dirty,
+        Self::AheadBehind,
     ];
 
     pub const fn as_str(self) -> &'static str {
@@ -644,6 +668,10 @@ impl Format {
             Self::Last => "last",
             Self::Session => "session",
             Self::WithAdded => "with_added",
+            Self::Clock => "clock",
+            Self::Countdown => "countdown",
+            Self::Dirty => "dirty",
+            Self::AheadBehind => "ahead_behind",
         }
     }
 
@@ -921,6 +949,7 @@ impl ColorMode {
 
 /// One item of the line.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[allow(clippy::struct_excessive_bools)] // independent switches, as in the config file
 pub struct Item {
     pub kind: SegmentKind,
     /// Off: kept in the list but not drawn.
@@ -945,6 +974,9 @@ pub struct Item {
     /// Kinds with a bar: its cells, one of [`BAR_WIDTHS`]; 8 on every other kind.
     pub bar_width: u8,
     pub bar_style: BarStyle,
+    /// `git_status`: count untracked files; off scans with `-uno`, for large trees
+    /// (Step 12r). `true` on every other kind.
+    pub untracked: bool,
 }
 
 impl Item {
@@ -965,6 +997,7 @@ impl Item {
             reset_format: ResetFormat::Countdown,
             bar_width: BAR_WIDTHS[0],
             bar_style: BarStyle::Blocks,
+            untracked: true,
         }
     }
 
@@ -1029,6 +1062,9 @@ impl Item {
         }
         if !self.kind.has_bar() {
             self.bar_style = BarStyle::Blocks;
+        }
+        if self.kind != SegmentKind::GitStatus {
+            self.untracked = true;
         }
         self
     }
@@ -1267,6 +1303,9 @@ impl StatuslinePrefs {
             if i.bar_style != BarStyle::Blocks {
                 t["bar_style"] = value(i.bar_style.as_str());
             }
+            if !i.untracked {
+                t["untracked"] = value(false);
+            }
             items.push(t);
         }
         table["items"] = TomlItem::ArrayOfTables(items);
@@ -1374,6 +1413,7 @@ impl<'de> Deserialize<'de> for StatuslinePrefs {
             reset_format: Option<Lax<String>>,
             bar_width: Option<Lax<i64>>,
             bar_style: Option<Lax<String>>,
+            untracked: Option<Lax<bool>>,
         }
         #[derive(Default, Deserialize)]
         #[serde(default)]
@@ -1423,6 +1463,7 @@ impl<'de> Deserialize<'de> for StatuslinePrefs {
                     if let Some(b) = lax(r.bar_style).as_deref().and_then(BarStyle::parse) {
                         item.bar_style = b;
                     }
+                    item.untracked = lax(r.untracked).unwrap_or(true);
                     Some(item)
                 })
                 .collect()

@@ -8,7 +8,7 @@
 //! caller skips readings already stored.
 
 use std::fs::{File, OpenOptions};
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufRead, BufReader, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
@@ -22,6 +22,9 @@ pub const RETENTION_DAYS: i64 = 14;
 /// How often the running app looks for new files.
 pub const IMPORT_INTERVAL: Duration = Duration::from_mins(5);
 
+/// How much of the file's end is read to find the last line (Step 12r); a push is well under.
+const TAIL_BYTES: u64 = 16 * 1024;
+
 const PREFIX: &str = "statusline-";
 const SUFFIX: &str = ".jsonl";
 const IMPORTING: &str = ".importing";
@@ -32,6 +35,9 @@ pub enum Appended {
     Written,
     /// The day's file reached [`MAX_DAILY_BYTES`].
     Full,
+    /// The last line is the same session's same payload, written less than a heartbeat ago
+    /// (live refresh of an idle session, Step 12r): nothing was written.
+    Repeat,
 }
 
 /// Appends `push` to the file of its UTC day.
@@ -42,6 +48,9 @@ pub fn append(dir: &Path, push: &StatuslinePush) -> std::io::Result<Appended> {
     if new_day {
         std::fs::create_dir_all(dir)?;
         prune(dir, push.observed_at);
+    }
+    if !new_day && repeats_last_line(&path, push) {
+        return Ok(Appended::Repeat);
     }
     let mut line = serde_json::to_vec(push)?;
     line.push(b'\n');
@@ -58,6 +67,39 @@ pub fn append(dir: &Path, push: &StatuslinePush) -> std::io::Result<Appended> {
     // One write call under the lock: readers never see half a line from us.
     file.write_all(&line)?;
     Ok(Appended::Written)
+}
+
+/// Whether the file's last line is `push`'s session with the same content, observed less than
+/// [`crate::limits::HEARTBEAT_MS`] before it, as the running app's engine would store it. Only
+/// the end of the file is read, without a lock: a line being written does not parse, and then
+/// the push is simply appended.
+fn repeats_last_line(path: &Path, push: &StatuslinePush) -> bool {
+    if push.payload.session_id.is_none() {
+        return false;
+    }
+    let Ok(mut file) = File::open(path) else {
+        return false;
+    };
+    let Ok(len) = file.seek(SeekFrom::End(0)) else {
+        return false;
+    };
+    let start = len.saturating_sub(TAIL_BYTES);
+    if file.seek(SeekFrom::Start(start)).is_err() {
+        return false;
+    }
+    let mut tail = Vec::new();
+    if file.take(TAIL_BYTES).read_to_end(&mut tail).is_err() {
+        return false;
+    }
+    let body = tail.strip_suffix(b"\n").unwrap_or(&tail);
+    let last = body.rsplit(|&b| b == b'\n').next().unwrap_or(body);
+    let Ok(prev) = serde_json::from_slice::<StatuslinePush>(last) else {
+        return false;
+    };
+    let age = push.observed_at.as_millis() - prev.observed_at.as_millis();
+    prev.payload.session_id == push.payload.session_id
+        && (0..crate::limits::HEARTBEAT_MS).contains(&age)
+        && prev.payload.content_key() == push.payload.content_key()
 }
 
 /// One claimed spool file and its readings, oldest line first.
@@ -207,6 +249,50 @@ mod tests {
         let again = claim(dir.path());
         assert_eq!(again.len(), 1);
         assert_eq!(again[0].pushes, vec![push(T0 + 5000, 9.0)]);
+    }
+
+    #[test]
+    fn a_repeated_payload_is_not_spooled_again_until_a_heartbeat() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        assert_eq!(
+            append(dir.path(), &push(T0, 1.0)).expect("a"),
+            Appended::Written
+        );
+        // Live refresh every 5 s, nothing changed.
+        for i in 1..=10 {
+            assert_eq!(
+                append(dir.path(), &push(T0 + i * 5000, 1.0)).expect("a"),
+                Appended::Repeat
+            );
+        }
+        // A change is written, and so is the same value a heartbeat later.
+        assert_eq!(
+            append(dir.path(), &push(T0 + 60_000, 2.0)).expect("a"),
+            Appended::Written
+        );
+        assert_eq!(
+            append(
+                dir.path(),
+                &push(T0 + 60_000 + crate::limits::HEARTBEAT_MS, 2.0)
+            )
+            .expect("a"),
+            Appended::Written
+        );
+        // Another session with the same numbers is its own reading.
+        let mut other = push(T0 + 60_000 + crate::limits::HEARTBEAT_MS + 1, 2.0);
+        other.payload.session_id = Some("s2".into());
+        assert_eq!(append(dir.path(), &other).expect("a"), Appended::Written);
+        // A half-written last line does not parse: the push is appended.
+        let path = dir.path().join("statusline-20261027.jsonl");
+        let mut f = OpenOptions::new().append(true).open(&path).expect("open");
+        f.write_all(b"{\"observed_at\":").expect("write");
+        drop(f);
+        let next = push(T0 + 60_000 + crate::limits::HEARTBEAT_MS + 2, 2.0);
+        let mut next = next;
+        next.payload.session_id = Some("s2".into());
+        assert_eq!(append(dir.path(), &next).expect("a"), Appended::Written);
+        let claimed = claim(dir.path());
+        assert_eq!(claimed[0].pushes.len(), 4);
     }
 
     #[test]

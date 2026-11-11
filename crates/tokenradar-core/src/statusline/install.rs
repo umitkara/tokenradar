@@ -16,6 +16,8 @@ use crate::domain::Timestamp;
 
 pub const SETTINGS_FILE: &str = "settings.json";
 pub const STATUSLINE_KEY: &str = "statusLine";
+/// Claude Code's live refresh key inside `statusLine` (Step 12r).
+pub const REFRESH_KEY: &str = "refreshInterval";
 
 #[derive(Debug, thiserror::Error)]
 pub enum InstallError {
@@ -46,6 +48,13 @@ pub enum Change {
     Uninstall {
         /// A previous value is put back; otherwise the key is removed.
         restores_previous: bool,
+    },
+    /// The live refresh interval changes (Step 12r). Without our statusline installed only
+    /// `config.toml` changes; install writes it later.
+    Refresh {
+        /// What `settings.json` has now (any number the user wrote).
+        from: Option<u64>,
+        to: Option<u16>,
     },
 }
 
@@ -85,6 +94,12 @@ impl Plan {
         &self.updated
     }
 
+    /// Whether applying changes `settings.json` at all: a refresh change while our statusline
+    /// is not installed only touches `config.toml`.
+    pub fn touches_settings(&self) -> bool {
+        self.original.as_deref() != Some(self.updated.as_str())
+    }
+
     /// Applies the plan. Returns the backup path (`None` when there was no file to back up).
     ///
     /// The install state is stored before `settings.json` changes and cleared after it, so a
@@ -94,8 +109,11 @@ impl Plan {
         if current != self.original {
             return Err(InstallError::Changed(self.settings_path.clone()));
         }
-        if matches!(self.change, Change::Install { .. }) {
+        if !matches!(self.change, Change::Uninstall { .. }) {
             config::save_statusline(app_config_path, &self.config_dir, &self.state)?;
+        }
+        if !self.touches_settings() {
+            return Ok(None);
         }
         let backup = match &self.original {
             Some(text) => {
@@ -149,18 +167,33 @@ pub fn plan_install(
     } else {
         command.to_owned()
     };
-    let value = CommandValue {
-        kind: "command",
-        command: &full,
+    let saved = app_config.account(config_dir).map(|a| &a.statusline);
+    let refresh = saved.and_then(|s| s.refresh_interval_sec);
+    let invalid = |EditError::Invalid| InstallError::Invalid(settings_path.clone());
+    let mut updated = if raw.as_deref().is_some_and(|r| r.starts_with('{')) {
+        // Merge: the user's other keys (`padding`, `hideVimModeIndicator`, their own
+        // `refreshInterval`) stay. Uninstall puts the whole previous value back anyway.
+        let command = Value::String(full.clone()).to_string();
+        let mut t = settings::set_nested(text, STATUSLINE_KEY, "type", Some("\"command\""))
+            .map_err(invalid)?;
+        t = settings::set_nested(&t, STATUSLINE_KEY, "command", Some(&command)).map_err(invalid)?;
+        if let Some(n) = refresh {
+            t = settings::set_nested(&t, STATUSLINE_KEY, REFRESH_KEY, Some(&n.to_string()))
+                .map_err(invalid)?;
+        }
+        t
+    } else {
+        let value = CommandValue {
+            kind: "command",
+            command: &full,
+            refresh_interval: refresh,
+        };
+        settings::set_member(text, STATUSLINE_KEY, &value).map_err(invalid)?
     };
-    let mut updated = settings::set_member(text, STATUSLINE_KEY, &value)
-        .map_err(|EditError::Invalid| InstallError::Invalid(settings_path.clone()))?;
     if original.is_none() {
         updated.push('\n');
     }
-    let position = app_config
-        .account(config_dir)
-        .map_or(ChainPosition::Before, |a| a.statusline.chain_position);
+    let position = saved.map_or(ChainPosition::Before, |s| s.chain_position);
     Ok(Planned::Ready(Plan {
         settings_path,
         config_dir: config_dir.to_path_buf(),
@@ -176,8 +209,80 @@ pub fn plan_install(
             previous_command,
             chain,
             chain_position: position,
+            refresh_interval_sec: refresh,
         },
     }))
+}
+
+/// Plans changing the live refresh interval of `config_dir` to `to` (Step 12r). With our
+/// statusline installed, `refreshInterval` in `settings.json` changes too; otherwise only the
+/// setting does and install writes it later. `None` when nothing would change.
+pub fn plan_refresh(
+    config_dir: &Path,
+    app_config: &AppConfig,
+    to: Option<u16>,
+) -> Result<Option<Plan>, InstallError> {
+    let (settings_path, original) = read_settings(config_dir)?;
+    let saved = app_config
+        .account(config_dir)
+        .map(|a| a.statusline.clone())
+        .unwrap_or_default();
+    let text = original.as_deref().unwrap_or("{}");
+    let invalid = |EditError::Invalid| InstallError::Invalid(settings_path.clone());
+    let raw = settings::raw_member(text, STATUSLINE_KEY).map_err(invalid)?;
+    let ours = raw
+        .and_then(command_of)
+        .as_deref()
+        .is_some_and(is_tokenradar_command);
+    let from = raw.and_then(refresh_of);
+    let settings_change = ours && from != to.map(u64::from);
+    if !settings_change && saved.refresh_interval_sec == to {
+        return Ok(None);
+    }
+    let updated = if settings_change {
+        let value = to.map(|n| n.to_string());
+        settings::set_nested(text, STATUSLINE_KEY, REFRESH_KEY, value.as_deref())
+            .map_err(invalid)?
+    } else {
+        // Unchanged text: `apply` writes `config.toml` only.
+        original.clone().unwrap_or_default()
+    };
+    Ok(Some(Plan {
+        settings_path,
+        config_dir: config_dir.to_path_buf(),
+        change: Change::Refresh { from, to },
+        original: if settings_change {
+            original
+        } else {
+            Some(updated.clone())
+        },
+        updated,
+        state: StatuslineConfig {
+            refresh_interval_sec: to,
+            ..saved
+        },
+    }))
+}
+
+/// The live refresh interval in `config_dir`'s `settings.json`: what Claude Code actually
+/// does, for doctor and the editor. `None` without one or without a readable file.
+pub fn effective_refresh(config_dir: &Path) -> Option<u64> {
+    let (_, text) = read_settings(config_dir).ok()?;
+    let raw = settings::raw_member(text.as_deref()?, STATUSLINE_KEY).ok()??;
+    refresh_of(raw)
+}
+
+/// `refreshInterval` of a `statusLine` value: a positive number of seconds.
+fn refresh_of(raw: &str) -> Option<u64> {
+    let v: Value = serde_json::from_str(raw).ok()?;
+    let n = v.get(REFRESH_KEY)?;
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)] // checked to be ≥ 1
+    let whole = n.as_u64().or_else(|| {
+        n.as_f64()
+            .filter(|f| f.is_finite() && *f >= 1.0)
+            .map(|f| f as u64)
+    });
+    whole.filter(|&n| n > 0)
 }
 
 /// Plans removing TokenRadar's statusline from `config_dir`, restoring what was there before.
@@ -210,8 +315,10 @@ pub fn plan_uninstall(config_dir: &Path, app_config: &AppConfig) -> Result<Plann
         },
         original,
         updated,
+        // The interval the user picked survives a reinstall.
         state: StatuslineConfig {
             chain_position: saved.map_or(ChainPosition::Before, |s| s.chain_position),
+            refresh_interval_sec: saved.and_then(|s| s.refresh_interval_sec),
             ..StatuslineConfig::default()
         },
     }))
@@ -223,6 +330,8 @@ struct CommandValue<'a> {
     #[serde(rename = "type")]
     kind: &'a str,
     command: &'a str,
+    #[serde(rename = "refreshInterval", skip_serializing_if = "Option::is_none")]
+    refresh_interval: Option<u16>,
 }
 
 /// `command` of a `{"type": "command", …}` value.
@@ -460,6 +569,127 @@ mod tests {
             ),
             Err(InstallError::NoConfigDir(_))
         ));
+    }
+
+    #[test]
+    fn install_keeps_the_users_other_statusline_keys() {
+        let original = "{\n  \"statusLine\": {\n    \"type\": \"command\",\n    \"command\": \
+                        \"py s.py\",\n    \"padding\": 2,\n    \"refreshInterval\": 3\n  }\n}\n";
+        let e = cycle(original, None);
+        // While installed: `padding` and the user's own interval stayed.
+        let cfg = AppConfig::load(&e.config).expect("cfg");
+        let plan = ready(plan_install(&e.claude, &cfg, CMD, None).expect("plan"));
+        let v: Value = serde_json::from_str(plan.updated()).expect("json");
+        assert_eq!(v["statusLine"]["padding"], 2);
+        assert_eq!(v["statusLine"]["refreshInterval"], 3);
+        assert_eq!(
+            v["statusLine"]["command"],
+            "C:/Tools/tokenradar.exe statusline --chain"
+        );
+    }
+
+    #[test]
+    fn the_refresh_interval_is_written_changed_and_removed() {
+        let e = env(Some("{\n  \"model\": \"opus\"\n}\n"));
+        // Not installed yet: only the setting changes.
+        let cfg = AppConfig::load(&e.config).expect("cfg");
+        let plan = plan_refresh(&e.claude, &cfg, Some(10))
+            .expect("plan")
+            .expect("a change");
+        assert!(!plan.touches_settings());
+        assert_eq!(plan.apply(&e.config).expect("apply"), None, "no backup");
+        assert_eq!(settings(&e), "{\n  \"model\": \"opus\"\n}\n");
+        let cfg = AppConfig::load(&e.config).expect("cfg");
+        assert_eq!(
+            cfg.account(&e.claude)
+                .expect("account")
+                .statusline
+                .refresh_interval_sec,
+            Some(10)
+        );
+        assert!(
+            plan_refresh(&e.claude, &cfg, Some(10))
+                .expect("plan")
+                .is_none()
+        );
+
+        // Install writes it.
+        let plan = ready(plan_install(&e.claude, &cfg, CMD, None).expect("plan"));
+        assert!(
+            plan.diff().contains("+    \"refreshInterval\": 10"),
+            "{}",
+            plan.diff()
+        );
+        plan.apply(&e.config).expect("apply");
+        assert_eq!(effective_refresh(&e.claude), Some(10));
+
+        // A change while installed touches only that key, with a diff and a backup.
+        let cfg = AppConfig::load(&e.config).expect("cfg");
+        let plan = plan_refresh(&e.claude, &cfg, Some(5))
+            .expect("plan")
+            .expect("a change");
+        assert_eq!(
+            plan.change,
+            Change::Refresh {
+                from: Some(10),
+                to: Some(5)
+            }
+        );
+        assert!(plan.diff().contains("-    \"refreshInterval\": 10"));
+        assert!(plan.apply(&e.config).expect("apply").is_some(), "backup");
+        assert_eq!(effective_refresh(&e.claude), Some(5));
+
+        // Off removes the key.
+        let cfg = AppConfig::load(&e.config).expect("cfg");
+        let plan = plan_refresh(&e.claude, &cfg, None)
+            .expect("plan")
+            .expect("a change");
+        plan.apply(&e.config).expect("apply");
+        assert_eq!(effective_refresh(&e.claude), None);
+        assert!(!settings(&e).contains("refreshInterval"));
+
+        // Uninstall gives back the original bytes; the choice stays for a reinstall.
+        let cfg = AppConfig::load(&e.config).expect("cfg");
+        let plan = plan_refresh(&e.claude, &cfg, Some(30))
+            .expect("plan")
+            .expect("change");
+        plan.apply(&e.config).expect("apply");
+        let cfg = AppConfig::load(&e.config).expect("cfg");
+        ready(plan_uninstall(&e.claude, &cfg).expect("plan"))
+            .apply(&e.config)
+            .expect("apply");
+        assert_eq!(settings(&e), "{\n  \"model\": \"opus\"\n}\n");
+        let cfg = AppConfig::load(&e.config).expect("cfg");
+        assert_eq!(
+            cfg.account(&e.claude)
+                .expect("account")
+                .statusline
+                .refresh_interval_sec,
+            Some(30)
+        );
+    }
+
+    #[test]
+    fn the_users_own_interval_comes_back_on_uninstall() {
+        let original = "{\"statusLine\": {\"type\": \"command\", \"command\": \"py s.py\", \"refreshInterval\": 2}}";
+        let e = env(Some(original));
+        let cfg = AppConfig::load(&e.config).expect("cfg");
+        ready(plan_install(&e.claude, &cfg, CMD, None).expect("plan"))
+            .apply(&e.config)
+            .expect("apply");
+        assert_eq!(effective_refresh(&e.claude), Some(2));
+        let cfg = AppConfig::load(&e.config).expect("cfg");
+        plan_refresh(&e.claude, &cfg, Some(5))
+            .expect("plan")
+            .expect("change")
+            .apply(&e.config)
+            .expect("apply");
+        assert_eq!(effective_refresh(&e.claude), Some(5));
+        let cfg = AppConfig::load(&e.config).expect("cfg");
+        ready(plan_uninstall(&e.claude, &cfg).expect("plan"))
+            .apply(&e.config)
+            .expect("apply");
+        assert_eq!(settings(&e), original);
     }
 
     #[test]

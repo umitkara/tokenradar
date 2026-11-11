@@ -72,6 +72,9 @@ sl-effort-no-thinking = no thinking
 sl-model-with-effort = { $model } · { $effort }
 # When the prompt cache goes cold, as a local time ($time is `14:32`).
 sl-cache-until = →{ $time }
+# The time left until the prompt cache goes cold (Step 12r): `4m`, under two minutes `1m12s`.
+sl-cache-in = { DUR($ms, "compact") }
+sl-cache-in-precise = { DUR($min, "compact") }{ DUR($sec, "compact") }
 # Warm, with neither the time nor the cache lifetime known.
 sl-cache-warm = warm
 sl-cache-cold = cold
