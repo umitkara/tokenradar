@@ -2,7 +2,7 @@
 
 | Sürüm | Bağımlılık | Tahmini süre | Durum |
 |---|---|---|---|
-| v0.3 (13'ten önce yapılabilir) | 18 | 1 oturum | ⬜ |
+| v0.3 (13'ten önce yapılabilir) | 18 | 1 oturum | ✅ (2026-11-11) |
 
 ## Amaç
 
@@ -50,14 +50,14 @@ Windows 11'de görev çubuğuna öğe eklemek için resmi bir API yoktur; DeskBa
 
 ## Görevler
 
-- [ ] **Yöntem spike'ı** ve ADR-058'e ek.
-- [ ] **Görev çubuğu geometrisi:** `TrayNotifyWnd` okuması (`widget/system.rs`), saf konum hesabı (`widget/place.rs`) ve birim testleri. Test durumları: alt kenar, %100/%150, otomatik gizleme, ofset, sığmayan genişlik.
-- [ ] **Tek satır çizimi** ve görev çubuğu teması. Golden testler eklenir.
-- [ ] **Kenetlenme ve yeniden kenetlenme:** `TaskbarCreated`, `WM_DISPLAYCHANGE`, `WM_DPICHANGED`, `WM_SETTINGCHANGE` (görev çubuğu ayarları).
-- [ ] **Z-sırası koruması** (yöntem (a) seçilirse).
-- [ ] **Yedek davranış** ve tek seferlik bildirim.
-- [ ] **Ayarlar** ve Fluent metinleri.
-- [ ] **Ölçüm:** Görev çubuğu modunda ek RAM ve 10 dk boşta CPU. Sonuçlar `docs/perf/` altına yazılır. WinEvent kancası CPU bütçesini etkilememeli.
+- [x] **Yöntem spike'ı** ve ADR-058'e ek.
+- [x] **Görev çubuğu geometrisi:** `TrayNotifyWnd` okuması (`widget/system.rs`), saf konum hesabı (`widget/place.rs`) ve birim testleri. Test durumları: alt kenar, %100/%150, otomatik gizleme, ofset, sığmayan genişlik.
+- [x] **Tek satır çizimi** ve görev çubuğu teması. Golden testler eklenir.
+- [x] **Kenetlenme ve yeniden kenetlenme:** `TaskbarCreated`, `WM_DISPLAYCHANGE`, `WM_DPICHANGED`, `WM_SETTINGCHANGE` (görev çubuğu ayarları).
+- [x] ~~**Z-sırası koruması**~~ gerekmedi: sahiplik z-sırasını koruyor; yalnızca yeniden kenetlenirken öne alınıyor (ADR-058).
+- [x] **Yedek davranış** ve tek seferlik bildirim.
+- [x] **Ayarlar** ve Fluent metinleri.
+- [x] **Ölçüm:** Görev çubuğu modunda ek RAM ve 10 dk boşta CPU. Sonuçlar `docs/perf/` altına yazılır. WinEvent kancası CPU bütçesini etkilememeli.
 
 ## Teknik notlar ve tuzaklar
 
@@ -68,11 +68,11 @@ Windows 11'de görev çubuğuna öğe eklemek için resmi bir API yoktur; DeskBa
 
 ## Kabul kriterleri
 
-- [ ] Görev çubuğu modunda widget bildirim alanının solunda görünür, görev çubuğuna tıklandığında kaybolmaz.
-- [ ] Explorer yeniden başlatıldığında birkaç saniye içinde yeniden kenetlenir.
-- [ ] Desteklenmeyen düzenlerde yüzen moda düşer ve bunu bir kez söyler.
-- [ ] Açık ve koyu görev çubuğunda, %100 ve %150 ölçekte doğru çizilir.
-- [ ] Ek RAM ve CPU 18'deki bütçe içinde kalır. Ölçüm `docs/perf/` altına yazılır.
+- [x] Görev çubuğu modunda widget bildirim alanının solunda görünür, görev çubuğuna tıklandığında kaybolmaz.
+- [x] Explorer yeniden başlatıldığında birkaç saniye içinde yeniden kenetlenir.
+- [x] Desteklenmeyen düzenlerde yüzen moda düşer ve bunu bir kez söyler. (Birim testli; canlı denenmedi.)
+- [x] Açık ve koyu görev çubuğunda, %100 ve %150 ölçekte doğru çizilir. (Canlı yalnızca açık, %125; diğerleri golden.)
+- [x] Ek RAM ve CPU 18'deki bütçe içinde kalır. Ölçüm `docs/perf/` altına yazılır.
 
 ## Doğrulama
 
@@ -90,4 +90,45 @@ Görsel kontrol `CopyFromScreen` ile yapılır: görev çubuğu bölgesinin ekra
 
 ## Devir notu
 
-_(Oturum sonunda doldurulur: yapılanlar · sapmalar · açık konular · sonraki adıma notlar)_
+**Tarih:** 2026-11-11 · **Karar:** ADR-058 (Sonuçlar, Adım 18b) · **Ölçüm:** `docs/perf/2026-11-11-widget-taskbar.md` · **Ekran görüntüsü:** `img/18b-taskbar-en-light.png` (açık görev çubuğu, EN, iki satır)
+
+### Yapılanlar
+- **Yöntem spike'ı:** (a) sahibi `Shell_TrayWnd` olan topmost popup ile (b) `Shell_TrayWnd`'nin çocuğu olan pencere denendi. (b) görünmüyor (XAML içeriği örtüyor), (a) seçildi. Ayrıntılar ve ölçütler ADR-058'de.
+- **Core `config/widget.rs`:** `TaskbarAlign` (`tray` varsayılan, `left`), `taskbar_align`, `taskbar_offset` (mantıksal px, 0–4000'e kırpılır). Eski config'ler varsayılanlarla okunur.
+- **Uygulama `widget/`:**
+  - `place.rs`: saf `Taskbar` (kenar, dikdörtgen, bildirim alanı, otomatik gizleme, ölçek), `Undockable` nedenleri, `dock` (bildirim alanının 8 px solu veya sol uç + ofset), `drag_docked` (sürüklemeyi boş aralıkta yataya kısıtlar), `dock_offset` (bırakılan yerden ofset). Test durumları: alt kenar, %100/%150, otomatik gizleme, yan kenar, ofset, sığmayan genişlik, sol hizalama.
+  - `render.rs`: `Shape::Floating | Docked { height, compact, hover }`. Kenetli şerit görev çubuğu yüksekliğinde, dikeyde ortalı; zemin alfa 1 (görünmez ama fareyi alır), hover dolgusu, yüksek kontrastta plaka. Kompakt tek satır (`7g %34 ███░░ · 5s %72 ████░`). Zemin yokken zaman işaretinin halesi çubuğu keser.
+  - `system.rs`: kenetlenme ve yeniden kenetlenme (`TaskbarCreated`, `WM_DISPLAYCHANGE`, `WM_DPICHANGED`, `WM_SETTINGCHANGE`, 5 sn'lik dikdörtgen yoklaması), sahiplik `GWLP_HWNDPARENT` ile, yeniden kenetlenince `HWND_TOPMOST`, `WM_MOVING` ile yatay sürükleme ve ofsetin kaydı, `WM_NCMOUSEMOVE`/`WM_NCMOUSELEAVE` ile hover, sağ tık menüsünde "Konum" alt menüsü, yüzen moda düşüş ve çalıştırma başına tek bildirim, pencere sahibiyle yok olursa yeniden kurulması. Pencere başlığı ekran okuyucu için Fluent'ten (`WidgetVisual::spoken`).
+  - `fake.rs`/`mod.rs`: `:taskbar` son eki (`TOKENRADAR_FAKE_LIMITS=widget:both:taskbar`).
+- **`notify.rs`:** başlık ve gövdeyi doğrudan alan `show_text`.
+- **Ayarlar:** Genel → Masaüstü widget'ı: "Konum" segment kontrolü; görev çubuğundayken hizalama ve uzaklık seçimleri, opaklık yalnızca yüzen modda. Tam ekran anahtarı görev çubuğundayken işaretli ve kilitli. `TASKBAR_OFFSET_PRESETS`; sürüklemeyle gelen değer listeye eklenir.
+- **Fluent (EN/TR):** `widget-menu-mode*`, `widget-undocked-*` (neden seçicili), `widget-a11y*`, `general-widget-mode*`, `general-widget-align*`, `general-widget-offset*`, `general-widget-fullscreen-docked-hint`.
+- **Testler:** core ofset kırpma; yerleşim (8 yeni); render (42 yeni golden: `docked-<tema>-<durum>-<ölçek>.png`, 7 durum × 3 tema × 2 ölçek; yüzen golden'lar değişmedi) ve kenetli şerit için 3 davranış testi; ekran okuyucu adı.
+- **Dokümanlar:** ADR-058 Sonuçlar (Adım 18b); design-language §4 görev çubuğu modu; perf raporu.
+
+### Sapmalar
+- **Z-sırası kancası yok.** Plan (a) için `SetWinEventHook` ile öne alma öngörüyordu. Spike'ta, kanca olmadan 90 sn ve 30 ön plan değişikliğinde widget hiç arkada kalmadı (kullanıcı gözle doğruladı). Tek istisna yeni bir sahip: yeniden kenetlenirken pencere bir kez öne alınıyor. Explorer yeniden başlatma testinde bu eksiklik görüldü ve düzeltildi.
+- **Kanca yerine yoklama.** Görev çubuğu ve bildirim alanı dikdörtgenleri 5 sn'de bir okunuyor (tam ekran yoklamasıyla aynı zamanlayıcı). Bildirim alanı büyürse şerit en geç 5 sn sonra kayıyor.
+- **Otomatik gizlemede yüzen moda düşülüyor** (plan iki yolu açık bırakmıştı).
+- **Görev çubuğundayken tam ekran gizlemesi zorunlu**, opaklık seçimi gizli. Plan bunlardan söz etmiyordu.
+- **Erişilebilirlik:** `WM_GETOBJECT` uygulanmadı; ad pencere başlığından geliyor (Windows'un varsayılan erişilebilirlik vekili başlığı okur). Ekran okuyucuyla denenmedi.
+- **Kurulu uygulama** canlı denemeler ve ölçüm için kullanıcı onayıyla kapatıldı ve sonra yeniden başlatıldı. Explorer iki kez kullanıcı onayıyla yeniden başlatıldı.
+
+### Doğrulama
+- `cargo fmt --all -- --check` ve `cargo clippy --workspace --all-targets -- -D warnings` temiz. `cargo test --workspace`: 569 geçti, 4 ignored.
+- `pnpm -C app check`, `lint` ve `test` temiz (133 test).
+- Ölçüm (release, sahte mod, 10 dk): görev çubuğu modunda private WS +1,77 MB (bütçe ≤ 8 MB), boşta CPU +%0,023 (bütçe < %0,1). Aynı build ile yüzen mod karşılaştırması sistem belleği azaldığı için yarıda durdu; ayrıntı perf raporunda. Widget thread'inin bağlam değişimleri ölçülemedi.
+- Canlı (`CopyFromScreen`, %125, açık görev çubuğu): bildirim alanının solunda iki satır, zemin görünmüyor. Explorer iki kez yeniden başlatıldı: görev çubuğu yokken yüzüyor, ≈ 5 sn içinde yeniden kenetleniyor; öne alma düzeltmesinden sonra saniyede bir alınan görüntülerde hep görünür. Görev çubuğuna tıklamalarda arkada kalmadığını kullanıcı spike'ta gözle doğruladı.
+
+### Açık konular
+- **Elle denenecekler:** hover vurgusu, görev çubuğu boyunca sürükleme ve ofsetin yeniden başlatmadan sonra geri gelmesi, sağ tık menüsünden mod değişimi, çift tıklama, ortalanmış simgelerle çakışma (hizalama ve ofsetle çözülebilmeli).
+- **Canlı görülmeyenler:** koyu görev çubuğu, %100 ve %150 ölçek, yüksek kontrast ve kompakt tek satır yalnızca golden'larda görüldü. Görev çubuğu temasını veya ölçeği değiştirmek kullanıcının ayarlarını değiştirir. Otomatik gizleme ve yan kenar düşüşü birim testli, canlı denenmedi.
+- **Bildirim alanının büyümesi** canlı gözlenemedi (geçici ikon taşma menüsüne gitti). Yoklama bunu kapsamalı.
+- **Giriş kuyruğu bağı:** Süreçler arası sahiplik widget thread'ini Explorer'ın görev çubuğu thread'ine bağlayabilir; ölçülmedi. Explorer donarsa widget'ın da donup donmadığı denenmedi.
+- **İkincil monitör görev çubukları** kapsam dışı kaldı (plan gereği).
+- 18'den kalanlar sürüyor: uyanma tabanı, ikili boyutun 15 MB sınırı, kısayol çakışmasının ayarlarda gösterilmemesi, sanal masaüstleri.
+
+### Sonraki adıma notlar
+- Yeni bir görev çubuğu durumu (ör. ikincil monitör) `place::Taskbar`'a alan ekleyip `Undockable`'a neden ekleyerek gelir; konum hesabı saf ve testli kalmalı.
+- Sahibin değiştiği her yerde `raise()` çağrılmalı; sahip değişimi z-sırasını kendiliğinden düzeltmiyor.
+- Widget thread'i bloklanmamalı: görev çubuğu modunda Explorer'ın girdi işlemesini etkileyebilir.

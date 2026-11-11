@@ -156,7 +156,13 @@ Native çizilir (`tiny-skia` + layered window, ADR-058). Üst çubuk haftalık, 
   - Renkler uygulama temasından gelir: tema "Sistem" ise Windows'un uygulama teması (`AppsUseLightTheme`), panelle aynı. Yüksek kontrastta sistem renkleri kullanılır.
   - Opaklık (%40–100) yalnızca zemini etkiler; metin ve çubuklar her zaman opaktır.
   - Bayat değer: çubuk %50 opak, değer `text-3`. Tahmin: kesikli çubuk ve `≈`. Okunamayan limit: sağ üstte hata noktası.
-- **Görev çubuğu modu:** Bildirim alanının solunda durur. Zemin şeffaftır, görev çubuğuyla kaynaşır; hover'da görev çubuğu düğmeleri gibi ince bir vurgu çizilir. Renkler uygulama temasından değil görev çubuğu temasından gelir. Görev çubuğu ≥ 40 mantıksal px ise iki satır, değilse tek satır kullanılır: `7g %34 ▮▮▮▯▯ · 5s %72 ▮▮▮▮▯`.
+- **Görev çubuğu modu (Adım 18b):** Varsayılan olarak bildirim alanının 8 px solunda durur; "Sol uçta" hizalaması ve ofset (mantıksal px) ayarlanabilir. Sürükleme yalnızca görev çubuğu boyunca yataydır ve ofseti kaydeder.
+  - Yükseklik görev çubuğunun yüksekliğidir; içerik dikeyde ortalanır. Ölçek görev çubuğunun DPI'ından gelir.
+  - Zemin şeffaftır (alfa 1: görünmez ama fareyi alır). Hover vurgusu görev çubuğu düğmelerinin ince dolgusudur: açıkta siyah α 10, koyuda beyaz α 15, köşe yarıçapı 4, üstten ve alttan 4 px içeride. Yüksek kontrastta opak plaka kalır.
+  - Renkler uygulama temasından değil görev çubuğu temasından (`SystemUsesLightTheme`) gelir.
+  - Görev çubuğu ≥ 40 mantıksal px ise iki satır, değilse tek satır kullanılır: `7g %34 ███░░ · 5s %72 ████░` (çubuk 40 px, ayırıcının iki yanında 8 px). 5 saatlik pencere yoksa yalnızca haftalık gösterilir.
+  - Zemin olmadığı için zaman işaretinin halesi kutu çizmez, çubuğu keser.
+  - Yandaki, üstteki, kendiliğinden gizlenen veya sığmayan görev çubuğunda yüzen moda düşülür ve bu bir kez bildirilir.
 
 ## 5. Yerleşim ve şekil
 

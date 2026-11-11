@@ -75,7 +75,7 @@ Doğrulanmış Ultra hesaplarında 5 saatlik pencere kalktı (ADR-041). Bu adım
 | # | Adım | Bağımlılık | Durum |
 |---|---|---|---|
 | 18 | [Native kompakt şerit (yüzen mod)](18-widget.md) | 12 | ✅ (2026-11-11, ADR-058). Açık: sürükleme, menü, kısayol, tam ekran, %150/HC ve sanal masaüstü elle denenmedi |
-| 18b | [Widget'ın görev çubuğu modu](18b-gorev-cubugu-modu.md) | 18 | ⬜ 13'ten önce yapılabilir (ADR-058) |
+| 18b | [Widget'ın görev çubuğu modu](18b-gorev-cubugu-modu.md) | 18 | ✅ (2026-11-11, ADR-058). Açık: hover, sürükleme, menüden mod değişimi, koyu görev çubuğu ve %100/%150 elle denenmedi |
 | 19 | [Çoklu hesap ve WSL](19-coklu-hesap-ve-wsl.md) | 12 | ⬜ |
 
 ### v0.4 — Codex
