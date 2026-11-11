@@ -131,6 +131,9 @@ pub fn live_from_status(s: &StatusReply) -> Value {
         "statusline_last_seen": s.statusline_last_seen,
         "live_sessions": s.live_sessions.len(),
         "limits": limits,
+        // The working folder's git status: whether the untracked scan was turned off after
+        // slow runs. No counts, no path (Step 12r).
+        "git_untracked_skipped": s.git.as_ref().map(|g| g.untracked_skipped),
     })
 }
 

@@ -197,6 +197,24 @@ fn ahead_and_behind_hide_without_an_upstream_or_a_distance() {
 }
 
 #[test]
+fn a_narrow_line_gives_up_the_git_status_before_the_limit() {
+    let line = sample();
+    let prefs = StatuslinePrefs {
+        items: vec![
+            Item::new(SegmentKind::SevenDay),
+            Item::new(SegmentKind::GitStatus),
+        ],
+        ..StatuslinePrefs::default()
+    }
+    .normalized();
+    let wide = draw(Locale::En, &line, &prefs, None);
+    assert!(wide.ends_with("+2 ~3 ?1 \u{21E1}1"), "{wide}");
+    let narrow = draw(Locale::En, &line, &prefs, Some(12));
+    assert!(narrow.starts_with("7d"), "{narrow}");
+    assert!(!narrow.contains("~3"), "{narrow}");
+}
+
+#[test]
 fn the_git_marks_take_one_cell_even_in_east_asian_terminals() {
     use unicode_width::UnicodeWidthChar;
     for c in ['\u{21E1}', '\u{21E3}', '*', '\u{2713}', '+', '~', '?', '!'] {

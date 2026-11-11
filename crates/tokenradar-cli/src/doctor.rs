@@ -5,6 +5,7 @@ use std::path::PathBuf;
 
 use tokenradar_core::doctor::{self, Input};
 use tokenradar_core::domain::Timestamp;
+use tokenradar_core::ipc::StatusQuery;
 use tokenradar_i18n::Arg;
 
 use crate::context::Context;
@@ -28,7 +29,19 @@ pub fn run(ctx: &Context, out: Option<PathBuf>) -> Outcome {
     let input = Input {
         producer: &producer,
         paths,
-        live: report::from_app(ctx).as_ref().map(doctor::live_from_status),
+        // The working folder, so the report says whether the app gave up counting untracked
+        // files there (Step 12r); the folder itself stays out of the bundle.
+        live: report::from_app_with(
+            ctx,
+            StatusQuery {
+                cwd: std::env::current_dir()
+                    .ok()
+                    .map(|d| d.to_string_lossy().into_owned()),
+                ..StatusQuery::default()
+            },
+        )
+        .as_ref()
+        .map(doctor::live_from_status),
     };
     match doctor::write(&out, &input) {
         Ok(path) => {

@@ -55,6 +55,11 @@ fn status_json(status: &StatusReply, locale: Locale) -> serde_json::Result<Strin
 
 /// The app's full status; `None` when it does not run or does not answer.
 pub fn from_app(ctx: &Context) -> Option<StatusReply> {
+    from_app_with(ctx, StatusQuery::default())
+}
+
+/// [`from_app`] with a query of the caller's, e.g. doctor's working folder (Step 12r).
+pub fn from_app_with(ctx: &Context, query: StatusQuery) -> Option<StatusReply> {
     let name = ctx.pipe_name.as_deref()?;
     let mut client = Client::connect(name, CONNECT_TIMEOUT).ok()?;
     let requests = [
@@ -65,7 +70,7 @@ pub fn from_app(ctx: &Context) -> Option<StatusReply> {
                 version: PROTOCOL_VERSION,
             }),
         ),
-        Request::new(2, Op::StatusGet(StatusQuery::default())),
+        Request::new(2, Op::StatusGet(query)),
     ];
     let replies = with_deadline(EXCHANGE_TIMEOUT, move || client.call(&requests)).ok()?;
     replies.into_iter().find(|r| r.id == 2)?.into_data().ok()
