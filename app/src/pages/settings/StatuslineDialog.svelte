@@ -2,7 +2,8 @@
   Shows the `settings.json` change line by line before anything is written (ADR-009). Only the
   plan shown here can be applied: `apply_statusline` (or `apply_claude_mod`) takes its token, and
   the core still refuses if the file changed in between. Closing the dialog discards the plan.
-  `target` picks the change: the statusline bridge or the Claude Code mod (ADR-047).
+  `target` picks the change: the statusline bridge or the Claude Code mod (ADR-047). The live
+  refresh (Step 12r) opens with a plan made by the caller, since most of its changes need none.
 -->
 <script lang="ts">
 import { tick } from "svelte";
@@ -28,7 +29,9 @@ interface Props {
 let { target = "statusline", currentCommand, ondone }: Props = $props();
 
 let dialog: HTMLDialogElement;
-let mode = $state<"install" | "uninstall">("install");
+let mode = $state<"install" | "uninstall" | "refresh">("install");
+/** The refresh interval being planned, in seconds; `null`: off. */
+let refresh = $state<number | null>(null);
 let chain = $state(true);
 let plan = $state<StatuslinePlanView | ClaudeModPlanView | null>(null);
 let error = $state<string | null>(null);
@@ -52,7 +55,11 @@ async function makePlan() {
   busy = true;
   error = null;
   const r =
-    target === "mod" ? await commands.planClaudeMod(mode) : await commands.planStatusline(action);
+    mode === "refresh"
+      ? await commands.planStatuslineRefresh(refresh)
+      : target === "mod"
+        ? await commands.planClaudeMod(mode)
+        : await commands.planStatusline(action);
   busy = false;
   if (r.status === "ok") plan = r.data;
   else {
@@ -71,6 +78,16 @@ export async function open(next: "install" | "uninstall") {
   dialog.showModal();
   await tick();
   await makePlan();
+}
+
+/** Shows a refresh plan the caller already made (`plan_statusline_refresh`). */
+export function openRefresh(seconds: number | null, first: StatuslinePlanView) {
+  mode = "refresh";
+  refresh = seconds;
+  plan = first;
+  applied = false;
+  error = null;
+  dialog.showModal();
 }
 
 async function setChain(e: Event & { currentTarget: HTMLInputElement }) {
@@ -109,7 +126,13 @@ function closed() {
 
 <dialog bind:this={dialog} onclose={closed} aria-labelledby="statusline-dialog-title">
   <h2 id="statusline-dialog-title">
-    {t(mode === "install" ? `${k}-dialog-install` : `${k}-dialog-uninstall`)}
+    {t(
+      mode === "refresh"
+        ? "statusline-dialog-refresh"
+        : mode === "install"
+          ? `${k}-dialog-install`
+          : `${k}-dialog-uninstall`,
+    )}
   </h2>
   <p>{t("statusline-dialog-intro")}</p>
 
@@ -129,7 +152,9 @@ function closed() {
     <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
     <pre class="diff" aria-label={t("statusline-diff")} tabindex="0">{#each ready.diff as line, i (i)}<span class={line.kind}>{line.text}</span>{/each}</pre>
     {#if statuslineReady?.chained_command}
-      <p class="note">{t("statusline-chain-note")}</p>
+      <p class="note">
+        {t(mode === "refresh" ? "statusline-refresh-chain-note" : "statusline-chain-note")}
+      </p>
     {/if}
     {#if statuslineReady?.chained_mangled}
       <p class="note warn">{t("statusline-mangled")}</p>
@@ -155,7 +180,13 @@ function closed() {
     <Button onclick={() => dialog.close()}>{t(ready ? "settings-cancel" : "settings-close")}</Button>
     {#if ready}
       <Button variant="primary" disabled={busy} onclick={confirm}>
-        {t(mode === "install" ? "statusline-confirm-install" : "statusline-confirm-uninstall")}
+        {t(
+          mode === "refresh"
+            ? "statusline-confirm-refresh"
+            : mode === "install"
+              ? "statusline-confirm-install"
+              : "statusline-confirm-uninstall",
+        )}
       </Button>
     {/if}
   </div>

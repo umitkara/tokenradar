@@ -21,7 +21,8 @@ use tokenradar_core::paths::Paths;
 use tokenradar_core::providers::claude::{self, AccountDescriptor};
 use tokenradar_core::statusline::claude_mod::{self, ModChange, ModPlan, ModPlanned, ModState};
 use tokenradar_core::statusline::install::{
-    Change, InstallError, Plan, Planned, plan_install, plan_uninstall,
+    Change, InstallError, Plan, Planned, effective_refresh, plan_install, plan_refresh,
+    plan_uninstall,
 };
 use tokenradar_core::statusline::same_dir;
 use tokenradar_core::statusline::shell::{Shell, exe_for_command};
@@ -58,6 +59,11 @@ pub enum StatuslineView {
     Installed {
         /// Chained: this command still runs before or after TokenRadar's line.
         chained_command: Option<String>,
+        /// The live refresh the user picked, in seconds; `None`: off (Step 12r).
+        refresh_interval_sec: Option<u16>,
+        /// `statusLine.refreshInterval` in `settings.json`: what Claude Code actually does.
+        /// Differs from the pick when the user edited the file.
+        settings_refresh_sec: Option<u32>,
     },
     /// TokenRadar runs as the statusline but the app did not install it (CLI, by hand).
     InstalledElsewhere,
@@ -149,6 +155,11 @@ pub enum StatuslinePlanView {
     },
     AlreadyInstalled,
     NotInstalled,
+    /// Refresh: nothing to change.
+    Unchanged,
+    /// Refresh: only TokenRadar's own setting changed (the bridge is not in `settings.json`,
+    /// or the file already says so); saved without a diff to confirm.
+    Saved,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Type)]
@@ -363,6 +374,9 @@ fn statusline(dir: &Path, config: &AppConfig) -> StatuslineView {
             match saved.filter(|s| s.installed) {
                 Some(s) => StatuslineView::Installed {
                     chained_command: s.previous_command.clone().filter(|_| s.chain),
+                    refresh_interval_sec: s.refresh_interval_sec,
+                    settings_refresh_sec: effective_refresh(dir)
+                        .map(|n| u32::try_from(n).unwrap_or(u32::MAX)),
                 },
                 None => StatuslineView::InstalledElsewhere,
             }
@@ -407,6 +421,7 @@ pub fn plan(
             chain,
         } => (previous_command.clone().filter(|_| *chain), false),
         Change::Uninstall { restores_previous } => (None, *restores_previous),
+        Change::Refresh { .. } => (None, false),
     };
     let settings_path = display(&plan.settings_path);
     let diff = diff_lines(&plan.diff());
@@ -418,6 +433,50 @@ pub fn plan(
         chained_mangled: chained_command.as_deref().is_some_and(|c| shell.mangles(c)),
         chained_command,
         restores_previous,
+    })
+}
+
+/// Plans the live refresh interval of the primary account's statusline (Step 12r). A change
+/// of `settings.json` goes through the diff the user confirms; a change of TokenRadar's own
+/// setting alone is saved at once.
+pub fn plan_refresh_change(
+    app: &AppHandle,
+    seconds: Option<u16>,
+) -> Result<StatuslinePlanView, StatuslineError> {
+    let paths = paths().map_err(|message| StatuslineError::Io { message })?;
+    let config = load_config(&paths);
+    let dir = accounts(&config)
+        .into_iter()
+        .next()
+        .ok_or(StatuslineError::NoDirectory)?
+        .config_dir;
+    // Only the offered intervals: a value from elsewhere snaps to the nearest one.
+    let seconds = seconds.and_then(|n| config::refresh_interval(i64::from(n)));
+    let Some(plan) = plan_refresh(&dir, &config, seconds).map_err(install_error)? else {
+        return Ok(StatuslinePlanView::Unchanged);
+    };
+    if !plan.touches_settings() {
+        plan.apply(paths.config_path()).map_err(install_error)?;
+        tracing::info!(change = ?plan.change, "statusline refresh saved");
+        return Ok(StatuslinePlanView::Saved);
+    }
+    // A chained command runs on every refresh too: the dialog says so.
+    let chained_command = config
+        .account(&dir)
+        .map(|a| &a.statusline)
+        .filter(|s| s.chain && seconds.is_some())
+        .and_then(|s| s.previous_command.clone());
+    let shell = Shell::detect();
+    let settings_path = display(&plan.settings_path);
+    let diff = diff_lines(&plan.diff());
+    let token = app.state::<Pending>().show(Shown::Statusline(plan));
+    Ok(StatuslinePlanView::Ready {
+        token,
+        settings_path,
+        diff,
+        chained_mangled: chained_command.as_deref().is_some_and(|c| shell.mangles(c)),
+        chained_command,
+        restores_previous: false,
     })
 }
 

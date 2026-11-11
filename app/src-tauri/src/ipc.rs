@@ -78,6 +78,7 @@ pub fn builder() -> Builder<tauri::Wry> {
             send_test_notification,
             get_data_sources,
             plan_statusline,
+            plan_statusline_refresh,
             apply_statusline,
             discard_statusline_plan,
             plan_claude_mod,
@@ -355,6 +356,17 @@ async fn plan_statusline(
     action: StatuslineAction,
 ) -> Result<StatuslinePlanView, StatuslineError> {
     blocking(move || sources::plan(&app, action)).await
+}
+
+/// Plans the statusline's live refresh, in seconds, `None` for off (Step 12r). A `ready`
+/// plan goes to `apply_statusline` like an install.
+#[tauri::command]
+#[specta::specta]
+async fn plan_statusline_refresh(
+    app: AppHandle,
+    seconds: Option<u16>,
+) -> Result<StatuslinePlanView, StatuslineError> {
+    blocking(move || sources::plan_refresh_change(&app, seconds)).await
 }
 
 /// Applies the plan the user confirmed; returns the backup's path.

@@ -19,7 +19,8 @@ import {
   type TerminalFontView,
 } from "../../lib/ipc/bindings";
 import { inTauri } from "../../lib/ipc/runtime";
-import { store } from "./state.svelte";
+import StatuslineDialog from "./StatuslineDialog.svelte";
+import { loadSources, store } from "./state.svelte";
 import AddPalette from "./statusline/AddPalette.svelte";
 import { StatuslineEditor } from "./statusline/editor.svelte";
 import { canDraw, previewFont } from "./statusline/font";
@@ -43,12 +44,14 @@ import {
   lines,
   MARGINS,
   moveItem,
+  REFRESH_INTERVALS,
   RESERVED_COLUMNS,
   removeItem,
   removeLine,
   SAMPLE_STATES,
   selectionAfterRemove,
   stateKey,
+  statuslineErrorKey,
   type Tab,
   THEMES,
   themeKey,
@@ -70,6 +73,9 @@ let palette = $state<AddPalette>();
 let presetDialog = $state<PresetDialog>();
 let importDialog = $state<ImportDialog>();
 let fontDialog = $state<TerminalFontDialog>();
+let refreshDialog = $state<StatuslineDialog>();
+/** "Saved." after a refresh change that needed no diff, or the backup's path. */
+let refreshNotice = $state<string | null>(null);
 /** The terminal font state (Step 12o); `null` until loaded. */
 let fontView = $state<TerminalFontView | null>(null);
 let copied = $state<string | null>(null);
@@ -82,6 +88,20 @@ const items = $derived(draft?.items ?? []);
 const selected = $derived(editor.selected);
 const item = $derived(selected === null ? undefined : items[selected]);
 const bridge = $derived(store.sources?.statusline.state ?? null);
+const installed = $derived(
+  store.sources?.statusline.state === "installed" ? store.sources.statusline : null,
+);
+/** The live refresh the user picked (Step 12r); 0: off. */
+const refreshPick = $derived(installed?.refresh_interval_sec ?? 0);
+/** What Claude Code does: `settings.json` wins over the pick. */
+const refreshActual = $derived(installed?.settings_refresh_sec ?? null);
+const refreshDiffers = $derived(installed !== null && (refreshActual ?? 0) !== refreshPick);
+const refreshes = $derived(
+  REFRESH_INTERVALS.map((n) => ({
+    value: n,
+    label: n === 0 ? t("statusline-refresh-off") : t("statusline-refresh-every", { n }),
+  })),
+);
 
 const themes = $derived(THEMES.map((v) => ({ value: v, label: t(themeKey(v)) })));
 const colorModes = $derived(COLOR_MODES.map((v) => ({ value: v, label: t(colorModeKey(v)) })));
@@ -210,6 +230,30 @@ function replace(prefs: StatuslinePrefs) {
   editor.selected = prefs.items.length > 0 ? 0 : null;
 }
 
+async function setRefresh(n: number) {
+  refreshNotice = null;
+  const seconds = n === 0 ? null : n;
+  const r = await commands.planStatuslineRefresh(seconds);
+  if (r.status === "error") {
+    onerror(statuslineErrorKey(r.error));
+    return;
+  }
+  onerror(null);
+  if (r.data.outcome === "ready") refreshDialog?.openRefresh(seconds, r.data);
+  else {
+    if (r.data.outcome === "saved") refreshNotice = t("statusline-refresh-saved");
+    await loadSources();
+  }
+}
+
+async function refreshDone(result: { backup: string | null } | null) {
+  if (!result) return;
+  refreshNotice = result.backup
+    ? t("statusline-done", { path: result.backup })
+    : t("statusline-refresh-saved");
+  await loadSources();
+}
+
 async function exportLine() {
   if (!draft) return;
   const text = await commands.exportStatusline(draft);
@@ -255,6 +299,29 @@ function keydown(e: KeyboardEvent) {
           {t("statusline-editor-to-sources")}
         </button>
       </p>
+    {/if}
+    {#if installed}
+      <div class="refresh">
+        <Segmented
+          label={t("statusline-refresh")}
+          value={refreshPick}
+          options={refreshes}
+          onchange={setRefresh}
+        />
+        <p class="caption" role="status">
+          {refreshNotice ??
+            (refreshPick === 0
+              ? t("statusline-refresh-off-hint")
+              : t("statusline-refresh-cost", { n: refreshPick }))}
+        </p>
+      </div>
+      {#if refreshDiffers}
+        <p class="note">
+          {refreshActual === null
+            ? t("statusline-refresh-differs-off")
+            : t("statusline-refresh-differs", { n: refreshActual })}
+        </p>
+      {/if}
     {/if}
     {#if draft}
       <div class="toolbar">
@@ -389,6 +456,7 @@ function keydown(e: KeyboardEvent) {
             absent={editor.preview.absent.includes(item.kind)}
             theme={draft.theme}
             {capsuleNote}
+            liveRefresh={(refreshActual ?? 0) > 0}
             flexHint={item.kind === "flex" ? flexHintKey(items, index) : null}
             onchange={(patch, key) => setItems(updateItem(items, index, patch), key)}
             onmove={(by) => move(index, index + by)}
@@ -411,6 +479,7 @@ function keydown(e: KeyboardEvent) {
     <ImportDialog bind:this={importDialog} onapply={replace} />
     <TerminalFontDialog bind:this={fontDialog} onchange={(v) => (fontView = v)} />
   {/if}
+  <StatuslineDialog bind:this={refreshDialog} currentCommand={null} ondone={refreshDone} />
 </div>
 
 <style>
@@ -429,6 +498,7 @@ function keydown(e: KeyboardEvent) {
   }
   .title,
   .toolbar,
+  .refresh,
   .preview-bar {
     display: flex;
     flex-wrap: wrap;

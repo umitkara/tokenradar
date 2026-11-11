@@ -41,6 +41,8 @@ interface Props {
   theme: Theme;
   /** What the installed font means for the capsule (`fontNoteKey`); `null`: nothing to say. */
   capsuleNote: string | null;
+  /** Claude Code redraws the line on a timer (Step 12r): a countdown keeps moving. */
+  liveRefresh: boolean;
   onchange: (patch: Partial<Item>, key: string | null) => void;
   onmove: (by: -1 | 1) => void;
   /** Gives every separator, and the ones added later, this item's glyph. */
@@ -56,6 +58,7 @@ let {
   flexHint,
   theme,
   capsuleNote,
+  liveRefresh,
   onchange,
   onmove,
   onapplyall,
@@ -79,6 +82,8 @@ const barStyles = $derived(
   })),
 );
 const showsBar = $derived(barStyles.length > 0 && item.format === "bar");
+/** A countdown without live refresh stands still between messages (ADR-059). */
+const frozen = $derived(item.kind === "cache_timer" && item.format === "countdown" && !liveRefresh);
 /** A note under the style picker: the bar is left out of Powerline blocks, or the font lacks it. */
 const barNote = $derived(
   theme !== "plain" && item.bar_style !== "capsule"
@@ -142,6 +147,18 @@ function swatchKey(e: KeyboardEvent) {
         options={formats}
         onchange={(format) => onchange({ format }, null)}
       />
+      {#if frozen}<p class="note">{t("statusline-countdown-frozen")}</p>{/if}
+    </div>
+  {/if}
+
+  {#if item.kind === "git_status"}
+    <div class="switches">
+      <Toggle
+        checked={item.untracked}
+        label={t("statusline-untracked")}
+        onchange={(untracked) => onchange({ untracked }, null)}
+      />
+      <span class="caption">{t("statusline-untracked-hint")}</span>
     </div>
   {/if}
 

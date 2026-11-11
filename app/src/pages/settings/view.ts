@@ -370,6 +370,7 @@ export function newItem(kind: SegmentKind, separator = ""): Item {
     reset_format: "countdown",
     bar_width: 8,
     bar_style: "blocks",
+    untracked: true,
   };
 }
 
@@ -611,6 +612,8 @@ export function applySeparator(prefs: StatuslinePrefs, glyph: string): Statuslin
 /** The widths a space offers and the right margins, in columns (prefs.rs `MAX_SPACE`, `MAX_MARGIN`). */
 export const SPACE_WIDTHS = [1, 2, 3, 4, 5, 6, 7, 8] as const;
 export const MARGINS = [0, 1, 2, 3, 4, 5, 6, 7, 8] as const;
+/** The statusline's live refresh, in seconds; 0 is off (Step 12r, the core's `REFRESH_INTERVALS`). */
+export const REFRESH_INTERVALS = [0, 5, 10, 30] as const;
 /** The columns Claude Code keeps free at the right (render.rs `CLAUDE_CODE_RESERVED`). */
 export const RESERVED_COLUMNS = 4;
 

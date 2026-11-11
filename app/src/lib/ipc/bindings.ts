@@ -58,6 +58,11 @@ export const commands = {
 	 *  `apply_statusline` gets the returned token.
 	 */
 	planStatusline: (action: StatuslineAction) => typedError<StatuslinePlanView, StatuslineError>(__TAURI_INVOKE("plan_statusline", { action })),
+	/**
+	 *  Plans the statusline's live refresh, in seconds, `None` for off (Step 12r). A `ready`
+	 *  plan goes to `apply_statusline` like an install.
+	 */
+	planStatuslineRefresh: (seconds: number | null) => typedError<StatuslinePlanView, StatuslineError>(__TAURI_INVOKE("plan_statusline_refresh", { seconds })),
 	/**  Applies the plan the user confirmed; returns the backup's path. */
 	applyStatusline: (token: number) => typedError<string | null, StatuslineError>(__TAURI_INVOKE("apply_statusline", { token })),
 	discardStatuslinePlan: () => __TAURI_INVOKE<void>("discard_statusline_plan"),
@@ -474,7 +479,18 @@ export type Format =
 /**  Cache ratio: the whole session's, `cache 91% (session)`. */
 "session" | 
 /**  Folders: the name and how many folders were added, `alpha +2`. */
-"with_added";
+"with_added" | 
+/**  Cache timer: the local time it goes cold, `→14:32 1h` (Step 12r). */
+"clock" | 
+/**
+ *  Cache timer: the time left, `4m`, `1m12s`. Frozen between two draws without live
+ *  refresh.
+ */
+"countdown" | 
+/**  Git status: one mark while anything is uncommitted, nothing when clean. */
+"dirty" | 
+/**  Git status: commits ahead of and behind the upstream, `⇡1 ⇣2`. */
+"ahead_behind";
 
 export type Freshness = 
 /**  Under 10 minutes old. */
@@ -571,6 +587,11 @@ export type Item = {
 	/**  Kinds with a bar: its cells, one of [`BAR_WIDTHS`]; 8 on every other kind. */
 	bar_width: number,
 	bar_style: BarStyle,
+	/**
+	 *  `git_status`: count untracked files; off scans with `-uno`, for large trees
+	 *  (Step 12r). `true` on every other kind.
+	 */
+	untracked: boolean,
 };
 
 /**  Signals for the notifier (Step 11), which applies its own rules, hysteresis and quiet hours. */
@@ -921,6 +942,11 @@ export type SegmentKind = "five_hour" | "seven_day" |
 "worktree" | 
 /**  The repository of the `origin` remote. */
 "repo" | 
+/**
+ *  The working tree's staged, modified and untracked files and the upstream distance,
+ *  from the app (Step 12r).
+ */
+"git_status" | 
 /**  A separator glyph of the user's choice. */
 "separator" | 
 /**  Starts a new output line. */
@@ -1059,7 +1085,14 @@ chained_command: string | null;
 /**  Install: Git Bash would drop the backslashes of the chained command. */
 chained_mangled: boolean; 
 /**  Uninstall: the previous value comes back. */
-restores_previous: boolean } | { outcome: "already_installed" } | { outcome: "not_installed" };
+restores_previous: boolean } | { outcome: "already_installed" } | { outcome: "not_installed" } | 
+/**  Refresh: nothing to change. */
+{ outcome: "unchanged" } | 
+/**
+ *  Refresh: only TokenRadar's own setting changed (the bridge is not in `settings.json`,
+ *  or the file already says so); saved without a diff to confirm.
+ */
+{ outcome: "saved" };
 
 /**  What the line shows. */
 export type StatuslinePrefs = {
@@ -1101,7 +1134,14 @@ export type StatuslineView =
 /**  The user's own statusline command, kept and chained by default. */
 current_command: string | null } | { state: "installed"; 
 /**  Chained: this command still runs before or after TokenRadar's line. */
-chained_command: string | null } | 
+chained_command: string | null; 
+/**  The live refresh the user picked, in seconds; `None`: off (Step 12r). */
+refresh_interval_sec: number | null; 
+/**
+ *  `statusLine.refreshInterval` in `settings.json`: what Claude Code actually does.
+ *  Differs from the pick when the user edited the file.
+ */
+settings_refresh_sec: number | null } | 
 /**  TokenRadar runs as the statusline but the app did not install it (CLI, by hand). */
 { state: "installed_elsewhere" };
 

@@ -71,7 +71,12 @@ describe("limitsOutcome", () => {
     expect(
       limitsOutcome(
         sources({
-          statusline: { state: "installed", chained_command: null },
+          statusline: {
+            state: "installed",
+            chained_command: null,
+            refresh_interval_sec: null,
+            settings_refresh_sec: null,
+          },
           api: { granted: true, granted_at: null, outdated: false, status: null },
         }),
       ),
