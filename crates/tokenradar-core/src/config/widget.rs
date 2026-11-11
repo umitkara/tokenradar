@@ -3,7 +3,9 @@
 //! ```toml
 //! [widget]
 //! enabled = true
-//! mode = "floating"          # floating | taskbar (Step 18b; floating until then)
+//! mode = "floating"          # floating | taskbar (Step 18b)
+//! taskbar_align = "tray"     # taskbar mode: next to the notification area | at the left end
+//! taskbar_offset = 0         # taskbar mode: logical px away from that anchor (a drag sets it)
 //! opacity = 85               # background opacity in percent, 40..=100
 //! click_through = false
 //! hide_in_fullscreen = true
@@ -25,6 +27,9 @@ use specta::Type;
 pub const MIN_WIDGET_OPACITY: u8 = 40;
 pub const DEFAULT_WIDGET_OPACITY: u8 = 85;
 pub const DEFAULT_WIDGET_HOTKEY: &str = "Ctrl+Alt+Shift+R";
+/// Largest taskbar offset in logical pixels: wider than any taskbar's free space, so it only
+/// stops nonsense values; the widget is kept on the taskbar anyway.
+pub const MAX_TASKBAR_OFFSET: u16 = 4000;
 
 /// Where the widget lives.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, Type)]
@@ -33,8 +38,20 @@ pub enum WidgetMode {
     /// On the desktop, always on top, draggable.
     #[default]
     Floating,
-    /// Docked on the primary taskbar (Step 18b). Until then it behaves like `Floating`.
+    /// Docked on the primary taskbar (Step 18b). Best effort: where docking fails the widget
+    /// floats and tries again later (ADR-058).
     Taskbar,
+}
+
+/// Where a docked widget is anchored on the taskbar.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "snake_case")]
+pub enum TaskbarAlign {
+    /// Just left of the notification area; the offset moves it further left.
+    #[default]
+    Tray,
+    /// At the taskbar's left end; the offset moves it to the right. For centered icons.
+    Left,
 }
 
 /// The widget settings the user changes; the position is kept apart ([`WidgetPosition`]).
@@ -55,6 +72,10 @@ pub struct WidgetPrefs {
     pub pace_mark: bool,
     /// The global shortcut that toggles click-through, as [`Hotkey`] text.
     pub hotkey: String,
+    /// Taskbar mode: the anchor.
+    pub taskbar_align: TaskbarAlign,
+    /// Taskbar mode: logical pixels away from the anchor, `0..=MAX_TASKBAR_OFFSET`.
+    pub taskbar_offset: u16,
 }
 
 impl Default for WidgetPrefs {
@@ -67,16 +88,20 @@ impl Default for WidgetPrefs {
             hide_in_fullscreen: true,
             pace_mark: false,
             hotkey: DEFAULT_WIDGET_HOTKEY.to_owned(),
+            taskbar_align: TaskbarAlign::Tray,
+            taskbar_offset: 0,
         }
     }
 }
 
 impl WidgetPrefs {
-    /// Opacity within `MIN_WIDGET_OPACITY..=100`; a shortcut that does not parse goes back to
-    /// the default, a valid one is written in its canonical form.
+    /// Opacity within `MIN_WIDGET_OPACITY..=100`, the taskbar offset within
+    /// `0..=MAX_TASKBAR_OFFSET`; a shortcut that does not parse goes back to the default, a
+    /// valid one is written in its canonical form.
     #[must_use]
     pub fn normalized(mut self) -> Self {
         self.opacity = self.opacity.clamp(MIN_WIDGET_OPACITY, 100);
+        self.taskbar_offset = self.taskbar_offset.min(MAX_TASKBAR_OFFSET);
         self.hotkey = Hotkey::parse(&self.hotkey)
             .unwrap_or_else(Hotkey::default_key)
             .to_string();
@@ -272,6 +297,12 @@ mod tests {
         }
         .normalized();
         assert_eq!((p.opacity, p.hotkey.as_str()), (100, "Alt+Shift+W"));
+        let p = WidgetPrefs {
+            taskbar_offset: u16::MAX,
+            ..WidgetPrefs::default()
+        }
+        .normalized();
+        assert_eq!(p.taskbar_offset, MAX_TASKBAR_OFFSET);
     }
 
     #[test]

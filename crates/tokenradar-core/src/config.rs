@@ -68,8 +68,8 @@ use crate::statusline::same_dir;
 
 mod widget;
 pub use widget::{
-    DEFAULT_WIDGET_HOTKEY, DEFAULT_WIDGET_OPACITY, Hotkey, HotkeyKey, MIN_WIDGET_OPACITY,
-    WidgetMode, WidgetPosition, WidgetPrefs, WidgetSection,
+    DEFAULT_WIDGET_HOTKEY, DEFAULT_WIDGET_OPACITY, Hotkey, HotkeyKey, MAX_TASKBAR_OFFSET,
+    MIN_WIDGET_OPACITY, TaskbarAlign, WidgetMode, WidgetPosition, WidgetPrefs, WidgetSection,
 };
 
 /// Version of the consent text. Raising it asks every user again: a consent given for an
