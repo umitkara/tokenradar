@@ -386,3 +386,52 @@ fn statusline_prefs_are_their_own_table_and_never_break_the_file() {
     let cfg = AppConfig::load(&path).expect("load");
     assert_eq!(cfg.statusline, prefs.normalized());
 }
+
+#[test]
+fn widget_settings_and_position_are_saved_apart() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let path = dir.path().join("config.toml");
+    let prefs = WidgetPrefs {
+        enabled: true,
+        opacity: 70,
+        hotkey: "alt+ctrl+w".into(),
+        ..WidgetPrefs::default()
+    };
+    save_widget(&path, &prefs).expect("save prefs");
+    let position = WidgetPosition {
+        monitor: r"\\.\DISPLAY2".into(),
+        x: 0.25,
+        y: 1.0,
+    };
+    save_widget_position(&path, &position).expect("save position");
+    // Saving the settings again must not drop the position under them.
+    save_widget(
+        &path,
+        &WidgetPrefs {
+            pace_mark: true,
+            ..prefs.clone()
+        },
+    )
+    .expect("save again");
+    let cfg = AppConfig::load(&path).expect("load");
+    assert!(cfg.widget.prefs.enabled && cfg.widget.prefs.pace_mark);
+    assert_eq!(cfg.widget.prefs.opacity, 70);
+    assert_eq!(cfg.widget.prefs.hotkey, "Ctrl+Alt+W");
+    assert_eq!(cfg.widget.position, Some(position));
+}
+
+#[test]
+fn a_malformed_widget_section_falls_back_to_its_defaults() {
+    let cfg = AppConfig::parse(
+        "[widget]
+enabled = \"yes\"
+
+[data]
+raw_retention_days = 30
+",
+    )
+    .expect("parse");
+    assert_eq!(cfg.widget, WidgetSection::default());
+    assert!(!cfg.widget.prefs.enabled);
+    assert_eq!(cfg.data.raw_retention_days, 30);
+}

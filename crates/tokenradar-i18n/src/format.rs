@@ -171,7 +171,7 @@ impl Weekday {
         }
     }
 
-    const fn abbr(self, locale: Locale) -> &'static str {
+    pub const fn abbr(self, locale: Locale) -> &'static str {
         match (locale, self) {
             (Locale::En, Self::Mon) => "Mon",
             (Locale::En, Self::Tue) => "Tue",

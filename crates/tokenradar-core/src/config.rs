@@ -30,6 +30,9 @@
 //! layout = "single"      # single | double
 //! bar = true
 //!
+//! [widget]              # see `config::widget`
+//! enabled = true
+//!
 //! [[accounts]]
 //! provider = "claude"
 //! config_dir = 'C:\Users\Ada\.claude'
@@ -62,6 +65,12 @@ use toml_edit::{ArrayOfTables, DocumentMut, Item, Table, value};
 use crate::notifier::NotifyPrefs;
 use crate::statusline::line::StatuslinePrefs;
 use crate::statusline::same_dir;
+
+mod widget;
+pub use widget::{
+    DEFAULT_WIDGET_HOTKEY, DEFAULT_WIDGET_OPACITY, Hotkey, HotkeyKey, MIN_WIDGET_OPACITY,
+    WidgetMode, WidgetPosition, WidgetPrefs, WidgetSection,
+};
 
 /// Version of the consent text. Raising it asks every user again: a consent given for an
 /// older text no longer counts.
@@ -97,6 +106,9 @@ pub struct AppConfig {
     /// `[statusline]`: what the statusline shows. Not `[accounts.statusline]` (install state).
     #[serde(deserialize_with = "lenient")]
     pub statusline: StatuslinePrefs,
+    /// `[widget]`: the compact strip's settings and where it was left (Step 18).
+    #[serde(deserialize_with = "lenient")]
+    pub widget: WidgetSection,
     pub accounts: Vec<AccountConfig>,
     /// Schema 1's single consent; applies to accounts that have none of their own.
     #[serde(rename = "api_consent")]
@@ -508,6 +520,23 @@ pub fn save_statusline_prefs(path: &Path, prefs: &StatuslinePrefs) -> Result<(),
     let prefs = prefs.clone().normalized();
     edit(path, |doc| {
         prefs.write_toml(table_mut(doc.as_table_mut(), "statusline"), true);
+        Ok(())
+    })
+}
+
+/// Stores `[widget]` (normalized); the position under it is left as it was.
+pub fn save_widget(path: &Path, prefs: &WidgetPrefs) -> Result<(), ConfigError> {
+    save_section(path, "widget", &prefs.clone().normalized())
+}
+
+/// Stores `[widget.position]`, where the user left the widget.
+pub fn save_widget_position(path: &Path, position: &WidgetPosition) -> Result<(), ConfigError> {
+    let position = position.clone().normalized();
+    edit(path, |doc| {
+        let table = table_mut(table_mut(doc.as_table_mut(), "widget"), "position");
+        table["monitor"] = value(position.monitor.as_str());
+        table["x"] = value(position.x);
+        table["y"] = value(position.y);
         Ok(())
     })
 }
