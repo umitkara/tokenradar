@@ -65,19 +65,19 @@ Masaüstünde her zaman üstte duran, sürüklenebilir, isteğe bağlı bir komp
 
 ## Görevler
 
-- [ ] **Metin spike'ı (ilk iş, ≤ 1 saat):**
+- [x] **Metin spike'ı (ilk iş, ≤ 1 saat):**
   - (a) DirectWrite: sistem fontu (`Segoe UI Variable`, yoksa `Segoe UI`), grayscale antialias, bir DIB'e çizip `tiny-skia` bitmap'iyle birleştirme. Gömülü font yoktur, ikili boyut artmaz, Windows ile tutarlı görünür.
   - (b) `fontdue` + gömülü, alt kümesi çıkarılmış mono font (`scripts/subset-font.py` var). Tamamen saf Rust'tır, testlerde golden görüntü verir.
   - Karşılaştır: %100/%150'de netlik, Türkçe karakterler (`Çar`, `İ`), ikili boyut farkı, ek RAM. Seçimi ve gerekçesini ADR-058'e yaz.
-- [ ] **Model ve çizim:** `widget/model.rs` + `widget/render.rs`. `Palette` ve eşikler `tray/render.rs` ile paylaşılır (gerekirse ortak bir modüle taşınır, davranış değişmez). Golden testler: koyu/açık/yüksek kontrast × %100/%150 × (tek satır, iki satır, bayat, tahmin).
-- [ ] **Pencere ve mesaj döngüsü:** `widget/system.rs`. Açma ve kapatma `AppHandle`'dan bir kanal ile yapılır. Model güncellemeleri tray'in güncellendiği yerden aynı modelle gönderilir.
-- [ ] **Sürükleme ve yapışma:** `widget/place.rs` saf geometri (16 px eşik, kenar/köşe, çalışma alanına sıkıştırma). Konum `Prefs`'te saklanır.
-- [ ] **Menü, çift tıklama, odak çalmama.**
-- [ ] **Tam ekran durum makinesi:** API bir trait arkasındadır; sahte uygulamayla test edilir.
-- [ ] **Tıklama geçirgenliği + global kısayol + tray menüsü öğesi.**
-- [ ] **Ayarlar:** `Prefs` alanları, `PrefsView`, ayarlar sayfası bölümü, `en` ve `tr` Fluent anahtarları, `tauri-specta` bağlamaları.
-- [ ] **Galeri:** Sahte sahneler (`widget:weekly`, `widget:both`, `widget:stale`, `widget:estimate`) ile ekran görüntüsü.
-- [ ] **Ölçüm:**
+- [x] **Model ve çizim:** `widget/model.rs` + `widget/render.rs`. `Palette` ve eşikler `tray/render.rs` ile paylaşılır (gerekirse ortak bir modüle taşınır, davranış değişmez). Golden testler: koyu/açık/yüksek kontrast × %100/%150 × (tek satır, iki satır, bayat, tahmin).
+- [x] **Pencere ve mesaj döngüsü:** `widget/system.rs`. Açma ve kapatma `AppHandle`'dan bir kanal ile yapılır. Model güncellemeleri tray'in güncellendiği yerden aynı modelle gönderilir.
+- [x] **Sürükleme ve yapışma:** `widget/place.rs` saf geometri (16 px eşik, kenar/köşe, çalışma alanına sıkıştırma). Konum `Prefs`'te saklanır.
+- [x] **Menü, çift tıklama, odak çalmama.**
+- [x] **Tam ekran durum makinesi:** API bir trait arkasındadır; sahte uygulamayla test edilir.
+- [x] **Tıklama geçirgenliği + global kısayol + tray menüsü öğesi.**
+- [x] **Ayarlar:** `Prefs` alanları, `PrefsView`, ayarlar sayfası bölümü, `en` ve `tr` Fluent anahtarları, `tauri-specta` bağlamaları.
+- [x] **Galeri:** Sahte sahneler (`widget:weekly`, `widget:both`, `widget:stale`, `widget:estimate`) ile ekran görüntüsü.
+- [x] **Ölçüm:**
   - `scripts/measure-memory.ps1 -ProcessName tokenradar-app` ile önce tray-only, sonra widget açık durumda ölçüm alınır.
   - Sonuçlar: ek private working set, 10 dk boşta CPU, saniyedeki uyanma sayısı.
   - Rapor `docs/perf/YYYY-MM-DD-widget.md` olarak kaydedilir. Kişisel kullanım sayıları yazılmaz.
@@ -93,13 +93,13 @@ Masaüstünde her zaman üstte duran, sürüklenebilir, isteğe bağlı bir komp
 
 ## Kabul kriterleri
 
-- [ ] Widget açılıp kapatılabilir. Kapalıyken thread ve pencere yoktur.
+- [x] Widget açılıp kapatılabilir. Kapalıyken thread ve pencere yoktur.
 - [ ] Odak çalmadan çalışır, kenarlara yapışır, konumu monitör bazında hatırlanır.
-- [ ] 5s penceresi yoksa tek satır gösterir; tahmin `≈` ile işaretlidir.
+- [x] 5s penceresi yoksa tek satır gösterir; tahmin `≈` ile işaretlidir.
 - [ ] Tam ekran video ve sunum modlarında otomatik gizlenir.
 - [ ] Tıklama geçirgenliği açılıp kapatılabilir; kısayol ve tray menüsü çalışır.
 - [ ] Tema, DPI ve yüksek kontrast değişince doğru çizilir.
-- [ ] Ek RAM ≤ 8 MB, boşta CPU < %0,1. Ölçüm `docs/perf/` altında, sonuç ADR-058'de.
+- [x] Ek RAM ≤ 8 MB, boşta CPU < %0,1. Ölçüm `docs/perf/` altında, sonuç ADR-058'de.
 
 ## Doğrulama
 
@@ -117,4 +117,50 @@ Görsel kontrol: Widget native bir penceredir, CDP ile görülemez. Ekran görü
 
 ## Devir notu
 
-_(Oturum sonunda doldurulur: yapılanlar · sapmalar · açık konular · sonraki adıma notlar)_
+**Tarih:** 2026-11-11 · **Karar:** ADR-058 (Sonuçlar bölümü) · **Ölçüm:** `docs/perf/2026-11-11-widget.md` · **Ekran görüntüleri:** `img/18-widget-tr-dark.png` (koyu, TR, iki satır, zaman işareti), `img/18-widget-en-light-estimate.png` (açık, EN, tahmin)
+
+### Yapılanlar
+- **Metin spike'ı:** DirectWrite + `Segoe UI Variable` ile `fontdue` + Geist Mono karşılaştırıldı (netlik, Türkçe karakterler, boyut, bellek). Kullanıcı DirectWrite'ı seçti; ayrıntı ADR-058'de.
+- **Core `config/widget.rs`:** `WidgetPrefs` (enabled, mode, opacity 40–100, click_through, hide_in_fullscreen, pace_mark, hotkey), `WidgetMode`, `WidgetPosition` (monitör aygıt adı + çalışma alanına göre 0–1 konum), `Hotkey` ayrıştırma ve kanonik yazım. `[widget]` hoşgörülü okunur. `save_widget` ayarları, `save_widget_position` yalnızca `[widget.position]`'ı yazar.
+- **Uygulama `widget/`:**
+  - `model.rs`: `TrayModel`'den `WidgetModel`; `WidgetVisual` yeniden çizim anahtarıdır. Sıfırlama 24 saatten uzaksa gün kısaltması, değilse yukarı yuvarlanmış `s:dd`. Zaman işareti 1/400 adımla. `next_change` dakika zamanlayıcısını kurar.
+  - `render.rs`: `tiny-skia`, tema/HC paletleri, kesikli tahmin çubuğu, bayatlık, kritik çentik, hata noktası. Premultiplied BGRA çıkış.
+  - `text.rs`: DirectWrite → Direct2D WIC hedefi → `tiny-skia` bileşimi. Tabular rakamlar.
+  - `place.rs`: 16 px yapışma, göreli konum, varsayılan sağ alt köşe (panelin `Rect`'i yeniden kullanılıyor).
+  - `fullscreen.rs`: `UserState` trait'i ve `Gate`; sahte uygulamayla testli.
+  - `system.rs`: layered window, mesaj döngüsü, sürükleme ve yapışma, çift tıklama → panel, sağ tık menüsü (paneli aç, tıklama geçirgenliği, opaklık alt menüsü, widget ayarları, gizle), `RegisterHotKey`, tam ekran zamanlayıcısı, tema/DPI/HC/monitör olaylarında yeniden çizim.
+  - `mod.rs`: Tauri tarafından yönetilen durum. Widget kapalıyken thread yoktur. `is_light` tema kuralı (aşağıda, Sapmalar).
+  - `fake.rs`: `widget:weekly|both|stale|estimate` sahneleri; widget zorla açılır, config'e yazılmaz.
+- **Tray:** "Widget'ı göster/gizle" menü öğesi ve tıklama geçirgenliği açıkken "Widget'ı etkileşimli yap". Widget modeli tray presenter'ından yalnızca değişince gönderiliyor.
+- **Ayarlar:** Genel sekmesinde "Masaüstü widget'ı" kartı (`#widget` çapası, `targetFor("widget")`): göster, arka plan opaklığı, zaman işareti, tam ekranda gizle, tıklama geçirgenliği, kısayol kaydedici (`HotkeyRecorder.svelte`, fiziksel tuş koduyla, klavye düzeninden bağımsız). `set_widget_prefs` komutu ve bağlamalar.
+- **Fluent (EN/TR):** `tray-menu-widget-*`, `widget-*` (etiketler `7d/5h`, `7g/5s`, menü), `general-widget-*`.
+- **Testler:** Core widget config testleri; model, render (42 golden: koyu/açık/HC × %100/%150 × 7 durum), yerleşim, tam ekran kapısı, metin motoru duman testi, tray menü ve model iletimi, `is_light`; ön yüz `hotkeyFromKey` ve `targetFor`.
+- **Dokümanlar:** ADR-058 Sonuçlar; design-language (yüzen mod ayrıntıları); architecture (widget WebView sayfası değil, native); perf raporu.
+
+### Sapmalar
+- **Tema moda göre (kullanıcı kararı).** Plan "Sistem" temada `SystemUsesLightTheme` diyordu. Yüzen widget uygulama temasına uyuyor (`AppsUseLightTheme`, açık/koyu seçimi geçerli). Görev çubuğu modu (18b) görev çubuğu temasına uyacak. Önce kullanıcıya sormadan uygulama temasını bağlamıştım; fark edilince soruldu ve karar ADR'ye yazıldı.
+- **Opaklık yalnızca zemini etkiliyor.** Metin ve çubuklar opak kalıyor. Bedel: açık tema düşük opaklıkta koyu bir pencerenin üstünde griye dönüyor ve etiketlerin kontrastı düşüyor (ekran görüntüsünde görüldü).
+- **Sağ tık menüsü odak alıyor.** `TrackPopupMenu`'nün dışarı tıklayınca kapanması için `SetForegroundWindow` gerekiyor. Sol tık, sürükleme ve çift tıklama odak almıyor.
+- **Mod seçicisi arayüzde yok.** `mode` config'te ve bağlamalarda var; 18b'ye kadar gösterilmiyor.
+- **Plandaki `fake.rs` "galeri" görevi** bileşen galerisine değil, `TOKENRADAR_FAKE_LIMITS=widget:<sahne>` sahnelerine dönüştü. Widget native olduğu için WebView galerisinde gösterilemiyor.
+- **Kurulu uygulama** ekran görüntüleri ve ölçüm için kullanıcı onayıyla kapatıldı ve sonra yeniden başlatıldı. Bütün çalıştırmalar sahte modda yapıldı (çekirdek, veritabanı ve pipe yok); ayar denemeleri `portable` kopyanın config'ine yazıldı.
+
+### Doğrulama
+- `cargo fmt --all -- --check` ve `cargo clippy --workspace --all-targets -- -D warnings` temiz. `cargo test --workspace`: 558 geçti, 4 ignored.
+- `pnpm -C app check`, `lint` ve `test` temiz (133 test).
+- Bellek: widget açıkken private WS +1,73 MB (bütçe ≤ 8 MB). Boşta CPU +%0,005 (bütçe < %0,1). Boyut: `tokenradar-app.exe` 14.907.392 B (14,22 MiB); 12o kaydına göre +430 KB (12p ve fiyat commit'leri dahil). Widget'ın payı ayrılamadı: karşılaştırma için `main` derlemesi bellek azlığından durduruldu.
+- Canlı (`CopyFromScreen`, %125): koyu ve açık tema, TR ve EN, iki satır, tek satır, bayat, tahmin, zaman işareti, %55 ve %100 opaklık. Ayarlar kartı CDP ile denendi: anahtarlar config'e yazıyor, widget yeniden çiziliyor, `WS_EX_TRANSPARENT` eklenip kaldırılıyor. Kapatınca pencere ve thread yok oluyor.
+- **Canlı görülmeyenler:** %100 ve %150 ölçek ile yüksek kontrast yalnızca golden'larda görüldü. Sürükleme ve yapışma, sağ tık menüsü, çift tıklama, global kısayol, tam ekran gizleme ve çoklu monitör elle denenmedi; bunlar fare ve klavye girdisi ister (SendKeys kullanılmıyor). Kullanıcının bir kez elle denemesi gerekiyor.
+
+### Açık konular
+- **Elle denenecekler:** sürükle-bırak ve kenara yapışma, konumun yeniden başlatmadan sonra geri gelmesi, sağ tık menüsünün dışarı tıklayınca kapanması, `Ctrl+Alt+Shift+R`, tam ekran video ve sunumda gizlenme, %150 ve yüksek kontrast.
+- **Sanal masaüstleri:** davranış denenmedi (masaüstü değiştirmek klavye girdisi ister). Topmost tool window'un tüm masaüstlerinde görünmesi bekleniyor; 18b'de ya da kullanıcı denemesinde not edilmeli.
+- **Uyanma tabanı:** Widget thread'i tam ekran yoklaması kapalıyken bile ≈ 0,9 bağlam değişimi/s gösteriyor; hiçbir pencere mesajına karşılık gelmiyor. Kaynağı bulunamadı. CPU payı ölçülemeyecek kadar küçük.
+- **Tam ekran yoklamasının maliyeti:** `SHQueryUserNotificationState` her çağrıda ≈ 7 bağlam değişimi üretiyor (Explorer'a RPC). İstenirse önce yerel ve ucuz bir kontrol yapılabilir: ön plandaki pencere monitörünü kaplıyor mu? Ancak bu kontrol sunum modunu kaçırabilir.
+- **İkili boyut 15 MB'a yakın:** MB ile okunursa 92 KB pay kaldı. Widget'ın payı (`windows` crate özellikleri) `main` ile karşılaştırılarak ölçülmeli; bütçenin MB mi MiB mi olduğu da netleşmeli.
+- **Kısayol çakışması:** Başka bir uygulama kısayolu almışsa yalnızca log'a uyarı düşüyor; ayarlar sayfası bunu göstermiyor.
+
+### Sonraki adıma notlar (18b)
+- `widget::is_light` görev çubuğu modunda zaten `SystemUsesLightTheme` döndürüyor; `system.rs` mod değişince `Msg::Prefs` ile yeniden çiziyor.
+- Yerleşim `place.rs`'te saf; görev çubuğu kenetlenmesi için ayrı bir saf modül aynı deseni izleyebilir.
+- Ayarlar kartına mod seçicisi eklenecek; `WidgetMode::Taskbar` bağlamalarda hazır.

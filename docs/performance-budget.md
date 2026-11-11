@@ -13,7 +13,7 @@
 | Panel açık | ≤ 130 MB | WebView2 süreçleri dahil |
 | Ana pencere açık (v0.2) | ≤ 180 MB | Büyük listeler sanallaştırılmış |
 | Tüm pencereler kapandıktan `warm_ttl + 10 s` sonra | ≤ 30 MB | **Adım 02'de doğrulandı:** WebView2 süreçleri `destroy()` sonrası ~0,4 s'de çıkıyor, 60 s sonra 3,6 MB (ADR-023). |
-| Widget açık (v0.3) | Tray + ≤ 8 MB | Baştan native çizilir: `tiny-skia` + layered window, WebView yok (ADR-058). Yüzen ve görev çubuğu modu için aynı bütçe. |
+| Widget açık (v0.3) | Tray + ≤ 8 MB | Baştan native çizilir: `tiny-skia` + layered window, WebView yok (ADR-058). Yüzen ve görev çubuğu modu için aynı bütçe. Adım 18 (yüzen): +1,73 MB. |
 
 ## CPU
 
@@ -48,7 +48,7 @@
 | Öğe | Bütçe |
 |---|---|
 | Installer (NSIS) | ≤ 12 MB |
-| `tokenradar-app.exe` | ≤ 15 MB. Adım 11b: 12,04 MiB. Adım 12o: 13,81 MiB (`lzma-rust2`, `ttf-parser`, +314 KiB) |
+| `tokenradar-app.exe` | ≤ 15 MB. Adım 11b: 12,04 MiB. Adım 12o: 13,81 MiB (`lzma-rust2`, `ttf-parser`, +314 KiB). Adım 18: 14,22 MiB (DirectWrite/Direct2D/WIC özellikleri dahil) |
 | `tokenradar.exe` (CLI) | ≤ 3 MB. Adım 07: 2,95 MiB. Adım 11b: doctor ile `--release` 3,14 MiB; `release-cli` profili (`opt-level = "s"`, ADR-034) ile 2,17 MiB. Adım 12c: 2,21 MiB. Adım 12i: 2,30 MiB. Adım 12k: 2,33 MiB (`unicode-width`, +28,5 KiB). Adım 12m: 2,35 MiB. Adım 12n: 2,37 MiB. Adım 12o: 2,37 MiB (+1,5 KiB). Adım 12p: 2,37 MiB (simge setleri ve iki bar stili, +5 KiB) |
 | Frontend bundle (panel sayfası, gzip) | ≤ 60 KB JS + ≤ 15 KB CSS |
 | Frontend bundle (ana pencere, gzip) | ≤ 180 KB JS |

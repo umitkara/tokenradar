@@ -27,7 +27,7 @@
                          │  │ ikili halka  │          │ istek üzerine │               │              │       │
                          │  └──────────────┘   ┌──────▼─────┐ ┌──────▼─────┐ ┌───────▼─────┐ ┌──────▼─────┐ │
                          │                     │ panel      │ │ main (v0.2)│ │ settings /  │ │ widget     │ │
-                         │                     │ (WebView2) │ │ (WebView2) │ │ onboarding  │ │ (v0.3)     │ │
+                         │                     │ (WebView2) │ │ (WebView2) │ │ onboarding  │ │ (native)   │ │
                          │                     └────────────┘ └────────────┘ └─────────────┘ └────────────┘ │
                          └──────────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -59,7 +59,7 @@
 - Sık açılıp kapanan panel bu sayede anında açılır. Belleğin geri verilmesi ise birkaç saniye gecikir.
 - Son webview yok edildiğinde WebView2 tarayıcı süreçlerinin de sonlanması beklenir. **Bu varsayım Adım 02'de ölçülerek doğrulanır.** Doğrulanamazsa ADR-004'te tanımlanan yedek plana (UI'yı ayrı bir sürece bölmek) geçilir.
 
-**Pencereler:** `panel` (tray popover), `main` (analitik, v0.2), `settings`, `onboarding`, `widget` (v0.3). Vite **çok sayfalı** derlenir; her pencere yalnızca kendi bundle'ını yükler.
+**Pencereler:** `panel` (tray popover), `main` (analitik, v0.2), `settings`, `onboarding`. Vite **çok sayfalı** derlenir; her pencere yalnızca kendi bundle'ını yükler. `widget` bir WebView penceresi değildir: kendi thread'inde çalışan, `tiny-skia` ve DirectWrite ile çizilen native bir layered window'dur (`app/src-tauri/src/widget/`, ADR-058). Yalnızca kullanıcı açınca vardır.
 
 ## 3. Repo düzeni
 
@@ -73,9 +73,9 @@ TokenRadar/
 │  └─ tokenradar-cli/            # bin: tokenradar
 ├─ app/
 │  ├─ src-tauri/                 # bin: tokenradar-app (Tauri kabuğu, tray, pencereler, IPC sunucusu)
-│  └─ src/                       # Svelte 5 frontend (çok sayfalı: panel, main, settings, onboarding, widget)
+│  └─ src/                       # Svelte 5 frontend (çok sayfalı: panel, main, settings, onboarding)
 │     ├─ lib/ (components, stores, i18n, ipc-bindings)
-│     └─ pages/ (panel/, main/, settings/, onboarding/, widget/)
+│     └─ pages/ (panel/, main/, settings/, onboarding/)
 ├─ locales/{en,tr}/*.ftl         # TEK çeviri kaynağı (Rust ve TS ortak kullanır)
 ├─ integrations/claude-code/     # Claude Code mod'u (tamamlayıcı; kurulum paketine girer, ADR-043, ADR-047)
 ├─ testdata/                     # anonimleştirilmiş JSONL / API / statusline fixture'ları

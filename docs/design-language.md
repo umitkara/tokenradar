@@ -151,6 +151,11 @@ Başlığın altında iki eşit düğmeli bir segment kontrolü: `Özet | Ayrın
 Native çizilir (`tiny-skia` + layered window, ADR-058). Üst çubuk haftalık, alt çubuk 5 saatlik pencere; 5 saatlik pencere yoksa tek çubuk çizilir (ADR-041). Yüzde ve dakika çözünürlüğünde geri sayım gösterilir; `≈`, bayatlık ve önem renkleri paneldekiyle aynıdır.
 
 - **Yüzen mod:** 220×44 px (iki satır) veya 220×28 px (tek satır), köşe yarıçapı 8 px. Zemin yarı saydam tema rengidir; layered pencerede Acrylic kullanılamaz.
+  - Satırlar: `7g ███░░ %34 · Çar` ve `5s ████░ %72 · 1:48`. Sıfırlama 24 saatten uzaksa gün kısaltması, değilse yukarı yuvarlanmış `s:dd` gösterilir.
+  - Metin DirectWrite ve sistem fontuyla çizilir (`Segoe UI Variable Text`, yoksa `Segoe UI`), tabular rakamlar. Değer `text-1` ve medium, etiket ve sıfırlama `text-2`.
+  - Renkler uygulama temasından gelir: tema "Sistem" ise Windows'un uygulama teması (`AppsUseLightTheme`), panelle aynı. Yüksek kontrastta sistem renkleri kullanılır.
+  - Opaklık (%40–100) yalnızca zemini etkiler; metin ve çubuklar her zaman opaktır.
+  - Bayat değer: çubuk %50 opak, değer `text-3`. Tahmin: kesikli çubuk ve `≈`. Okunamayan limit: sağ üstte hata noktası.
 - **Görev çubuğu modu:** Bildirim alanının solunda durur. Zemin şeffaftır, görev çubuğuyla kaynaşır; hover'da görev çubuğu düğmeleri gibi ince bir vurgu çizilir. Renkler uygulama temasından değil görev çubuğu temasından gelir. Görev çubuğu ≥ 40 mantıksal px ise iki satır, değilse tek satır kullanılır: `7g %34 ▮▮▮▯▯ · 5s %72 ▮▮▮▮▯`.
 
 ## 5. Yerleşim ve şekil
