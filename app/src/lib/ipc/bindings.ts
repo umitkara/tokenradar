@@ -629,7 +629,13 @@ export type LimitView = {
 	/**  From our thresholds; the provider's own label is `provider_severity`. */
 	severity: Severity,
 	provider_severity: string | null,
+	/**  The leading reading's source: the newest, the better one within 30 s. */
 	source: Source,
+	/**
+	 *  Another source whose reading lifted `percent` above what `source` says alone: the
+	 *  statusline rounds down, the API to the nearest point (ADR-060).
+	 */
+	combined_with: Source | null,
 	/**  Set when `source` is [`Source::Estimate`]. */
 	estimate_reason: EstimateReason | null,
 	observed_at: Timestamp,

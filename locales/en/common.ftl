@@ -52,6 +52,7 @@ source-estimate = Estimated
 source-codex-log = Codex log
 source-updated = Updated { DUR($ms) } ago
 source-updated-now = Updated just now
+source-combined = Live and API combined: Live rounds down, the API to the nearest point
 
 ## Sessions
 

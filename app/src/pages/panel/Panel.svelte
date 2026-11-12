@@ -241,7 +241,11 @@ $effect(() => {
 
     <footer>
       {#if primary}
-        <SourceBadge source={primary.source} observedAt={primary.observed_at} />
+        <SourceBadge
+          source={primary.source}
+          observedAt={primary.observed_at}
+          combinedWith={primary.combined_with}
+        />
         <span class="updated">{updated}</span>
       {/if}
       <span class="actions tip-end">

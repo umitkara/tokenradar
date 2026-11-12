@@ -135,6 +135,7 @@ function change() {
         {#each SOURCES as source}
           <SourceBadge {source} observedAt={Date.now() - 7 * 60_000} />
         {/each}
+        <SourceBadge source="statusline" observedAt={Date.now() - 60_000} combinedWith="api" />
       </div>
     </Card>
 

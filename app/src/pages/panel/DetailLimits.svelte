@@ -67,7 +67,11 @@ function projectionOf(limit: LimitView): Projected {
       <li class:scoped={limit.kind === "weekly_scoped"}>
         <LimitBar {limit} countdown={limit.kind === "session" ? "relative" : "absolute"} />
         <div class="meta">
-          <SourceBadge source={limit.source} observedAt={limit.observed_at} />
+          <SourceBadge
+            source={limit.source}
+            observedAt={limit.observed_at}
+            combinedWith={limit.combined_with}
+          />
           {#if pace}
             <span class="pace" class:warn={pace.warn}>{paceText(pace)}</span>
           {/if}

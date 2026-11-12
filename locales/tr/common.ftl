@@ -52,6 +52,7 @@ source-estimate = Tahmini
 source-codex-log = Codex günlüğü
 source-updated = { DUR($ms) } önce güncellendi
 source-updated-now = Az önce güncellendi
+source-combined = Canlı ve API birlikte: Canlı aşağı yuvarlar, API en yakın tam sayıya
 
 ## Oturumlar
 

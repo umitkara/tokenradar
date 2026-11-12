@@ -7,6 +7,7 @@ import type { SessionShareView } from "../ipc/bindings";
 import LimitBar from "./LimitBar.svelte";
 import RingGauge from "./RingGauge.svelte";
 import SessionRow from "./SessionRow.svelte";
+import SourceBadge from "./SourceBadge.svelte";
 import Toggle from "./Toggle.svelte";
 
 const [, untitledWithTitle, unnamed] = fixtures as [unknown, SessionShareView, SessionShareView];
@@ -68,6 +69,19 @@ describe("LimitBar", () => {
     expect(body).toContain('aria-valuenow="81"');
     expect(body).toContain("Fable · haftalık");
     expect(body).toContain('aria-label="Uyarı"');
+  });
+});
+
+describe("SourceBadge", () => {
+  it("names a second source only when it lifted the value", () => {
+    const now = Date.now();
+    const alone = render(SourceBadge, { props: { source: "statusline", observedAt: now } }).body;
+    expect(alone).toContain("Canlı");
+    expect(alone).not.toContain("Canlı ve API birlikte");
+    const combined = render(SourceBadge, {
+      props: { source: "statusline", observedAt: now, combinedWith: "api" },
+    }).body;
+    expect(combined).toContain("Az önce güncellendi. Canlı ve API birlikte");
   });
 });
 
