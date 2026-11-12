@@ -92,7 +92,7 @@ Aşağıdakiler ajanın önerileridir, kullanıcı onaylamadan karar sayılmaz.
 
 ## Kabul kriterleri
 
-- API ve statusline okumaları 1 puan farklıyken panel `/usage` ile aynı değeri gösteriyor ve API yoklamasından sonra gidip gelmiyor.
+- Panel değeri API yoklamasından sonra gidip gelmiyor ve en geç bir API yoklamasında `/usage` ile eşitleniyor. (2026-11-12'de kullanıcıyla güncellendi; önceki hâli: "API ve statusline okumaları 1 puan farklıyken panel `/usage` ile aynı değeri gösteriyor ve API yoklamasından sonra gidip gelmiyor". Statusline bir tam sayıyı geçtiği anda `/usage`'ın `n` mi `n+1` mi gösterdiği tahmin yapmadan bilinemez, ADR-060.)
 - Statusline yeni bir artış gösterdiğinde panel API'yi beklemeden yükseliyor.
 - Hiçbir birleştirilmiş değer `≈` olmadan tahmin içermiyor. Her değerin kaynağı görünür.
 
@@ -106,7 +106,7 @@ Aşağıdakiler ajanın önerileridir, kullanıcı onaylamadan karar sayılmaz.
 
 **Tarih:** 2026-11-12 · **Karar:** ADR-060 · **Ölçüm:** `docs/perf/2026-11-12-limit-rounding-fusion.md`
 
-**Kullanıcıyla kararlaştırılanlar (2026-11-12):** öneri 1'in yerine monoton alt sınır (ajanın plandaki öneri 3'e itirazı, kullanıcı onayladı); öneri 2 en yeni kaynak + ipucu; öneri 3'ün yerine hız geçmişi birleşik değerle; öneri 4 saklama ham kalır. Plan dışı: statusline satırı da birleşik değeri kullanır.
+**Kullanıcıyla kararlaştırılanlar (2026-11-12):** öneri 1'in yerine monoton alt sınır (ajanın plandaki öneri 3'e itirazı, kullanıcı onayladı); öneri 2 en yeni kaynak + ipucu; öneri 3'ün yerine hız geçmişi birleşik değerle; öneri 4 saklama ham kalır. Plan dışı: statusline satırı da birleşik değeri kullanır. Kabul kriteri "gidip gelmiyor, en geç bir API yoklamasında `/usage` ile eşitleniyor" olarak güncellendi.
 
 **Yapılanlar:**
 - **Doğrulama** (salt okunur, mevcut DB ve 9 Kasım yedeği): `weekly_all` çiftlerinde (±30 s, ±2 dk) `statusline − API` yalnızca 0 / −1, kabaca yarı yarıya; +1 yok; tam sayı olmayan değer yok. `session` bu hesapta yok, `weekly_scoped` statusline'da gelmiyor; ikisi doğrulanamadı. Sonuç `data-sources.md` S1 "Yuvarlama"da.
@@ -124,7 +124,7 @@ Aşağıdakiler ajanın önerileridir, kullanıcı onaylamadan karar sayılmaz.
 - `architecture.md` §9.2'deki "S1 ondalıklı olduğu için tercih edilir" yanlış çıktı; not düşüldü, düzeltmesi Adım 13'e bırakıldı.
 
 **Açık konular:**
-- **Kabul kriteri kısmen karşılanabilir:** "panel `/usage` ile aynı değeri gösteriyor" ancak bir API okumasından sonra garantidir. Statusline bir tam sayıyı geçtiği anda panel bir sonraki yoklamaya kadar (≤ 15 dk) yaklaşık yarı yarıya ihtimalle 1 puan geride kalabilir; gidip gelme yok. Kriterin "gidip gelmiyor, en geç bir API yoklamasında eşitleniyor" olarak güncellenmesi kullanıcıya soruldu.
+- **Kabul kriteri güncellendi (kullanıcı kararı, 2026-11-12):** "panel `/usage` ile aynı değeri gösteriyor" ancak bir API okumasından sonra garanti edilebiliyordu. Statusline bir tam sayıyı geçtiği anda panel bir sonraki yoklamaya kadar (≤ 15 dk) yaklaşık yarı yarıya ihtimalle 1 puan geride kalabilir; gidip gelme yok. Kriter "gidip gelmiyor, en geç bir API yoklamasında eşitleniyor" oldu.
 - **Yan yana karşılaştırma kullanıcıyla yapılmadı:** kurulu sürüm 12s'yi içermiyor. Sürüm güncellemesinden sonra panel, statusline satırı ve `/usage` karşılaştırılmalı.
 - **Claude Code mod'u** (`integrations/claude-code/`) limit değerini Claude Code'un `session.measure`'ından alır; aynı aşağı yuvarlamayı gösteriyor olabilir. Bu adımda dokunulmadı.
 - `session` ve `weekly_scoped` için floor/round varsayımı doğrulanamadı; 5 saatlik penceresi olan bir hesapta bakılmalı.
