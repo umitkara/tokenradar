@@ -111,7 +111,7 @@ Statusline'a zamanla değişen iki şey eklemek:
 - [x] Doctor: yenileme aralığı, git bulunamadı, izlenmeyen dosya taraması kapandı.
 - [x] Bindings ve düzenleyici: "Canlı yenileme" seçicisi, `countdown` uyarısı, `git_status` öğe editörü, Fluent.
 - [x] Ölçümler (bkz. Doğrulama) ve `docs/perf/` kaydı.
-- [ ] İlk çalışan hâlin ekran görüntüsü kullanıcıya gösterilir ve onaylanır, ardından cila.
+- [x] İlk çalışan hâlin ekran görüntüsü kullanıcıya gösterilir ve onaylanır, ardından cila.
 - [x] ADR-059 sonuçları ve devir notu.
 
 ## Teknik notlar ve tuzaklar
@@ -157,6 +157,7 @@ Statusline'a zamanla değişen iki şey eklemek:
   - Önizlemede seçili `git_status` öğesinin parçaları arasındaki boşluklar gri kutu gibi boyanıyordu. Boşluk tonu artık yalnızca tümüyle boş öğelere (boşluk, esnek boşluk) uygulanıyor.
   - Yenileme bildirimi ("Done. Backup of the old file: …") çözülmüş dizge olarak saklandığı için dil değişince İngilizce kalıyor ve kalıcı olduğu için bedel/kapalı açıklamasını gizliyordu. Artık çizimde çevriliyor ve 8 saniyede kayboluyor.
   - Seçicinin görünür etiketi yoktu; "Canlı yenileme" etiketi eklendi.
+- **Kullanıcı incelemesinden sonra (2026-11-12):** Diyalog görüntüsü `fix(app)` commit'inden önce çekildiği için etiketi göstermiyordu; diyalog ve TR koyu görüntüsü güncel build ile yeniden çekildi. TR geri sayım uyarısındaki "kapalıyken oturum boştayken" ifadesi "kapalıysa, oturum boştayken" oldu. Diyalog önizlemenin üstünü örttüğü için önizleme boş görünüyor; sağda kalan siyah alan satırların boş kısmı, hata değil. Kullanıcı görüntüleri bu düzeltmelerle onayladı.
 - **Görüntülerde kalan, bu adımdan önceki tuhaflıklar:** önizlemede 120 sütunda da yatay kaydırma çubuğu var (ekran `120ch` genişliğinde, panel daha dar); öğe listesinde uzun satırlar `…` ile kesiliyor (ör. haftalık limit). Türkçe arayüzde varsayılan etiket `cache` İngilizce kalıyor (önceki adımların kararı).
 
 **Sapmalar (ADR-059 sonuçlarında):**
