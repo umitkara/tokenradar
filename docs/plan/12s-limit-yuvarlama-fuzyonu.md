@@ -2,7 +2,7 @@
 
 | Sürüm | Bağımlılık | Tahmini süre | Durum |
 |---|---|---|---|
-| v0.1.x | 12r | 1 oturum | ⬜ |
+| v0.1.x | 12r | 1 oturum | ✅ |
 
 ## Amaç
 
@@ -76,12 +76,12 @@ Aşağıdakiler ajanın önerileridir, kullanıcı onaylamadan karar sayılmaz.
 
 ## Görevler
 
-- [ ] Doğrulama sorgusu, sonuç `docs/data-sources.md`'de.
-- [ ] Kullanıcıyla öneriler 1–4 kararlaştırılır.
-- [ ] Core: kaynak başına son okuma, kesişim fonksiyonu; testler (eşit, −1, boş kesişim, eski API, tam sayı olmayan değer, pencere değişimi, reset tahmini ile etkileşim).
-- [ ] Core: eşik olaylarında gidip gelme yok (89 ↔ 90 sınırında tek olay); test.
-- [ ] Görünüm: kaynak etiketi ve ipucu, bindings, Fluent.
-- [ ] Yeni ADR ve devir notu.
+- [x] Doğrulama sorgusu, sonuç `docs/data-sources.md`'de.
+- [x] Kullanıcıyla öneriler 1–4 kararlaştırılır.
+- [x] Core: kaynak başına son okuma, kesişim fonksiyonu; testler (eşit, −1, boş kesişim, eski API, tam sayı olmayan değer, pencere değişimi, reset tahmini ile etkileşim).
+- [x] Core: eşik olaylarında gidip gelme yok (89 ↔ 90 sınırında tek olay); test.
+- [x] Görünüm: kaynak etiketi ve ipucu, bindings, Fluent.
+- [x] Yeni ADR ve devir notu.
 
 ## Teknik notlar ve tuzaklar
 
@@ -104,4 +104,33 @@ Aşağıdakiler ajanın önerileridir, kullanıcı onaylamadan karar sayılmaz.
 
 ## Devir notu
 
-_(Adım bitince doldurulur.)_
+**Tarih:** 2026-11-12 · **Karar:** ADR-060 · **Ölçüm:** `docs/perf/2026-11-12-limit-rounding-fusion.md`
+
+**Kullanıcıyla kararlaştırılanlar (2026-11-12):** öneri 1'in yerine monoton alt sınır (ajanın plandaki öneri 3'e itirazı, kullanıcı onayladı); öneri 2 en yeni kaynak + ipucu; öneri 3'ün yerine hız geçmişi birleşik değerle; öneri 4 saklama ham kalır. Plan dışı: statusline satırı da birleşik değeri kullanır.
+
+**Yapılanlar:**
+- **Doğrulama** (salt okunur, mevcut DB ve 9 Kasım yedeği): `weekly_all` çiftlerinde (±30 s, ±2 dk) `statusline − API` yalnızca 0 / −1, kabaca yarı yarıya; +1 yok; tam sayı olmayan değer yok. `session` bu hesapta yok, `weekly_scoped` statusline'da gelmiyor; ikisi doğrulanamadı. Sonuç `data-sources.md` S1 "Yuvarlama"da.
+- **`limits/fusion.rs`** (saf): `interval` (statusline `[n, n+1)`, API `[m−0,5, m+0,5)` ve 0'da kırpılır, diğerleri tam), `Bound` (alt sınır, kaynağı, `since`; `fold` çelişkide yalnızca en yeni okumayla yeniden başlar, eşitlikte tam değer kazanır), `series`, `fuse_latest`.
+- **Motor:** `Track` artık `bound`, `lead_percent`, `last_at` tutar. Aynı penceredeki her gerçek okuma sınırı katlar, önde olsun olmasın; pencere değişimi ya da tahminden sonraki ilk okuma track'i yeniden başlatır. Eşikler birleşik değerde (89 ↔ 90 sınırında tek olay). Hız geçmişi birleşik değer tutar ve yalnızca en yeni okumalar girer. Açılışta `restore_track` bir haftalık snapshot'tan pencereyi yeniden katlar; heartbeat kaynak başına son yazımdan sürer.
+- **Görünüm:** `LimitView.combined_with` (+ `VisibleKey`), bindings. `SourceBadge` `combinedWith` alır; ipucu "Güncellendi … . Canlı ve API birlikte: Canlı aşağı yuvarlar, API en yakın tam sayıya" (Fluent `source-combined`, EN/TR). Panel alt bilgisi ve Ayrıntı limitleri bağlı; galeriye örnek rozet eklendi.
+- **Grafikler:** `history::window_readings` artık birleşik seriyi döndürür (`WindowReading`), kovalara bölmeden önce hesaplanır. Ayrıntı odak grafiği ve mod'un `history --json`'u testere dişi çizmez; her nokta okumanın kaynağını taşır.
+- **CLI (uygulama kapalı):** yeni `latest_snapshots_by_source` + `fuse_latest`.
+- **Statusline satırı:** `line::lifted`, payload'ın tam sayı `n`'ini uygulamanın aynı penceredeki birleşik değeri `(n, n+1]` ise ona yükseltir; tahmin, başka pencere, uyumsuz değer yükseltmez. Kaynak `Statusline` kalır.
+- **Testler:** çekirdek 500 (yeni: `fusion/tests.rs` 13, `engine/tests/fusion.rs` 11, `line/tests/v12s.rs` 3, history 1, store testine kaynak bazlı doğrulama), CLI 27, uygulama 101, frontend 134 (+1 `SourceBadge`).
+
+**Sapmalar:**
+- Kesişim + geçerlilik süresi yerine monoton alt sınır (ADR-060, kullanıcı kararı).
+- Statusline satırı plan kapsamında değildi; kullanıcı onayıyla eklendi.
+- `architecture.md` §9.2'deki "S1 ondalıklı olduğu için tercih edilir" yanlış çıktı; not düşüldü, düzeltmesi Adım 13'e bırakıldı.
+
+**Açık konular:**
+- **Kabul kriteri kısmen karşılanabilir:** "panel `/usage` ile aynı değeri gösteriyor" ancak bir API okumasından sonra garantidir. Statusline bir tam sayıyı geçtiği anda panel bir sonraki yoklamaya kadar (≤ 15 dk) yaklaşık yarı yarıya ihtimalle 1 puan geride kalabilir; gidip gelme yok. Kriterin "gidip gelmiyor, en geç bir API yoklamasında eşitleniyor" olarak güncellenmesi kullanıcıya soruldu.
+- **Yan yana karşılaştırma kullanıcıyla yapılmadı:** kurulu sürüm 12s'yi içermiyor. Sürüm güncellemesinden sonra panel, statusline satırı ve `/usage` karşılaştırılmalı.
+- **Claude Code mod'u** (`integrations/claude-code/`) limit değerini Claude Code'un `session.measure`'ından alır; aynı aşağı yuvarlamayı gösteriyor olabilir. Bu adımda dokunulmadı.
+- `session` ve `weekly_scoped` için floor/round varsayımı doğrulanamadı; 5 saatlik penceresi olan bir hesapta bakılmalı.
+- CLI çevrimdışı `status` yolunun DB'li testi yok (`fuse_latest` ve store sorgusu ayrı test edildi).
+
+**Sonraki adıma notlar:**
+- **Adım 13 (kalibrasyon):** S1 tam sayı ve aşağı yuvarlanmış; "S1 ondalıklı" varsayımı geçersiz. Δp için ham snapshot'lar yerine `fusion::series` ya da kaynak başına aralıklar kullanılabilir.
+- Yeni bir limit kaynağı eklenirse `fusion::interval`'a yuvarlama biçimi yazılmalı; bilinmeyen kaynak tam değer sayılır (Codex şimdilik böyle).
+- `LimitView` kuran her yer `combined_with` alanını doldurmalı (fake'ler `None`).

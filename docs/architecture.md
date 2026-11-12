@@ -271,7 +271,8 @@ struct LimitObservation {
 }
 ```
 
-- **Füzyon kuralı:** Her `(account, kind, scope)` için güncel değer, en yeni gözlemdir. 30 saniye içindeki çakışmalarda öncelik `Statusline > Api > Estimate` sırasıyla belirlenir. Tüm gözlemler (tahminler hariç) `limit_snapshots` tablosuna yazılır. Tahminler yalnızca bellekte tutulur.
+- **Füzyon kuralı:** Her `(account, kind, scope)` için öndeki okuma en yeni gözlemdir. 30 saniye içindeki çakışmalarda öncelik `Statusline > Api > Estimate` sırasıyla belirlenir. Öndeki okuma kaynağı, pencereyi ve zamanı verir. Tüm gözlemler (tahminler hariç) `limit_snapshots` tablosuna yazılır. Tahminler yalnızca bellekte tutulur.
+- **Tam sayıların birleşimi (ADR-060):** Statusline aşağı, API en yakın tam sayıya yuvarlıyor. Gösterilen yüzde, aynı penceredeki gerçek okumaların alt sınırlarının en büyüğüdür (`limits/fusion.rs`): statusline `n` → `[n, n+1)`, API `m` → `[m−0,5, m+0,5)`, ondalıklı değer → tam. Kullanım pencere içinde azalmadığı için alt sınır pencere boyunca geçerli kalır. Değer API'nin yuvarlamasıyla gösterilir; pratikte `max(statusline, API)` olur. Bilinen en yeni okumadan daha yeni bir okumanın üst sınırı alt sınırın altında kalırsa sınır o okumadan yeniden başlar. Eşikler, hız geçmişi, Ayrıntı grafiği ve `history --json` birleşik değeri kullanır. `LimitView.combined_with` değeri yükselten ikinci kaynağı söyler. Birleşik değer saklanmaz; açılışta pencerenin snapshot'larından yeniden kurulur.
 - **Bayatlık:** Gözlem yaşı > 10 dk ise UI "son güncelleme X dk önce" gösterir. Yaş > 30 dk ise ve tahmin mümkünse tahmin katmanı devreye girer (kesikli çizgi ve "tahmini" etiketi ile).
 - **Reset algılama:** `resets_at` değeri geçtiyse ve yeni gözlem yoksa, limit yerel olarak %0'a çekilir (kaynak: `Estimate`, neden: `reset`) ve reset bildirimi tetiklenir.
 - **Opsiyonel pencereler (ADR-041):** Her `(account, kind, scope)` için pencere durumu `WindowPresence` ile üç değerlidir: `Present`, `Unknown`, `Absent` (`limits/presence.rs`).
@@ -320,7 +321,7 @@ C = speed_mult(m) × [ p_in(m) × (input + 1.25·cache_w5m + 2.0·cache_w1h + r(
 
 - **Gözlemler:** Aynı pencere içindeki ardışık snapshot çiftleri `(t0,p0)→(t1,p1)` ile o aralıktaki yerel `ΔC` değeri.
 - **Kuantizasyon:**
-  - S1 ondalıklı değer verdiği için tercih edilir.
+  - S1 ondalıklı değer verdiği için tercih edilir. **Not (ADR-060):** S1 gözlemde tam sayı ve aşağı yuvarlanmış geliyor; Adım 13 bu kuralı yeniden ele alır.
   - Yalnızca S2 (tam sayı) varsa aralıklar `Δp ≥ 3` olana kadar birleştirilir.
   - `ΔC` değeri, eşiğin (gürültü tabanının) altında kalan aralıklar atılır.
 - **Model:** `Δp = k·ΔC + u + ε`. Burada `u ≥ 0` yerel olmayan tüketimdir (claude.ai, Desktop, başka cihaz).

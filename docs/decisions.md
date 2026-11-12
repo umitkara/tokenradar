@@ -1242,3 +1242,31 @@
   - **`cache_timer` geri sayımı** TTL'yi göstermez (`cache 4m`); saat biçimi varsayılan kalır.
   - **Doctor** her Claude dizini için seçilen ve `settings.json`'daki aralığı, `git` bulunup bulunmadığını ve çalışma klasöründe izlenmeyen dosya taramasının kapanıp kapanmadığını yazar (yol ve sayı yazmaz).
   - **Ölçüm** (`docs/perf/2026-11-11-live-refresh-git-status.md`): CLI 2,54 MiB (+30,5 KiB). Statusline p95 açık 20,3–21,6 ms (`git_status` ekliyken de), kapalı medyan ≈ 33,0 ms (11 koşu) (`main` ≈ 30,7 ms, 10 koşu); bütçede. 12r'nin kapalı koşularından 3'ü (11'de) tümüyle yavaşladı (p50 de yükseldi, p95 59–65 ms); `main`'de görülmedi, nedeni açıklanamadı. Git komutunun kendisi bu depoda p95 ≈ 48 ms; CLI onu beklemez. Sentetik boştaki oturum (10 dk): 5 sn yenilemede çekirdek %0,010 CPU, 64,9 uyanma/dk ve store'a yalnızca heartbeat; `git_status` ile %0,013, ama 5 sn TTL ve 5 sn yenileme birleşince git neredeyse her çizimde çalışır (≈ 126 süreç / 10 dk).
+
+### ADR-060 — Statusline ve API'nin tam sayı okumaları alt sınır olarak birleştirilir
+
+**Durum:** Kabul edildi (2026-11-12, Adım 12s)
+
+- **Bağlam:**
+  - Panel haftalık limiti Claude Code'un `/usage` ekranından 1 puan düşük gösterebiliyordu. API yoklamasından hemen sonra 1 puan yükselip sonra geri iniyordu (12r devir notu).
+  - Gerçek `limit_snapshots`'ta statusline ve API değerleri hep tam sayı. Aynı penceredeki çiftlerde `statusline − API` yalnızca 0 ya da −1 (kabaca yarı yarıya), +1 hiç yok. Bu, statusline'ın aşağı, API'nin en yakın tam sayıya yuvarladığına uyuyor. Belgelenmiş değil; yalnızca `weekly_all` için doğrulanabildi (`data-sources.md` S1 "Yuvarlama").
+  - Eski kural (30 s içinde statusline, sonra en yeni okuma) iki yuvarlamayı sırayla gösteriyordu.
+- **Karar:**
+  - **Her okuma gerçek değer için bir aralıktır:** statusline `n` → `[n, n+1)`, API `m` → `[m−0,5, m+0,5)`. Tam sayı olmayan değerler ve Codex okumaları (Adım 20'ye kadar) tam değer sayılır.
+  - **Monoton alt sınır (kullanıcı kararı).** Kullanım pencere içinde azalmaz. Bu yüzden bir okumanın alt sınırı pencere boyunca geçerli kalır, yalnızca üst sınırı eskir. Gösterilen değer, penceredeki alt sınırların en büyüğünün API gibi yuvarlanmış hâlidir; pratikte `max(statusline, API)`. Plandaki "API okumasının geçerlilik süresi" bu yüzden gereksiz.
+  - **Çelişki:** Bilinen en yeni okumadan daha yeni bir okumanın üst sınırı alt sınıra eşit ya da altındaysa (gerçek bir düşüş ya da yuvarlama değişikliği) sınır o okumadan yeniden başlar. Daha eski okumalar yalnızca sınırı yükseltebilir; son yeniden başlamadan önceki okumalar sayılmaz.
+  - **Kaynak etiketi (kullanıcı kararı):** Rozet öndeki okumanın kaynağıdır (en yeni; 30 s içinde daha iyi kaynak). `LimitView.combined_with`, değeri öndeki okumanın tek başına söyleyeceğinden yukarı taşıyan ikinci kaynağı verir; ipucu "Canlı ve API birlikte" der. Değer bir ölçümdür, `≈` almaz.
+  - **Hız ve öngörü birleşik değerle beslenir (kullanıcı kararı).** Geçmiş, her yeni okumadan sonraki birleşik değeri tutar; daha eski okumalar geçmişe girmez.
+  - **Saklama değişmez (kullanıcı kararı).** `limit_snapshots` her kaynağın ham değerini tutar, heartbeat (ADR-028) aynıdır. Motor açılışta pencerenin snapshot'larını (bir haftalık tek okuma) yeniden katlar.
+  - **Aynı kural her yüzeyde:** eşik olayları, tray, panel, Ayrıntı grafiği, `history --json`, uygulama kapalıyken CLI `status` (kaynak başına son okuma, `fuse_latest`). Statusline satırı payload'ın `n` değerini, uygulamanın aynı penceredeki birleşik değeri `(n, n+1]` aralığındaysa ona yükseltir (kullanıcı kararı).
+- **Bedel:**
+  - Statusline bir tam sayıyı geçtiği anda (`[n, n+1)`) `/usage` `n` ya da `n+1` gösterebilir. Hangisi olduğu tahmin yapmadan bilinemez. Panel bir sonraki API yoklamasına kadar (statusline tazeyken 15 dk) `n`'de kalır. Fark artık gidip gelmez; yalnızca bu aralıkta 1 puan geride kalabilir.
+  - Pencere içindeki 1 puanlık gerçek bir düşüş, bir sonraki API okumasına kadar görünmez (statusline `m−1`, API `m` ile tutarlı sayılır).
+  - Varsayım belgelenmemiş bir davranışa dayanıyor. Claude Code yuvarlamayı değiştirirse çelişki kuralı sınırı yeniden başlatır, ama değer bir süre 1 puan yüksek kalabilir.
+  - Motor açılışı bir haftalık snapshot okur (gerçek DB kopyasında medyan 1,97 → 3,39 ms; `docs/perf/2026-11-12-limit-rounding-fusion.md`).
+- **Alternatifler:**
+  - Plandaki kesişim ve API geçerlilik süresi: API eskiyince panel yine 1 puan aşağı iner.
+  - API'yi hep tercih etmek: statusline'ın tazeliği kaybolur, artışlar 15 dakikaya kadar gecikir.
+  - Statusline değerine +0,5 eklemek: ölçümü tahminle değiştirir.
+  - Hiçbir şey yapmamak ve ipucunda açıklamak: gidip gelme sürer.
+  - Birleşik değeri saklamak: şema değişikliği getirir, ham veriyi yeniden yorumlama imkânını kaldırır.

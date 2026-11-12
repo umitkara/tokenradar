@@ -9,7 +9,7 @@
 
 | # | Kaynak | Ne verir | Erişim | Güven | Rol |
 |---|---|---|---|---|---|
-| S1 | **Statusline köprüsü** | 5s ve haftalık % (**ondalıklı**), `resets_at`, `session_id`, model, maliyet, bağlam | Claude Code her yanıttan sonra komutumuzu çağırır (300 ms debounce) | Yüksek, **belgelenmiş** | **Birincil limit kaynağı** |
+| S1 | **Statusline köprüsü** | 5s ve haftalık % (gözlemde **tam sayı, aşağı yuvarlanmış**; ADR-060), `resets_at`, `session_id`, model, maliyet, bağlam | Claude Code her yanıttan sonra komutumuzu çağırır (300 ms debounce) | Yüksek, **belgelenmiş** | **Birincil limit kaynağı** |
 | S2 | **OAuth usage API** | Tüm limitler (`session`, `weekly_all`, `weekly_scoped`), yüzey kırılımı, extra usage | `GET /api/oauth/usage` + Claude Code OAuth token'ı (salt-okunur) | Yüksek ama **belgelenmemiş** | Tamamlayıcı, **açık onay gerekir** |
 | S3 | **Transcript JSONL** | Mesaj bazlı token kullanımı, model, oturum, cwd, branch, zaman | `<config>/projects/**/*.jsonl` | Yüksek (ham veri) | Token, oturum ve proje analitiği |
 | S4 | **Canlı oturum dosyaları** | Çalışan oturumlar: pid, durum (`busy`/`idle`), ad, cwd | `<config>/sessions/<pid>.json` | Orta (pid canlılığı doğrulanmalı) | Canlı oturum listesi |
@@ -58,6 +58,7 @@ Claude Code, `settings.json` içindeki `statusLine.command` komutunu çalıştı
 **Tuzaklar:**
 - `rate_limits` ve içindeki her pencere **bağımsız olarak eksik** olabilir. Claude Code, `resets_at` geçtiğinde pencereyi JSON'dan düşürür.
 - Statusline **model bazlı haftalık limiti (`weekly_scoped`) ve yüzey kırılımını vermez.** Bunlar için S2 gerekir.
+- **Yuvarlama (Adım 12s, ADR-060):** `rate_limits.*.used_percentage` şimdiye kadar hep tam sayı geldi; belge ondalık olabileceğini söylüyor. Aynı penceredeki S1/S2 çiftlerinde (±30 s ve ±2 dk) `S1 − S2` farkı yalnızca 0 ya da −1, kabaca yarı yarıya; +1 hiç görülmedi. Bu, **S1'in aşağı (floor), S2'nin en yakın tam sayıya yuvarladığı** varsayımına uyuyor. Belgelenmiş değil, veriden çıkarım. Yalnızca `weekly_all` için doğrulanabildi: bu hesapta `session` yok (ADR-041), `weekly_scoped` S1'de gelmiyor. Tam sayı olmayan bir değer gelirse tam değer sayılır.
 - Değerler hesap genelidir. Eşzamanlı birden çok oturum varsa, bir oturumun gördüğü Δ% diğer oturumların tüketimini de içerir.
 - Kullanıcının mevcut bir statusline komutu olabilir (örneğin `statusline.py`). Kurulum sırasında bu komut **zincirleme modunda** korunmalı (bkz. ADR-009).
 - Çıktı genişliği için `COLUMNS` ortam değişkeni kullanılmalı. ANSI renkleri ve OSC 8 linkleri destekleniyor.
@@ -183,7 +184,7 @@ Yanıtta `ratelimit` veya `retry-after` başlığı gözlemlenmedi.
 
 **Kurallar ve tuzaklar:**
 - **Parse önceliği:** önce `limits[]` dizisi okunur. Dizi yoksa veya boşsa düz alanlara (`five_hour`, `seven_day`, `seven_day_*`) düşülür. İki şemayı da kapsayan fixture testleri zorunludur.
-- `limits[].percent` **tam sayıdır** (1 puanlık kuantizasyon). Kalibrasyonda bunu hesaba katmak gerekir, bkz. [architecture.md §9](architecture.md#9-ağırlıklı-token-kalibrasyon-ve-atıf). S1'deki değerler ondalıklı olduğu için S1 tercih edilir.
+- `limits[].percent` **tam sayıdır** (1 puanlık kuantizasyon) ve gözlemde en yakın tam sayıya yuvarlanır. S1 de tam sayı verir ama aşağı yuvarlar (S1 "Yuvarlama", ADR-060). Kalibrasyonda bunu hesaba katmak gerekir, bkz. [architecture.md §9](architecture.md#9-ağırlıklı-token-kalibrasyon-ve-atıf).
 - `weekly_scoped` kaydı bir `scope.model.display_name` taşır (örneğin "Fable"). Bu limite yalnızca ilgili model ailesinin tüketimi sayılır.
 - `severity` alanı şimdilik `normal` olarak gözlemlendi. Diğer değerleri (warning/critical vb.) UI renk durumuna eşlenmeli, ama renk eşikleri **bizim** ayarlarımızdan gelir.
 - `is_active` alanının anlamı net değil. Muhtemelen "şu an bağlayıcı olan limit" demek. Saklanır ama karar mantığında kullanılmaz.
@@ -381,5 +382,6 @@ Kullanım verisi değil. Nerd Font yardımcısının okuduğu ve (onayla) yazdı
 Ayrıntılar [architecture.md §7](architecture.md#7-limit-modeli-ve-kaynak-füzyonu) içinde.
 
 - Her limit gözlemi bir `LimitSnapshot { account, limit_kind, scope, percent, resets_at, source, observed_at }` olarak saklanır.
-- **Güncel değer kuralı:** aynı limit için en yeni gözlem kazanır. Gözlemler 30 saniye içinde çakışırsa öncelik **S1 > S2 > tahmin** sırasıyla belirlenir.
+- **Güncel değer kuralı:** aynı limit için en yeni gözlem öndedir (kaynağı, penceresi ve zamanı gösterilir). Gözlemler 30 saniye içinde çakışırsa öncelik **S1 > S2 > tahmin** sırasıyla belirlenir.
+- **Yüzde (ADR-060):** aynı penceredeki gerçek okumaların alt sınırlarının en büyüğüdür: S1 `n` → `[n, n+1)`, S2 `m` → `[m−0,5, m+0,5)`. Pratikte `max(S1, S2)`. Daha yeni bir okuma bu sınırla çelişirse sınır o okumadan yeniden başlar. Yalnızca bellekte; snapshot'lar ham kalır.
 - `weekly_scoped` limitleri ve yüzey kırılımı yalnızca S2'den gelir. S2 kapalıysa bu bilgiler UI'da "kullanılamıyor (API onayı gerekli)" olarak gösterilir.
