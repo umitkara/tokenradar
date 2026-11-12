@@ -86,7 +86,11 @@ pub struct LimitView {
     /// From our thresholds; the provider's own label is `provider_severity`.
     pub severity: Severity,
     pub provider_severity: Option<String>,
+    /// The leading reading's source: the newest, the better one within 30 s.
     pub source: Source,
+    /// Another source whose reading lifted `percent` above what `source` says alone: the
+    /// statusline rounds down, the API to the nearest point (ADR-060).
+    pub combined_with: Option<Source>,
     /// Set when `source` is [`Source::Estimate`].
     pub estimate_reason: Option<EstimateReason>,
     pub observed_at: Timestamp,
@@ -180,13 +184,15 @@ pub struct PanelSnapshot {
     pub generated_at: Timestamp,
 }
 
-/// kind, scope, rounded percent, severity, source, freshness, will hit, rounded ETA (min).
+/// kind, scope, rounded percent, severity, source, combined with, freshness, will hit,
+/// rounded ETA (min).
 type VisibleLimit = (
     String,
     Option<String>,
     i64,
     Severity,
     Source,
+    Option<Source>,
     Freshness,
     bool,
     Option<i64>,
@@ -242,6 +248,7 @@ impl PanelSnapshot {
                         round(l.percent),
                         l.severity,
                         l.source,
+                        l.combined_with,
                         l.freshness,
                         l.projection.is_some_and(|p| p.will_hit_before_reset),
                         // Minutes, so the countdown does not count as a change.

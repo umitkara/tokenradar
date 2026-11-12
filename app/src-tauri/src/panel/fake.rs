@@ -131,6 +131,7 @@ impl L {
             severity: Severity::of(self.percent),
             provider_severity: None,
             source: self.source,
+            combined_with: None,
             estimate_reason: None,
             observed_at: at(-self.age_min),
             freshness,

@@ -1,8 +1,9 @@
-//! Limit engine: source fusion (statusline > API > estimate), snapshots and windows, reset
+//! Limit engine: source fusion (statusline > API > estimate, integer readings combined), snapshots and windows, reset
 //! detection, burn rate and projection, the v0.1 session shares and the panel view model.
 
 mod detail;
 mod engine;
+pub mod fusion;
 pub mod history;
 pub mod pace;
 pub mod presence;

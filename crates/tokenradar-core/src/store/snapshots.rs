@@ -94,6 +94,26 @@ pub(crate) fn latest(conn: &Connection, account: AccountId) -> Result<Vec<LimitO
     Ok(rows)
 }
 
+/// The newest snapshot per `(limit_kind, scope, source)` of an account, ordered by limit.
+pub(crate) fn latest_by_source(
+    conn: &Connection,
+    account: AccountId,
+) -> Result<Vec<LimitObservation>> {
+    let sql = format!(
+        "SELECT {COLUMNS} FROM (
+           SELECT *, ROW_NUMBER() OVER (
+             PARTITION BY limit_kind, scope, source ORDER BY observed_at DESC, id DESC) AS rn
+           FROM limit_snapshots WHERE account_id = ?1)
+         WHERE rn = 1
+         ORDER BY limit_kind, scope, observed_at"
+    );
+    let rows = conn
+        .prepare_cached(&sql)?
+        .query_map([account], from_row)?
+        .collect::<rusqlite::Result<_>>()?;
+    Ok(rows)
+}
+
 /// Snapshots of an account with `from <= observed_at < to`, oldest first.
 pub(crate) fn between(
     conn: &Connection,

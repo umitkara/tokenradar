@@ -7,7 +7,8 @@
 use serde::Serialize;
 
 use super::engine::window_length_ms;
-use crate::domain::{LimitObservation, LimitRef, Timestamp};
+use super::fusion;
+use crate::domain::{LimitObservation, LimitRef, Source, Timestamp};
 use crate::store::WINDOW_MATCH_TOLERANCE_MS;
 
 /// Version of the `history --json` document.
@@ -67,8 +68,9 @@ pub fn window_series(
         }
         let start = resets_at.saturating_sub_millis(length);
         let points = window_readings(&limit, resets_at, length, snapshots, now)
+            .into_iter()
             .map(|o| HistoryPoint {
-                at: o.observed_at,
+                at: o.at,
                 percent: o.percent,
                 source: o.source.as_str().to_owned(),
             })
@@ -84,40 +86,63 @@ pub fn window_series(
     out
 }
 
+/// One point of a window's curve: a stored reading's time and source, with the fused value
+/// of the window up to it (ADR-060).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct WindowReading {
+    pub at: Timestamp,
+    pub percent: f64,
+    pub source: Source,
+}
+
 /// `limit`'s readings in the window ending at `resets_at`, oldest first: those of the same
 /// window only (a `resets_at` within the match tolerance), from its start up to `now`, the
-/// last of each of [`HISTORY_BUCKETS`] buckets. `snapshots` must come oldest first.
-pub fn window_readings<'a>(
+/// last of each of [`HISTORY_BUCKETS`] buckets. Each carries the fused value, so the curve
+/// follows the panel instead of zigzagging between the sources' roundings. `snapshots` must
+/// come oldest first.
+pub fn window_readings(
     limit: &LimitRef,
     resets_at: Timestamp,
     length: i64,
-    snapshots: &'a [LimitObservation],
+    snapshots: &[LimitObservation],
     now: Timestamp,
-) -> impl Iterator<Item = &'a LimitObservation> {
+) -> Vec<WindowReading> {
     let start = resets_at.saturating_sub_millis(length);
+    let mine: Vec<(Timestamp, Source, f64)> = snapshots
+        .iter()
+        .filter(|o| {
+            let same_window = o.resets_at.is_some_and(|r| {
+                (r.as_millis() - resets_at.as_millis()).abs() <= WINDOW_MATCH_TOLERANCE_MS
+            });
+            LimitRef::of(o) == *limit
+                && same_window
+                && o.observed_at >= start
+                && o.observed_at <= now
+        })
+        .map(|o| (o.observed_at, o.source, o.percent))
+        .collect();
+    let fused = fusion::series(&mine);
     let bucket = (length / HISTORY_BUCKETS).max(1);
-    let mut kept: Vec<&LimitObservation> = Vec::new();
+    let mut kept: Vec<WindowReading> = Vec::new();
     let mut last_bucket = None;
-    for o in snapshots {
-        let same_window = o.resets_at.is_some_and(|r| {
-            (r.as_millis() - resets_at.as_millis()).abs() <= WINDOW_MATCH_TOLERANCE_MS
-        });
-        if LimitRef::of(o) != *limit || !same_window || o.observed_at < start || o.observed_at > now
-        {
-            continue;
-        }
-        let b = (o.observed_at.as_millis() - start.as_millis()) / bucket;
+    for (&(at, source, _), &(_, percent)) in mine.iter().zip(&fused) {
+        let point = WindowReading {
+            at,
+            percent,
+            source,
+        };
+        let b = (at.as_millis() - start.as_millis()) / bucket;
         if last_bucket == Some(b) {
             // The later reading of a bucket wins.
             if let Some(slot) = kept.last_mut() {
-                *slot = o;
+                *slot = point;
             }
         } else {
-            kept.push(o);
+            kept.push(point);
             last_bucket = Some(b);
         }
     }
-    kept.into_iter()
+    kept
 }
 
 #[cfg(test)]
@@ -187,5 +212,35 @@ mod tests {
         assert_eq!(series[0].scope.as_deref(), Some("model:Fable"));
         assert_eq!(series[0].window_start.as_millis(), now + HOUR - WEEK_MS);
         assert_eq!(series[0].points.len(), 1);
+    }
+
+    #[test]
+    fn the_curve_carries_the_fused_value_not_each_source_rounding() {
+        let reset = 10 * WEEK_MS;
+        let start = reset - WEEK_MS;
+        let now = Timestamp::from_millis(start + 10 * HOUR);
+        let mut snaps: Vec<LimitObservation> = (0..6)
+            .map(|h| obs(LimitKind::WeeklyAll, 5.0, reset, start + h * HOUR))
+            .collect();
+        // The API's 6 an hour in: the statusline's later 5s mean [5.5, 6).
+        snaps[1].source = Source::Api;
+        snaps[1].percent = 6.0;
+        let series = window_series(&[snaps[5].clone()], &snaps, &[], now);
+        let got: Vec<(f64, &str)> = series[0]
+            .points
+            .iter()
+            .map(|p| (p.percent, p.source.as_str()))
+            .collect();
+        assert_eq!(
+            got,
+            vec![
+                (5.0, "statusline"),
+                (6.0, "api"),
+                (6.0, "statusline"),
+                (6.0, "statusline"),
+                (6.0, "statusline"),
+                (6.0, "statusline"),
+            ]
+        );
     }
 }

@@ -201,6 +201,7 @@ pub(crate) mod tests {
             severity: Severity::of(percent),
             provider_severity: None,
             source: Source::Api,
+            combined_with: None,
             estimate_reason: None,
             observed_at: Timestamp::from_millis(0),
             freshness,

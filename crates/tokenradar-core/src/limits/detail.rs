@@ -139,8 +139,9 @@ fn focus_of(
     let limit_ref = LimitRef::new(limit.kind.clone(), limit.scope.clone());
     let mut points: Vec<ChartPoint> =
         window_readings(&limit_ref, resets_at, length, snapshots, now)
+            .into_iter()
             .map(|o| ChartPoint {
-                at: o.observed_at,
+                at: o.at,
                 percent: o.percent,
                 source: o.source,
             })
@@ -183,6 +184,7 @@ mod tests {
             severity: Severity::of(percent),
             provider_severity: None,
             source,
+            combined_with: None,
             estimate_reason: None,
             observed_at: Timestamp::from_millis(at),
             freshness: Freshness::Fresh,

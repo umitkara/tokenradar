@@ -1,8 +1,11 @@
 //! The limit engine: fuses observations, records snapshots and windows, detects resets and
 //! builds the panel's view model (architecture §7–§8).
 //!
-//! - **Fusion:** per `(account, kind, scope)` the newest observation is current. Within 30 s
-//!   of each other the better source wins: statusline > API > estimate.
+//! - **Fusion:** per `(account, kind, scope)` the newest observation leads: its source,
+//!   window and time are shown. Within 30 s of each other the better source leads:
+//!   statusline > API > estimate. The percentage combines every real reading of the window:
+//!   the statusline rounds down and the API to the nearest point, so the highest lower bound
+//!   wins (see [`super::fusion`], ADR-060).
 //! - **Persistence:** every non-estimate observation goes to `limit_snapshots`, except that an
 //!   unchanged reading (same percentage and window) from the same source is written at most
 //!   every 5 minutes. That heartbeat keeps the time series alive without repeating each
@@ -19,6 +22,7 @@ use std::cell::Cell;
 use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, HashMap};
 
+use super::fusion::Bound;
 use super::presence::{self, Presence};
 use super::rate::{self, Projection};
 use super::share::{self, RootUsage};
@@ -114,9 +118,16 @@ struct Written {
 
 #[derive(Debug, Clone)]
 struct Track {
+    /// The leading reading, with the fused percentage of its window.
     fused: LimitObservation,
+    /// The leading reading's own percentage.
+    lead_percent: f64,
+    /// The window's running lower bound; `None` for an estimate.
+    bound: Option<Bound>,
+    /// Time of the newest real reading folded into `bound`.
+    last_at: Timestamp,
     reason: Option<EstimateReason>,
-    /// Real readings of the current window from the last 30 minutes, oldest first.
+    /// Fused values of the current window from the last 30 minutes, oldest first.
     history: Vec<(Timestamp, f64)>,
     written: HashMap<Source, Written>,
     will_hit: bool,
@@ -124,13 +135,52 @@ struct Track {
 
 impl Track {
     fn new(obs: LimitObservation) -> Self {
+        let bound = Bound::start(obs.source, obs.percent, obs.observed_at);
         Self {
-            fused: obs,
+            lead_percent: obs.percent,
+            last_at: obs.observed_at,
+            fused: LimitObservation {
+                percent: bound.map_or(obs.percent, |b| b.value()),
+                ..obs
+            },
+            bound,
             reason: None,
             history: Vec::new(),
             written: HashMap::new(),
             will_hit: false,
         }
+    }
+
+    /// Takes a real reading of the running window, newer or older: it moves the bound and
+    /// may lead. Readings of another window, and estimates, change nothing here; the caller
+    /// decides whether they replace the track.
+    fn fold(&mut self, obs: &LimitObservation) {
+        let Some(bound) = self.bound.as_mut() else {
+            return;
+        };
+        if obs.source == Source::Estimate || !same_window(obs.resets_at, self.fused.resets_at) {
+            return;
+        }
+        let newest = obs.observed_at >= self.last_at;
+        bound.fold(obs.source, obs.percent, obs.observed_at, newest);
+        let value = bound.value();
+        if supersedes(obs, &self.fused) {
+            self.fused = obs.clone();
+            self.lead_percent = obs.percent;
+        }
+        self.fused.percent = value;
+        if newest {
+            self.last_at = obs.observed_at;
+        }
+    }
+
+    /// Another source that lifted the value above what the leading reading says alone.
+    fn combined_with(&self) -> Option<Source> {
+        let bound = self.bound?;
+        let alone =
+            Bound::start(self.fused.source, self.lead_percent, self.fused.observed_at)?.value();
+        (bound.source() != self.fused.source && self.fused.percent > alone + PERCENT_EPSILON)
+            .then_some(bound.source())
     }
 
     fn is_real(&self) -> bool {
@@ -148,13 +198,19 @@ impl Track {
             .map(|r| r.saturating_sub_millis(length))
     }
 
+    /// Adds the fused value at the time of `obs` to the slope's history. Only the newest
+    /// reading counts: an older one already went into the bound, and the value it would
+    /// stand for at its time is unknown.
     fn remember(&mut self, obs: &LimitObservation, now: Timestamp) {
-        if obs.source == Source::Estimate || !same_window(obs.resets_at, self.fused.resets_at) {
+        if obs.source == Source::Estimate
+            || !same_window(obs.resets_at, self.fused.resets_at)
+            || obs.observed_at < self.last_at
+        {
             return;
         }
         let at = obs.observed_at;
         let pos = self.history.partition_point(|(t, _)| *t <= at);
-        self.history.insert(pos, (at, obs.percent));
+        self.history.insert(pos, (at, self.fused.percent));
         let cutoff = now.as_millis() - rate::RATE_LOOKBACK_MS;
         self.history.retain(|(t, _)| t.as_millis() >= cutoff);
     }
@@ -223,6 +279,13 @@ impl LimitEngine {
                         .unwrap_or_default(),
                 ),
             };
+            // The fused value needs every reading of the current window; the longest is a
+            // week, so one read covers them all.
+            let recent = store.snapshots_between(
+                id,
+                now.saturating_sub_millis(WEEK_MS),
+                now.saturating_add_millis(1),
+            )?;
             for obs in store.latest_snapshots(id)? {
                 if obs.source == Source::Statusline {
                     state.statusline_last = state.statusline_last.max(Some(obs.observed_at));
@@ -230,31 +293,9 @@ impl LimitEngine {
                 if state.presence.is_absent(&LimitRef::of(&obs)) {
                     continue;
                 }
-                let mut track = Track::new(obs.clone());
-                track.written.insert(
-                    obs.source,
-                    Written {
-                        percent: obs.percent,
-                        resets_at: obs.resets_at,
-                        at: obs.observed_at,
-                    },
-                );
-                state
-                    .tracks
-                    .insert(TrackKey::of(&obs.kind, obs.scope.as_ref()), track);
-            }
-            let recent = store.snapshots_between(
-                id,
-                now.saturating_sub_millis(rate::RATE_LOOKBACK_MS),
-                now.saturating_add_millis(1),
-            )?;
-            for obs in recent {
-                if let Some(track) = state
-                    .tracks
-                    .get_mut(&TrackKey::of(&obs.kind, obs.scope.as_ref()))
-                {
-                    track.remember(&obs, now);
-                }
+                let key = TrackKey::of(&obs.kind, obs.scope.as_ref());
+                let track = restore_track(&obs, &recent, &key, now);
+                state.tracks.insert(key, track);
             }
             map.insert(id, state);
         }
@@ -343,30 +384,40 @@ impl LimitEngine {
         if let Some(w) = written {
             track.written.insert(obs.source, w);
         }
-        if !supersedes(obs, &track.fused) {
-            // An older or weaker reading still informs the slope.
-            track.remember(obs, now);
+        let prev = track.fused.clone();
+        if track.bound.is_some()
+            && obs.source != Source::Estimate
+            && same_window(obs.resets_at, prev.resets_at)
+        {
+            // A reading of the running window moves the bound, leading or not.
+            track.fold(obs);
+        } else if supersedes(obs, &prev) {
+            // A new window, the first reading after an estimate, or an estimate.
+            let comparable = same_window(prev.resets_at, obs.resets_at);
+            let mut next = Track::new(obs.clone());
+            next.written = std::mem::take(&mut track.written);
+            if comparable {
+                next.history = std::mem::take(&mut track.history);
+                next.will_hit = track.will_hit;
+            }
+            *track = next;
+        } else {
+            // An older reading of another window: nothing to show or learn.
             return events;
         }
-        let prev = std::mem::replace(&mut track.fused, obs.clone());
-        let comparable = same_window(prev.resets_at, obs.resets_at);
-        if !comparable {
-            track.history.clear();
-            track.will_hit = false;
-        }
-        track.reason = None;
         track.remember(obs, now);
-        if comparable {
+        let percent = track.fused.percent;
+        if same_window(prev.resets_at, track.fused.resets_at) {
             for th in THRESHOLDS {
                 let th_f = f64::from(th);
-                if prev.percent < th_f && obs.percent >= th_f {
+                if prev.percent < th_f && percent >= th_f {
                     events.push(LimitEvent::ThresholdCrossed {
                         account,
                         kind: obs.kind.clone(),
                         scope: obs.scope.clone(),
                         threshold: th,
-                        percent: obs.percent,
-                        resets_at: obs.resets_at,
+                        percent,
+                        resets_at: track.fused.resets_at,
                     });
                 }
             }
@@ -655,6 +706,39 @@ impl LimitEngine {
     }
 }
 
+/// A limit's track as the store left it: `newest` leads, every stored reading of its window
+/// (oldest first in `recent`) goes into the bound and the slope, and the last write per
+/// source restarts the heartbeat.
+fn restore_track(
+    newest: &LimitObservation,
+    recent: &[LimitObservation],
+    key: &TrackKey,
+    now: Timestamp,
+) -> Track {
+    let mine: Vec<&LimitObservation> = recent
+        .iter()
+        .filter(|r| {
+            TrackKey::of(&r.kind, r.scope.as_ref()) == *key
+                && r.source != Source::Estimate
+                && same_window(r.resets_at, newest.resets_at)
+        })
+        .collect();
+    let mut track = Track::new((*mine.first().unwrap_or(&newest)).clone());
+    for r in mine.iter().copied().chain(std::iter::once(newest)) {
+        track.fold(r);
+        track.remember(r, now);
+        track.written.insert(
+            r.source,
+            Written {
+                percent: r.percent,
+                resets_at: r.resets_at,
+                at: r.observed_at,
+            },
+        );
+    }
+    track
+}
+
 /// Keeps an account's absent limits in `kv` (see [`presence::kv_key`]).
 fn store_absent(store: &Store, account: AccountId, presence: &Presence, errors: &mut u64) {
     let absent = presence.absent();
@@ -751,6 +835,7 @@ fn limit_views(
             severity: Severity::of(obs.percent),
             provider_severity: obs.severity.clone(),
             source: obs.source,
+            combined_with: track.combined_with(),
             estimate_reason: track.reason,
             observed_at: obs.observed_at,
             freshness: Freshness::of(now.as_millis() - obs.observed_at.as_millis()),

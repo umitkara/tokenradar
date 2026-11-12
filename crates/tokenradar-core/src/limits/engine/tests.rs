@@ -721,3 +721,5 @@ fn an_absent_window_raises_no_threshold_events() {
     )));
     assert!(snap.limits.iter().all(|l| l.kind != LimitKind::Session));
 }
+
+mod fusion;

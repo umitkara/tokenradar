@@ -618,6 +618,11 @@ fn snapshots_round_trip_and_estimates_are_refused() {
     )));
     assert!(latest.contains(&scoped));
 
+    // Per source: the session's API reading is kept beside the newer statusline one.
+    let by_source = store.latest_snapshots_by_source(a).expect("by source");
+    assert_eq!(by_source.len(), 4);
+    assert!(by_source.contains(&observation(a, LimitKind::Session, 10.0, 100, Source::Api)));
+
     let window = store
         .snapshots_between(a, Timestamp::from_millis(100), Timestamp::from_millis(200))
         .expect("between");

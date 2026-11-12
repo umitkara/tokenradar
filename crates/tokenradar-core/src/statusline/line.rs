@@ -23,6 +23,7 @@ use super::payload::{RateWindow, StatuslinePayload};
 use crate::domain::{Scope, Source, Timestamp};
 use crate::ipc::{CompactCount, LimitInfo, StatusReply};
 use crate::limits::{FRESH_MS, SESSION_WINDOW_MS, Severity, WEEK_MS};
+use crate::store::WINDOW_MATCH_TOLERANCE_MS;
 
 mod prefs;
 mod presets;
@@ -890,7 +891,7 @@ fn window(
     // The payload's own reading wins even over "absent": the app flips back on this push.
     let w = match measured {
         Some((percent, resets_at)) => Window {
-            percent,
+            percent: lifted(percent, resets_at, app),
             resets_in: until(resets_at, now),
             eta: eta(app, now),
             elapsed: elapsed(until(resets_at, now), length),
@@ -901,6 +902,26 @@ fn window(
         None => from_app(app?, length, now)?,
     };
     Some(settle(w, now))
+}
+
+/// The payload's percentage, raised to the app's fused value of the same window when that is
+/// the API's rounding of the same reading (ADR-060). The payload rounds down, so a whole `n`
+/// means `[n, n + 1)`: only a value in `(n, n + 1]` fits it. Anything else (an estimate,
+/// another window, an app value from before a drop) leaves the payload's own number.
+fn lifted(percent: f64, resets_at: Option<Timestamp>, app: Option<&LimitInfo>) -> f64 {
+    let Some(a) = app.filter(|a| !a.estimated) else {
+        return percent;
+    };
+    let same_window = match (a.resets_at, resets_at) {
+        (Some(x), Some(y)) => (x.as_millis() - y.as_millis()).abs() <= WINDOW_MATCH_TOLERANCE_MS,
+        _ => false,
+    };
+    let whole = (percent - percent.round()).abs() < 1e-9;
+    if same_window && whole && a.percent > percent && a.percent <= percent + 1.0 {
+        a.percent
+    } else {
+        percent
+    }
 }
 
 /// A passed reset means the window started over: an estimated 0 % (the engine's rule).

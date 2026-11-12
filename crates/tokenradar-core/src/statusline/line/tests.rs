@@ -542,4 +542,5 @@ mod v12n;
 mod v12p;
 mod v12q;
 mod v12r;
+mod v12s;
 mod v3;

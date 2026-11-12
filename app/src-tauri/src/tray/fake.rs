@@ -93,6 +93,7 @@ pub(crate) fn limit(
         severity: Severity::of(percent),
         provider_severity: None,
         source: Source::Statusline,
+        combined_with: None,
         estimate_reason: None,
         observed_at: Timestamp::from_millis(now - age),
         freshness,

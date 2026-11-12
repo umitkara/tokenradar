@@ -10,7 +10,7 @@ use tokenradar_core::ipc::{
     SessionInfo, StatusQuery, StatusReply, with_deadline,
 };
 use tokenradar_core::limits::history::{HISTORY_SCHEMA, HistoryReply, window_series};
-use tokenradar_core::limits::{WEEK_MS, presence};
+use tokenradar_core::limits::{WEEK_MS, fusion, presence};
 use tokenradar_core::live_sessions::running_sessions;
 use tokenradar_core::statusline::default_config_dir;
 use tokenradar_core::store::ReadOnlyStore;
@@ -143,13 +143,16 @@ fn offline(ctx: &Context, now: Timestamp) -> StatusReply {
             .flatten()
             .map(|v| presence::decode(&v))
             .unwrap_or_default();
-        status.limits = store
-            .latest_snapshots(account.id)
-            .unwrap_or_default()
-            .iter()
-            .filter(|o| !absent.contains(&LimitRef::of(o)))
-            .map(|o| LimitInfo::from_stored(o, now))
-            .collect();
+        // Each source's newest reading, combined the way the app does (ADR-060).
+        status.limits = fusion::fuse_latest(
+            &store
+                .latest_snapshots_by_source(account.id)
+                .unwrap_or_default(),
+        )
+        .iter()
+        .filter(|o| !absent.contains(&LimitRef::of(o)))
+        .map(|o| LimitInfo::from_stored(o, now))
+        .collect();
         status.absent = absent.iter().map(AbsentLimit::from_ref).collect();
     }
     let mut dirs: Vec<PathBuf> = ctx

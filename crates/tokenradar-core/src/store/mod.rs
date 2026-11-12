@@ -175,6 +175,12 @@ impl Store {
         self.read(|c| snapshots::latest(c, account))
     }
 
+    /// The newest snapshot per `(limit_kind, scope, source)`: the input of
+    /// [`crate::limits::fusion::fuse_latest`].
+    pub fn latest_snapshots_by_source(&self, account: AccountId) -> Result<Vec<LimitObservation>> {
+        self.read(|c| snapshots::latest_by_source(c, account))
+    }
+
     /// Whether this exact reading is already stored (spool import idempotency).
     pub fn snapshot_exists(&self, obs: &LimitObservation) -> Result<bool> {
         self.read(|c| snapshots::exists(c, obs))
@@ -485,6 +491,11 @@ impl ReadOnlyStore {
 
     pub fn latest_snapshots(&self, account: AccountId) -> Result<Vec<LimitObservation>> {
         snapshots::latest(&self.conn, account)
+    }
+
+    /// The newest snapshot per `(limit_kind, scope, source)`.
+    pub fn latest_snapshots_by_source(&self, account: AccountId) -> Result<Vec<LimitObservation>> {
+        snapshots::latest_by_source(&self.conn, account)
     }
 
     /// Snapshots with `from <= observed_at < to`, oldest first.
