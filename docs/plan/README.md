@@ -61,6 +61,7 @@ Doğrulanmış Ultra hesaplarında 5 saatlik pencere kalktı (ADR-041). Bu adım
 | 12p | [Statusline simge setleri ve Nerd bar stilleri](12p-simge-setleri-ve-bar-stilleri.md) | 12o | ✅ (2026-11-09, ADR-056). Açık: VS Code terminali görülmedi; öğe listesinde kapsül işareti tek renkli |
 | 12q | [Statusline payload alanları: efor, prompt cache, harcama limiti, PR ve depo](12q-statusline-payload-alanlari.md) | 12p | ✅ (2026-11-11, ADR-059). Açık: yeni glifler gerçek terminalde görülmedi; `pr.*` gözlenmedi |
 | 12r | [Statusline canlı yenileme ve git durumu](12r-canli-yenileme-ve-git-durumu.md) | 12q | 🟨 ADR-059 |
+| 12s | [Limit yüzdelerinin yuvarlama farkını füzyonda gidermek](12s-limit-yuvarlama-fuzyonu.md) | 12r | ⬜ |
 
 ### v0.2 — Analitik ve Atıf
 
