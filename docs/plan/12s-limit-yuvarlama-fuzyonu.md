@@ -125,7 +125,7 @@ Aşağıdakiler ajanın önerileridir, kullanıcı onaylamadan karar sayılmaz.
 
 **Açık konular:**
 - **Kabul kriteri güncellendi (kullanıcı kararı, 2026-11-12):** "panel `/usage` ile aynı değeri gösteriyor" ancak bir API okumasından sonra garanti edilebiliyordu. Statusline bir tam sayıyı geçtiği anda panel bir sonraki yoklamaya kadar (≤ 15 dk) yaklaşık yarı yarıya ihtimalle 1 puan geride kalabilir; gidip gelme yok. Kriter "gidip gelmiyor, en geç bir API yoklamasında eşitleniyor" oldu.
-- **Yan yana karşılaştırma kullanıcıyla yapılmadı:** kurulu sürüm 12s'yi içermiyor. Sürüm güncellemesinden sonra panel, statusline satırı ve `/usage` karşılaştırılmalı.
+- **Yan yana karşılaştırma kullanıcıda:** `main` (12s dahil) 2026-11-12'de yerel `pnpm tauri build` paketiyle kurulu uygulamanın üzerine kuruldu (sürüm numarası hâlâ 0.1.0). Panel, statusline satırı ve `/usage` karşılaştırılmalı.
 - **Claude Code mod'u** (`integrations/claude-code/`) limit değerini Claude Code'un `session.measure`'ından alır; aynı aşağı yuvarlamayı gösteriyor olabilir. Bu adımda dokunulmadı.
 - `session` ve `weekly_scoped` için floor/round varsayımı doğrulanamadı; 5 saatlik penceresi olan bir hesapta bakılmalı.
 - CLI çevrimdışı `status` yolunun DB'li testi yok (`fuse_latest` ve store sorgusu ayrı test edildi).
