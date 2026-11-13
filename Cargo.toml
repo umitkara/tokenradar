@@ -45,6 +45,15 @@ must_use_candidate = "allow"
 missing_errors_doc = "allow"
 missing_panics_doc = "allow"
 
+# Full debuginfo made `target/debug` grow to ~100 GB (PDBs plus incremental caches). Line
+# tables keep file:line in backtraces and panics; dependencies carry no debuginfo at all.
+# Use `scripts/trim-target.ps1` to drop stale artifacts once the directory gets large.
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false
+
 [profile.release]
 opt-level = 3
 lto = "fat"
