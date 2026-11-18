@@ -16,6 +16,7 @@ use serde::Serialize;
 use serde_json::{Value, json};
 use toml_edit::{DocumentMut, Item, value};
 
+use crate::calibration::CalibrationStatus;
 use crate::config::AppConfig;
 use crate::domain::Timestamp;
 use crate::ipc::StatusReply;
@@ -278,6 +279,29 @@ pub fn unpriced_models(paths: &Paths, now: Timestamp) -> Vec<String> {
     }
 }
 
+/// Every account's latest stored calibration (Step 13). Empty without a database.
+pub fn calibrations(paths: &Paths, now: Timestamp) -> Vec<CalibrationStatus> {
+    match ReadOnlyStore::open(paths.db_path()) {
+        Ok(Some(store)) => calibrations_in(&store, now),
+        _ => Vec::new(),
+    }
+}
+
+fn calibrations_in(store: &ReadOnlyStore, now: Timestamp) -> Vec<CalibrationStatus> {
+    store
+        .accounts()
+        .unwrap_or_default()
+        .into_iter()
+        .flat_map(|a| {
+            store
+                .latest_calibrations(a.id)
+                .unwrap_or_default()
+                .into_iter()
+                .map(move |c| c.status(a.id, now))
+        })
+        .collect()
+}
+
 fn unpriced_in(store: &ReadOnlyStore, now: Timestamp) -> Vec<String> {
     let since = now.saturating_sub_millis(UNPRICED_LOOKBACK_MS);
     let used = store
@@ -332,6 +356,8 @@ fn database(paths: &Paths, now: Timestamp, errors: &mut Vec<String>) -> Value {
         "tables": tables,
         "accounts": accounts,
         "muted_until": store.kv_get(crate::notifier::KV_MUTED_UNTIL).ok().flatten(),
+        // Percent per dollar, family weights, confidence and drift per limit (Step 13).
+        "calibrations": calibrations_in(&store, now),
         "pricing": {
             "table": Pricing::claude().fingerprint(),
             "stored_table": store.pricing_table().ok().flatten(),

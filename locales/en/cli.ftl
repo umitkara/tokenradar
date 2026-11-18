@@ -186,6 +186,15 @@ doctor-done = Diagnostics bundle written: { $path }
     It holds no token, conversation content or readable path. Open it and check before sharing.
 # $models is a comma-separated list of model ids.
 doctor-unpriced = No price yet for { $models }. Cost is estimated until TokenRadar is updated.
+# $level is high, medium or low; $confidence a percentage; $drift is yes or no.
+doctor-calibration = Calibration of { $limit }: { $level ->
+        [high] high
+        [medium] medium
+       *[low] low
+    } confidence ({ PCT($confidence) }), { $intervals } intervals{ $drift ->
+        [yes] , usage-to-limit ratio changed recently
+       *[no] {""}
+    }
 error = error: { $message }
 cli-help =
     TokenRadar - usage limits for AI coding agents

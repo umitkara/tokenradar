@@ -9,6 +9,7 @@ use specta::Type;
 use tauri::{AppHandle, EventTarget, Manager};
 use tauri_plugin_autostart::ManagerExt as _;
 use tauri_specta::{Builder, Event, collect_commands, collect_events};
+use tokenradar_core::calibration::CalibrationStatus;
 use tokenradar_core::config::{
     DataConfig, LocalePref, LogLevel, PanelView, ThemePref, WidgetPrefs,
 };
@@ -56,6 +57,7 @@ pub fn builder() -> Builder<tauri::Wry> {
         .commands(collect_commands![
             get_panel_snapshot,
             get_panel_detail,
+            get_calibration_status,
             get_panel_view,
             set_panel_view,
             get_settings,
@@ -181,6 +183,14 @@ async fn get_panel_snapshot(app: AppHandle) -> Option<PanelSnapshot> {
 #[specta::specta]
 async fn get_panel_detail(app: AppHandle) -> Option<PanelDetail> {
     core_bridge::panel_detail(&app)
+}
+
+/// Every account's latest calibration (Step 13); empty until the core is running or before
+/// the first one.
+#[tauri::command]
+#[specta::specta]
+async fn get_calibration_status(app: AppHandle) -> Vec<CalibrationStatus> {
+    core_bridge::calibration_status(&app)
 }
 
 /// The panel view to open on: the one last chosen.

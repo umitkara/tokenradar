@@ -184,6 +184,31 @@ describe("Detail", () => {
     expect(body).toContain("behind the time line");
   });
 
+  it("shows the calibration in the projection tooltip and a drift line (TR)", () => {
+    initI18n(panelCatalog, "tr");
+    const calibrated = {
+      ...weekly(40, { projected: 70 }),
+      calibration: {
+        confidence: 0.82,
+        level: "high" as const,
+        n_obs: 61,
+        drift: { detected_at: 0, since: 0, direction: "up" as const },
+      },
+    };
+    const snap = snapshot({ limits: [calibrated] });
+    const { body } = render(Detail, { props: { snapshot: snap, detail: detailOf(snap) } });
+    expect(body).toContain("Öğrenilen oran: yüksek güven, 61 aralıktan.");
+    expect(body).toContain("Kullanım bu limite artık eskisinden fazla sayılıyor");
+  });
+
+  it("shows no calibration text without one (EN)", () => {
+    initI18n(panelCatalog, "en");
+    const snap = snapshot({ limits: [weekly(40, { projected: 70 })] });
+    const { body } = render(Detail, { props: { snapshot: snap, detail: detailOf(snap) } });
+    expect(body).not.toContain("Learned rate");
+    expect(body).not.toContain("relearning");
+  });
+
   it("shows a placeholder until the detail arrives", () => {
     initI18n(panelCatalog, "en");
     const { body } = render(Detail, { props: { snapshot: snapshot(), detail: null } });

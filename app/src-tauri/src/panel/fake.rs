@@ -136,6 +136,7 @@ impl L {
             observed_at: at(-self.age_min),
             freshness,
             projection: self.projection,
+            calibration: None,
         }
     }
 }

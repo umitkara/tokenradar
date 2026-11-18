@@ -189,6 +189,7 @@ mod tests {
             observed_at: Timestamp::from_millis(at),
             freshness: Freshness::Fresh,
             projection: None,
+            calibration: None,
         }
     }
 

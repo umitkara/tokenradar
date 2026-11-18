@@ -6,6 +6,10 @@
 //! - **Fallback:** `k0 × cost rate of the last 15 minutes`, with the prior
 //!   `k0 = p_now / C_window` (architecture §9.2): the share of the window one dollar of local
 //!   usage has cost so far. Always low confidence.
+//! - **Calibrated fallback (Step 13, ADR-061):** where a calibration applies with at least
+//!   medium confidence to the last 15 minutes' usage, `k × Σ α_f · cost_f` replaces `k0`. Still
+//!   low confidence: extrapolating 15 minutes of usage over the rest of the window stays rough
+//!   (user decision).
 
 use serde::Serialize;
 use specta::Type;
@@ -35,6 +39,8 @@ pub enum RateMethod {
     Observed,
     /// Local cost rate times the window's percent-per-dollar.
     CostRate,
+    /// Local cost rate times the learned percent-per-dollar (Step 13, ADR-061).
+    Calibrated,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Type)]
@@ -136,7 +142,7 @@ pub fn projection(
     p_now: f64,
     resets_at: Option<Timestamp>,
     points: &[(Timestamp, f64)],
-    costs: Option<(i64, i64)>,
+    costs: Option<Fallback>,
 ) -> Option<Projection> {
     let recent: Vec<_> = points
         .iter()
@@ -158,16 +164,42 @@ pub fn projection(
             RateMethod::Observed,
         ));
     }
-    let (window_cost, recent_cost) = costs?;
-    let rate = cost_rate(p_now, window_cost, recent_cost)?;
+    let fallback = costs?;
+    let (rate, method) = match fallback {
+        Fallback::Calibrated { pct_per_min } => (pct_per_min, RateMethod::Calibrated),
+        Fallback::Prior {
+            window_cost,
+            recent_cost,
+        } => (
+            cost_rate(p_now, window_cost, recent_cost)?,
+            RateMethod::CostRate,
+        ),
+    };
     Some(project(
         now,
         p_now,
         rate,
         resets_at,
         Confidence::Low,
-        RateMethod::CostRate,
+        method,
     ))
+}
+
+/// Inputs of the cost-based fallback.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Fallback {
+    /// `k0 = p_now / window_cost` times the cost of the last [`FALLBACK_LOOKBACK_MS`].
+    Prior { window_cost: i64, recent_cost: i64 },
+    /// Already a rate: the calibrated `k` times the weighted recent cost.
+    Calibrated { pct_per_min: f64 },
+}
+
+/// `k × Σ α · cost` of the last [`FALLBACK_LOOKBACK_MS`], in %/min. `weighted_micro_usd` is the
+/// weighted cost in micro-dollars, `k` in percent per dollar.
+pub fn calibrated_rate(k: f64, weighted_micro_usd: f64) -> f64 {
+    #[allow(clippy::cast_precision_loss)]
+    let minutes = FALLBACK_LOOKBACK_MS as f64 / 60_000.0;
+    (k * weighted_micro_usd / 1e6 / minutes).max(0.0)
 }
 
 #[cfg(test)]
@@ -273,15 +305,51 @@ mod tests {
             40.0,
             Some(t(120.0)),
             &[(t(29.0), 40.0)],
-            Some((10_000_000, 1_500_000)),
+            Some(Fallback::Prior {
+                window_cost: 10_000_000,
+                recent_cost: 1_500_000,
+            }),
         )
         .expect("projection");
         assert_eq!(p.method, RateMethod::CostRate);
         assert_eq!(p.confidence, Confidence::Low);
         assert!((p.rate_per_min - 0.4).abs() < 1e-9);
         // No cost in the window: nothing to scale.
-        assert_eq!(projection(now, 40.0, None, &[], Some((0, 0))), None);
+        let none = Fallback::Prior {
+            window_cost: 0,
+            recent_cost: 0,
+        };
+        assert_eq!(projection(now, 40.0, None, &[], Some(none)), None);
         assert_eq!(projection(now, 40.0, None, &[], None), None);
+    }
+
+    #[test]
+    fn a_calibrated_fallback_keeps_low_confidence_and_says_so() {
+        let now = t(30.0);
+        // 0.05 %/$ × $3 weighted in the last 15 min = 0.01 %/min.
+        let rate = calibrated_rate(0.05, 3_000_000.0);
+        assert!((rate - 0.01).abs() < 1e-12);
+        let p = projection(
+            now,
+            40.0,
+            Some(t(120.0)),
+            &[],
+            Some(Fallback::Calibrated { pct_per_min: rate }),
+        )
+        .expect("projection");
+        assert_eq!(p.method, RateMethod::Calibrated);
+        assert_eq!(p.confidence, Confidence::Low);
+        // The observed slope still wins when there are enough points.
+        let points = [(t(10.0), 30.0), (t(20.0), 35.0), (t(29.0), 40.0)];
+        let p = projection(
+            now,
+            40.0,
+            None,
+            &points,
+            Some(Fallback::Calibrated { pct_per_min: rate }),
+        )
+        .expect("projection");
+        assert_eq!(p.method, RateMethod::Observed);
     }
 
     #[test]

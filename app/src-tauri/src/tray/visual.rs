@@ -206,6 +206,7 @@ pub(crate) mod tests {
             observed_at: Timestamp::from_millis(0),
             freshness,
             projection: None,
+            calibration: None,
         }
     }
 

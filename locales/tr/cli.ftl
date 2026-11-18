@@ -163,6 +163,14 @@ doctor-done = Tanılama paketi yazıldı: { $path }
     Token, konuşma içeriği veya okunabilir yol içermez. Paylaşmadan önce açıp kontrol edin.
 # $models, virgülle ayrılmış model kimlikleridir.
 doctor-unpriced = { $models } için henüz fiyat yok. TokenRadar güncellenene kadar maliyet tahminidir.
+doctor-calibration = { $limit } kalibrasyonu: { $level ->
+        [high] yüksek
+        [medium] orta
+       *[low] düşük
+    } güven ({ PCT($confidence) }), { $intervals } aralık{ $drift ->
+        [yes] , kullanım-limit oranı yakın zamanda değişti
+       *[no] {""}
+    }
 error = hata: { $message }
 cli-help =
     TokenRadar - yapay zekâ kodlama ajanları için kullanım limitleri

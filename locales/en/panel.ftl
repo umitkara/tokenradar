@@ -101,3 +101,15 @@ detail-chart-alt = { $name } over the window against the time line: { PCT($used)
 detail-session-cost = API ${ NUM($usd, 2) }
 detail-session-cost-tip = API-equivalent cost in this window, not a bill.
 detail-estimate-note = ≈ marks an estimate, not a measurement.
+# The learned usage-to-limit rate behind a cost-based projection (Step 13).
+# $level is high, medium or low.
+detail-calibration = Learned rate: { $level ->
+        [high] high
+        [medium] medium
+       *[low] low
+    } confidence, from { $intervals } intervals.
+# A recent change in how much of the limit a dollar of use takes. $dir is up or down.
+detail-calibration-drift = { $dir ->
+        [up] Use now counts more toward this limit than before; relearning.
+       *[down] Use now counts less toward this limit than before; relearning.
+    }

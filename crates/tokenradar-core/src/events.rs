@@ -10,6 +10,7 @@ use serde::Serialize;
 use specta::Type;
 use tokio::sync::broadcast;
 
+use crate::calibration::CalibrationStatus;
 use crate::domain::{AccountId, SessionId, Timestamp};
 use crate::indexer::{IndexMilestone, IndexProgress};
 use crate::limits::{LimitEvent, PanelSnapshot};
@@ -56,6 +57,12 @@ pub enum CoreEvent {
     Limit(LimitEvent),
     /// A notification to show now; mute and quiet hours are already applied.
     Notify(Notice),
+    /// An account's calibrations were recomputed and something visible changed: a level, a
+    /// drift, or a stored row (Step 13).
+    CalibrationUpdated {
+        account: AccountId,
+        calibrations: Vec<CalibrationStatus>,
+    },
 }
 
 /// Which parser reported [`CoreEvent::SchemaDrift`].

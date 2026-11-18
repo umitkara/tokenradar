@@ -249,7 +249,7 @@ fn ms(ms: i64) -> Arg<'static> {
 
 const NONE: &str = "—";
 
-fn limit_name(l: &Localizer, kind: &str, scope: Option<&str>) -> String {
+pub(crate) fn limit_name(l: &Localizer, kind: &str, scope: Option<&str>) -> String {
     match kind {
         "session" => l.msg("limit-session"),
         "weekly_all" => l.msg("limit-weekly-all"),

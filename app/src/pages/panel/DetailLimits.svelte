@@ -43,6 +43,15 @@ function paceText(p: PaceView): string {
 
 type Projected = { text: string; crit: boolean; low: boolean } | null;
 
+/** The projection's tooltip: how rough it is and, with a calibration, how well it is learned. */
+function projectionTitle(limit: LimitView, low: boolean): string | undefined {
+  const lines: string[] = [];
+  if (low) lines.push(t("panel-projection-low"));
+  const c = limit.calibration;
+  if (c) lines.push(t("detail-calibration", { level: c.level, intervals: c.n_obs }));
+  return lines.length > 0 ? lines.join("\n") : undefined;
+}
+
 function projectionOf(limit: LimitView): Projected {
   const p = limit.projection;
   if (!p || isEstimate(limit)) return null;
@@ -81,9 +90,16 @@ function projectionOf(limit: LimitView): Projected {
             class="projection"
             class:crit={projected.crit}
             class:low={projected.low}
-            title={projected.low ? t("panel-projection-low") : undefined}
+            title={projectionTitle(limit, projected.low)}
           >
             {projected.text}
+          </p>
+        {/if}
+        {#if limit.calibration?.drift}
+          <p class="drift">
+            <Icon name="info" />{t("detail-calibration-drift", {
+              dir: limit.calibration.drift.direction,
+            })}
           </p>
         {/if}
       </li>
@@ -107,7 +123,8 @@ function projectionOf(limit: LimitView): Projected {
     gap: var(--space-1);
   }
   .scoped .meta,
-  .scoped .projection {
+  .scoped .projection,
+  .scoped .drift {
     padding-left: var(--space-4);
   }
   .meta {
@@ -118,6 +135,7 @@ function projectionOf(limit: LimitView): Projected {
   }
   .pace,
   .projection,
+  .drift,
   .extra {
     margin: 0;
     font: var(--type-caption);
@@ -138,6 +156,11 @@ function projectionOf(limit: LimitView): Projected {
   .projection.low {
     color: var(--text-3);
     font-weight: 400;
+  }
+  .drift {
+    display: flex;
+    gap: var(--space-1);
+    align-items: center;
   }
   .extra {
     display: flex;

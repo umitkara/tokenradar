@@ -4,7 +4,8 @@
 use serde::Serialize;
 use specta::Type;
 
-use super::rate::Projection;
+use super::rate::{Confidence, Projection};
+use crate::calibration::CalibrationView;
 use crate::domain::{
     AccountId, LimitKind, LimitRef, MicroUsd, Scope, SessionId, Source, Timestamp, WindowPresence,
 };
@@ -97,6 +98,8 @@ pub struct LimitView {
     pub freshness: Freshness,
     /// `None` for estimates and when no rate can be derived.
     pub projection: Option<Projection>,
+    /// The limit's learned percent-per-dollar, when there is one (Step 13, ADR-061).
+    pub calibration: Option<CalibrationView>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Type)]
@@ -205,6 +208,8 @@ type VisibleSession = (Option<String>, Option<LiveStatus>, Option<i64>);
 pub struct VisibleKey {
     account: Option<AccountView>,
     limits: Vec<VisibleLimit>,
+    /// Calibration level and whether a drift shows, per limit.
+    calibration: Vec<(Option<Confidence>, bool)>,
     absent: Vec<LimitRef>,
     sessions: Vec<VisibleSession>,
     index: IndexState,
@@ -253,6 +258,16 @@ impl PanelSnapshot {
                         l.projection.is_some_and(|p| p.will_hit_before_reset),
                         // Minutes, so the countdown does not count as a change.
                         l.resets_at.map(|r| r.as_millis() / 60_000),
+                    )
+                })
+                .collect(),
+            calibration: self
+                .limits
+                .iter()
+                .map(|l| {
+                    (
+                        l.calibration.map(|c| c.level),
+                        l.calibration.is_some_and(|c| c.drift.is_some()),
                     )
                 })
                 .collect(),

@@ -97,3 +97,12 @@ detail-chart-alt = { $name } kullanımının pencere boyunca zaman çizgisiyle k
 detail-session-cost = API ${ NUM($usd, 2) }
 detail-session-cost-tip = Bu penceredeki API karşılığı maliyet; fatura değildir.
 detail-estimate-note = ≈ işareti ölçümü değil tahmini gösterir.
+detail-calibration = Öğrenilen oran: { $level ->
+        [high] yüksek
+        [medium] orta
+       *[low] düşük
+    } güven, { $intervals } aralıktan.
+detail-calibration-drift = { $dir ->
+        [up] Kullanım bu limite artık eskisinden fazla sayılıyor; yeniden öğreniliyor.
+       *[down] Kullanım bu limite artık eskisinden az sayılıyor; yeniden öğreniliyor.
+    }

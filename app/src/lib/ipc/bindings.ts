@@ -11,6 +11,11 @@ export const commands = {
 	getPanelSnapshot: () => __TAURI_INVOKE<PanelSnapshot | null>("get_panel_snapshot"),
 	/**  The detail view's pace, time strip and chart (ADR-048); `None` until the core is running. */
 	getPanelDetail: () => __TAURI_INVOKE<PanelDetail | null>("get_panel_detail"),
+	/**
+	 *  Every account's latest calibration (Step 13); empty until the core is running or before
+	 *  the first one.
+	 */
+	getCalibrationStatus: () => __TAURI_INVOKE<CalibrationStatus[]>("get_calibration_status"),
 	/**  The panel view to open on: the one last chosen. */
 	getPanelView: () => __TAURI_INVOKE<PanelView>("get_panel_view"),
 	setPanelView: (view: PanelView) => typedError<null, string>(__TAURI_INVOKE("set_panel_view", { view })),
@@ -249,6 +254,34 @@ export type BarStyleSample = {
 	sample: Span[],
 };
 
+/**  One limit's calibration as `get_calibration_status` and `CalibrationUpdated` carry it. */
+export type CalibrationStatus = {
+	account: AccountId,
+	kind: LimitKind,
+	scope: Scope | null,
+	source: Source,
+	/**  Percentage points per USD of `sum(alpha_f * cost_f)`. */
+	k: number | null,
+	alpha: FamilyWeight[],
+	confidence: number | null,
+	level: Confidence,
+	n_obs: number,
+	/**  Only while recent enough to show. */
+	drift: Drift | null,
+	computed_at: Timestamp,
+	/**  Row version; 0 if not stored yet. */
+	version: number,
+};
+
+/**  Calibration as the panel shows it (ADR-061). */
+export type CalibrationView = {
+	confidence: number | null,
+	level: Confidence,
+	n_obs: number,
+	/**  Set while a recent change in `k` is being relearned. */
+	drift: Drift | null,
+};
+
 export type ChartPoint = {
 	at: Timestamp,
 	percent: number | null,
@@ -330,7 +363,15 @@ export type CoreEvent =
 /**  A threshold, projection or reset signal for the notifier. */
 { type: "limit"; data: LimitEvent } | 
 /**  A notification to show now; mute and quiet hours are already applied. */
-{ type: "notify"; data: Notice };
+{ type: "notify"; data: Notice } | 
+/**
+ *  An account's calibrations were recomputed and something visible changed: a level, a
+ *  drift, or a stored row (Step 13).
+ */
+{ type: "calibration_updated"; data: {
+	account: AccountId,
+	calibrations: CalibrationStatus[],
+} };
 
 /**  A core event, forwarded to the windows that are visible. */
 export type CoreEventEmitted = CoreEvent;
@@ -366,6 +407,19 @@ export type DiffLine = {
 	text: string,
 };
 
+export type Drift = {
+	/**  When the CUSUM crossed its threshold. */
+	detected_at: Timestamp,
+	/**  Where the change most likely began. */
+	since: Timestamp,
+	direction: DriftDirection,
+};
+
+/**  The direction of a detected change in `k`. */
+export type DriftDirection = 
+/**  One dollar now costs more of the limit. */
+"up" | "down";
+
 /**  Which parser reported [`CoreEvent::SchemaDrift`]. */
 export type DriftSource = "claude_jsonl";
 
@@ -375,6 +429,12 @@ export type EstimateReason =
 "reset";
 
 export type FailedStage = "check" | "install";
+
+/**  A family weight other than 1, for the UI and `doctor`. */
+export type FamilyWeight = {
+	family: ModelFamily,
+	alpha: number | null,
+};
 
 export type FocusView = {
 	kind: LimitKind,
@@ -642,6 +702,8 @@ export type LimitView = {
 	freshness: Freshness,
 	/**  `None` for estimates and when no rate can be derived. */
 	projection: Projection | null,
+	/**  The limit's learned percent-per-dollar, when there is one (Step 13, ADR-061). */
+	calibration: CalibrationView | null,
 };
 
 /**  The only pages the app opens (ADR-013: no other destination). */
@@ -676,6 +738,14 @@ export type LogLevel = "error" | "warn" | "info" | "debug" | "trace";
 
 /**  US dollars × 10⁶. A price of $1 per million tokens is exactly one micro-dollar per token. */
 export type MicroUsd = number;
+
+/**
+ *  Model family, used for grouping and per-family calibration weights.
+ *  Prices are per model, not per family (ADR-025).
+ */
+export type ModelFamily = "fable" | "mythos" | "opus" | "sonnet" | "haiku" | 
+/**  Placeholder records Claude Code writes without an API call (`<synthetic>`). */
+"synthetic" | "unknown";
 
 /**  Notifications were muted or unmuted (tray menu, panel, or the mute running out). */
 export type MuteChanged = {
@@ -862,7 +932,9 @@ export type RateMethod =
 /**  Slope of observed percentages. */
 "observed" | 
 /**  Local cost rate times the window's percent-per-dollar. */
-"cost_rate";
+"cost_rate" | 
+/**  Local cost rate times the learned percent-per-dollar (Step 13, ADR-061). */
+"calibrated";
 
 /**  How a limit shows its reset (Step 12m). */
 export type ResetFormat = 

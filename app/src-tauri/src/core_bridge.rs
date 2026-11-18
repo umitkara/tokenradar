@@ -7,6 +7,7 @@ use std::fmt::Write as _;
 use std::sync::{Arc, Mutex, PoisonError};
 
 use tauri::{AppHandle, Manager};
+use tokenradar_core::calibration::CalibrationStatus;
 use tokenradar_core::config::{self, AppConfig};
 use tokenradar_core::domain::{AccountId, LimitObservation, Timestamp};
 use tokenradar_core::events::{CoreEvent, Delivery, Subscription};
@@ -159,6 +160,14 @@ pub fn panel_snapshot(app: &AppHandle) -> Option<PanelSnapshot> {
     }
     let state = app.try_state::<CoreState>()?;
     status(&state.0).and_then(|s| s.panel_snapshot())
+}
+
+/// The latest calibrations of every account (Step 13).
+pub fn calibration_status(app: &AppHandle) -> Vec<CalibrationStatus> {
+    app.try_state::<CoreState>()
+        .and_then(|state| status(&state.0))
+        .map(|s| s.calibrations)
+        .unwrap_or_default()
 }
 
 /// The panel's detail view (ADR-048), built now from the snapshot and the stored readings of

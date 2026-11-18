@@ -57,6 +57,7 @@ export function limit(percent: number | null, o: LimitOptions = {}): LimitView {
     observed_at: now - (o.stale ? 45 * MIN : 2 * MIN),
     freshness: o.stale ? "stale" : "fresh",
     projection: source === "estimate" ? null : projection(o.projected),
+    calibration: null,
   };
 }
 

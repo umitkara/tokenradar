@@ -98,6 +98,7 @@ pub(crate) fn limit(
         observed_at: Timestamp::from_millis(now - age),
         freshness,
         projection: None,
+        calibration: None,
     }
 }
 

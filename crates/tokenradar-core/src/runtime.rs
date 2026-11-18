@@ -24,7 +24,7 @@
 //! Start-up order (architecture §2): the watcher starts at once; the first full scan waits
 //! [`Timings::startup_delay`] so the tray and IPC come up first.
 
-use std::collections::{BTreeSet, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, RecvTimeoutError};
@@ -37,6 +37,7 @@ use specta::Type;
 
 use tokenradar_i18n::Locale;
 
+use crate::calibration::{self, Calibration, CalibrationStatus};
 use crate::clock::{LocalClock, SystemClock};
 use crate::domain::{AccountId, AccountSpec, LimitObservation, Provider, Timestamp};
 use crate::events::{CoreEvent, DriftSource, EventBus, Subscription};
@@ -96,6 +97,9 @@ pub struct Timings {
     pub hot_ttl: Duration,
     pub liveness_interval: Duration,
     pub safety_scan: Duration,
+    /// Delay of the first calibration after start; later ones follow every
+    /// [`calibration::RECOMPUTE_INTERVAL`].
+    pub calibration_delay: Duration,
 }
 
 impl Default for Timings {
@@ -107,6 +111,7 @@ impl Default for Timings {
             hot_ttl: watcher::HOT_TTL,
             liveness_interval: LIVENESS_INTERVAL,
             safety_scan: watcher::SAFETY_SCAN,
+            calibration_delay: Duration::from_secs(30),
         }
     }
 }
@@ -189,6 +194,8 @@ pub struct CoreStatus {
     pub terminals: Vec<TerminalKind>,
     /// The terminal of the latest statusline call.
     pub last_terminal: Option<TerminalKind>,
+    /// Latest calibrations of every account (Step 13).
+    pub calibrations: Vec<CalibrationStatus>,
 }
 
 impl CoreStatus {
@@ -304,6 +311,7 @@ impl CoreRuntime {
         let (limits_bus, limits_status, limits_store) =
             (bus.clone(), status.clone(), store.clone());
         let (spool_dir, limits_dirs) = (config.spool_dir.clone(), account_dirs.clone());
+        let calibration_delay = config.timings.calibration_delay;
         threads.push(spawn("core-limits", move || {
             // Built here: the notifier's Fluent bundle cannot move between threads.
             let notifier = setup.map(|s| start_notifier(&limits_store, &s, Timestamp::now()));
@@ -317,8 +325,9 @@ impl CoreRuntime {
                 spool_dir,
                 account_dirs: limits_dirs,
                 repeat_built: None,
+                calibration: CalibrationState::default(),
             };
-            limits_loop(ctx, &limits_rx);
+            limits_loop(ctx, &limits_rx, calibration_delay);
         })?);
 
         let mut ipc_stop = None;
@@ -1141,9 +1150,146 @@ struct LimitsCtx {
     account_dirs: Vec<(AccountId, PathBuf)>,
     /// When a repeated payload last asked for a rebuild.
     repeat_built: Option<Instant>,
+    calibration: CalibrationState,
+}
+
+/// What the limits thread remembers between calibrations.
+#[derive(Default)]
+struct CalibrationState {
+    /// Newest snapshot per account at the last run; nothing new means nothing to do.
+    seen: BTreeMap<AccountId, Timestamp>,
+    /// Newest stored row per limit, for [`calibration::should_store`].
+    stored: BTreeMap<AccountId, Vec<Calibration>>,
+}
+
+/// What a calibration change can make visible: level, drift, stored row.
+type CalibrationKey = Vec<(String, Option<String>, crate::limits::Confidence, bool, i64)>;
+
+fn calibration_key(cals: &[Calibration], now: Timestamp) -> CalibrationKey {
+    cals.iter()
+        .map(|c| {
+            (
+                c.kind.as_str().to_owned(),
+                c.scope.as_ref().map(ToString::to_string),
+                c.level(),
+                c.visible_drift(now).is_some(),
+                c.version,
+            )
+        })
+        .collect()
 }
 
 impl LimitsCtx {
+    /// Loads the stored calibrations so the fallback can use them before the first run.
+    fn load_calibrations(&mut self, now: Timestamp) {
+        for &(account, _) in &self.account_dirs {
+            match self.store.latest_calibrations(account) {
+                Ok(rows) => {
+                    self.engine.set_calibrations(account, rows.clone());
+                    self.calibration.stored.insert(account, rows);
+                }
+                Err(error) => tracing::warn!(%error, "could not load calibrations"),
+            }
+        }
+        self.publish_calibration_status(now);
+    }
+
+    /// Recomputes the calibrations of accounts with new snapshots (Step 13). Returns whether
+    /// anything the panel shows changed.
+    fn recalibrate(&mut self, now: Timestamp) -> bool {
+        let mut visible = false;
+        let accounts: Vec<AccountId> = self.account_dirs.iter().map(|a| a.0).collect();
+        for account in accounts {
+            let newest = match self.store.latest_snapshots(account) {
+                Ok(rows) => rows.iter().map(|o| o.observed_at).max(),
+                Err(error) => {
+                    tracing::warn!(%error, "could not read the newest snapshot");
+                    continue;
+                }
+            };
+            let Some(newest) = newest else { continue };
+            if self.calibration.seen.get(&account) == Some(&newest) {
+                continue;
+            }
+            let started = Instant::now();
+            let fresh = match calibration::calibrate(&self.store, account, now) {
+                Ok(c) => c,
+                Err(error) => {
+                    tracing::warn!(%error, "calibration failed");
+                    continue;
+                }
+            };
+            self.calibration.seen.insert(account, newest);
+            let next = self.store_calibrations(account, fresh);
+            tracing::debug!(
+                account = account.0,
+                limits = next.len(),
+                ms = started.elapsed().as_millis(),
+                "calibrated"
+            );
+            let before = calibration_key(self.engine.calibrations(account), now);
+            let after = calibration_key(&next, now);
+            self.engine.set_calibrations(account, next);
+            if before != after {
+                visible = true;
+                self.bus.publish(CoreEvent::CalibrationUpdated {
+                    account,
+                    calibrations: self
+                        .engine
+                        .calibrations(account)
+                        .iter()
+                        .map(|c| c.status(account, now))
+                        .collect(),
+                });
+            }
+        }
+        self.publish_calibration_status(now);
+        visible
+    }
+
+    /// Stores the calibrations that changed enough; returns all with their row versions.
+    fn store_calibrations(
+        &mut self,
+        account: AccountId,
+        fresh: Vec<Calibration>,
+    ) -> Vec<Calibration> {
+        let stored = self.calibration.stored.entry(account).or_default();
+        let mut next = Vec::with_capacity(fresh.len());
+        for mut cal in fresh {
+            let prev = stored.iter().position(|p| p.same_limit(&cal));
+            if calibration::should_store(prev.map(|i| &stored[i]), &cal) {
+                match self.store.writer().insert_calibration(account, cal.clone()) {
+                    Ok(version) => {
+                        cal.version = version;
+                        match prev {
+                            Some(i) => stored[i] = cal.clone(),
+                            None => stored.push(cal.clone()),
+                        }
+                    }
+                    Err(error) => tracing::warn!(%error, "could not store a calibration"),
+                }
+            } else if let Some(i) = prev {
+                cal.version = stored[i].version;
+            }
+            next.push(cal);
+        }
+        next
+    }
+
+    fn publish_calibration_status(&self, now: Timestamp) {
+        let all = self
+            .account_dirs
+            .iter()
+            .flat_map(|&(account, _)| {
+                self.engine
+                    .calibrations(account)
+                    .iter()
+                    .map(move |c| c.status(account, now))
+            })
+            .collect();
+        lock(&self.status).calibrations = all;
+    }
+
     /// Imports the statusline spool; `true` if anything was ingested.
     fn import_spool(&mut self, now: Timestamp) -> bool {
         let Some(dir) = &self.spool_dir else {
@@ -1302,16 +1448,22 @@ impl LimitsCtx {
     }
 }
 
-fn limits_loop(mut ctx: LimitsCtx, rx: &mpsc::Receiver<LimitsMsg>) {
+fn limits_loop(mut ctx: LimitsCtx, rx: &mpsc::Receiver<LimitsMsg>, calibration_delay: Duration) {
     let mut last_key = None;
     let mut dirty = true;
     let mut next_build = Instant::now();
     let mut next_spool = Instant::now();
+    let mut next_calibration = Instant::now() + calibration_delay;
+    ctx.load_calibrations(Timestamp::now());
     loop {
         let now = Timestamp::now();
         if ctx.spool_dir.is_some() && Instant::now() >= next_spool {
             dirty |= ctx.import_spool(now);
             next_spool = Instant::now() + spool::IMPORT_INTERVAL;
+        }
+        if Instant::now() >= next_calibration {
+            dirty |= ctx.recalibrate(now);
+            next_calibration = Instant::now() + calibration::RECOMPUTE_INTERVAL;
         }
         let resets = ctx.engine.tick(now);
         dirty |= ctx.publish_all(resets);
@@ -1342,6 +1494,8 @@ fn limits_loop(mut ctx: LimitsCtx, rx: &mpsc::Receiver<LimitsMsg>) {
             let until_spool = next_spool.saturating_duration_since(Instant::now());
             wait = Some(wait.map_or(until_spool, |w| w.min(until_spool)));
         }
+        let until_calibration = next_calibration.saturating_duration_since(Instant::now());
+        wait = Some(wait.map_or(until_calibration, |w| w.min(until_calibration)));
         let msg = match wait {
             Some(wait) => match rx.recv_timeout(wait) {
                 Ok(msg) => Some(msg),

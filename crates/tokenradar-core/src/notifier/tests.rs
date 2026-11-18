@@ -36,6 +36,7 @@ fn limit(kind: LimitKind, percent: f64, resets_in: i64) -> LimitView {
         observed_at: NOW,
         freshness: Freshness::Fresh,
         projection: None,
+        calibration: None,
     }
 }
 

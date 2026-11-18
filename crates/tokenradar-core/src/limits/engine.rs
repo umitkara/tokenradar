@@ -24,12 +24,13 @@ use std::collections::{BTreeMap, HashMap};
 
 use super::fusion::Bound;
 use super::presence::{self, Presence};
-use super::rate::{self, Projection};
+use super::rate::{self, Confidence, Projection};
 use super::share::{self, RootUsage};
 use super::view::{
     AccountView, ApiStatusView, EstimateReason, FRESH_MS, Freshness, IndexState, LimitEvent,
     LimitView, PanelSnapshot, STALE_MS, SessionShareView, Severity, StatuslineState, THRESHOLDS,
 };
+use crate::calibration::{self, Calibration, ModelCost};
 use crate::domain::{
     AccountId, LimitKind, LimitObservation, LimitRef, MicroUsd, Scope, SessionId, Source, Timestamp,
 };
@@ -235,6 +236,8 @@ struct AccountState {
     statusline_last: Option<Timestamp>,
     /// Which limits the account has; absent ones have no track (ADR-041).
     presence: Presence,
+    /// Latest calibration per limit (Step 13).
+    calibrations: Vec<Calibration>,
 }
 
 pub struct LimitEngine {
@@ -272,6 +275,7 @@ impl LimitEngine {
                 api_diag: PollDiagnostics::default(),
                 extra_usage: None,
                 statusline_last: None,
+                calibrations: Vec::new(),
                 presence: Presence::with_absent(
                     store
                         .kv_get(&presence::kv_key(id))?
@@ -532,6 +536,19 @@ impl LimitEngine {
         self.index = index;
     }
 
+    /// Replaces the account's calibrations (Step 13); used by the cost fallback and the view.
+    pub fn set_calibrations(&mut self, account: AccountId, calibrations: Vec<Calibration>) {
+        if let Some(state) = self.accounts.get_mut(&account) {
+            state.calibrations = calibrations;
+        }
+    }
+
+    pub fn calibrations(&self, account: AccountId) -> &[Calibration] {
+        self.accounts
+            .get(&account)
+            .map_or(&[], |s| s.calibrations.as_slice())
+    }
+
     pub fn set_plan(&mut self, account: AccountId, plan: Option<String>, tier: Option<String>) {
         if let Some(state) = self.accounts.get_mut(&account) {
             state.meta.plan = plan;
@@ -775,6 +792,13 @@ impl Queries<'_> {
             .ok()
     }
 
+    fn model_costs(&self, from: Timestamp, to: Timestamp) -> Option<Vec<ModelCost>> {
+        self.store
+            .model_costs_between(self.account, from, to)
+            .map_err(|e| self.failed(&e))
+            .ok()
+    }
+
     fn roots(&self, from: Timestamp, to: Timestamp) -> Vec<RootUsage> {
         self.store
             .root_usage_between(self.account, from, to)
@@ -783,6 +807,25 @@ impl Queries<'_> {
                 Vec::new()
             })
     }
+}
+
+/// The calibrated fallback when a calibration applies to the recent usage with at least medium
+/// confidence (ADR-061). `None` lets the `k0` prior take over.
+fn calibrated_fallback(
+    q: &Queries<'_>,
+    calibration: Option<&Calibration>,
+    from: Timestamp,
+    now: Timestamp,
+) -> Option<rate::Fallback> {
+    let cal = calibration?;
+    // `model_costs_between` is `(from, to]`; the prior's queries are `[from, to)`.
+    let costs = q.model_costs(from, now)?;
+    if calibration::estimator::level(cal.confidence_for(&costs)) == Confidence::Low {
+        return None;
+    }
+    Some(rate::Fallback::Calibrated {
+        pct_per_min: rate::calibrated_rate(cal.k, cal.weighted_cost(&costs)),
+    })
 }
 
 /// One view per tracked limit, plus the 5-hour window's `(measured percent, start)`.
@@ -796,12 +839,25 @@ fn limit_views(
     let mut session_window = None;
     for track in state.tracks.values_mut() {
         let obs = &track.fused;
+        let calibration = state
+            .calibrations
+            .iter()
+            .find(|c| c.kind == obs.kind && c.scope == obs.scope);
         let projection: Option<Projection> = if track.is_real() {
-            // Cost scaling only makes sense for limits all local usage counts toward.
+            // Cost scaling only makes sense for limits all local usage counts toward. A scoped
+            // limit gets no cost fallback yet (Step 13 user decision; Step 12t).
             let costs = match (&obs.kind, &obs.scope, track.window_start()) {
-                (LimitKind::Session | LimitKind::WeeklyAll, None, Some(start)) => q
-                    .cost(start, now)
-                    .zip(q.cost(now.saturating_sub_millis(rate::FALLBACK_LOOKBACK_MS), now)),
+                (LimitKind::Session | LimitKind::WeeklyAll, None, Some(start)) => {
+                    let recent_from = now.saturating_sub_millis(rate::FALLBACK_LOOKBACK_MS);
+                    calibrated_fallback(q, calibration, recent_from, now).or_else(|| {
+                        q.cost(start, now).zip(q.cost(recent_from, now)).map(
+                            |(window_cost, recent_cost)| rate::Fallback::Prior {
+                                window_cost,
+                                recent_cost,
+                            },
+                        )
+                    })
+                }
                 _ => None,
             };
             rate::projection(now, obs.percent, obs.resets_at, &track.history, costs)
@@ -840,6 +896,7 @@ fn limit_views(
             observed_at: obs.observed_at,
             freshness: Freshness::of(now.as_millis() - obs.observed_at.as_millis()),
             projection,
+            calibration: calibration.map(|c| c.view(now)),
         });
     }
     (limits, session_window)
