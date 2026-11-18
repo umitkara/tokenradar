@@ -15,7 +15,9 @@ macro_rules! stored_enum {
         }
     ) => {
         $(#[$doc])*
-        #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Type)]
+        #[derive(
+            Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, Type,
+        )]
         #[serde(rename_all = "snake_case")]
         pub enum $name {
             $($(#[$vdoc])* $variant,)+

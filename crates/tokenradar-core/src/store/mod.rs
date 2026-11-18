@@ -8,6 +8,7 @@
 //! Repository functions take a `&Connection` / `&Transaction`, so tests and the writer thread
 //! share one implementation.
 
+mod calibrations;
 mod catalog;
 mod events;
 mod index;
@@ -218,6 +219,24 @@ impl Store {
         self.read(|c| windows::cost_between(c, account, from, to))
     }
 
+    /// Cost per model of the events with `from < ts <= to` (calibration intervals).
+    pub fn model_costs_between(
+        &self,
+        account: AccountId,
+        from: Timestamp,
+        to: Timestamp,
+    ) -> Result<Vec<crate::calibration::ModelCost>> {
+        self.read(|c| calibrations::model_costs_between(c, account, from, to))
+    }
+
+    /// The newest calibration per limit of an account (Step 13).
+    pub fn latest_calibrations(
+        &self,
+        account: AccountId,
+    ) -> Result<Vec<crate::calibration::Calibration>> {
+        self.read(|c| calibrations::latest(c, account))
+    }
+
     /// Titles and project names of the given sessions; unknown ids are left out.
     pub fn session_labels(&self, ids: &[SessionId]) -> Result<Vec<SessionLabel>> {
         self.read(|c| windows::session_labels(c, ids))
@@ -384,6 +403,15 @@ impl Writer {
         })
     }
 
+    /// Stores a calibration as the account's next version; returns that version.
+    pub fn insert_calibration(
+        &self,
+        account: AccountId,
+        cal: crate::calibration::Calibration,
+    ) -> Result<i64> {
+        self.call(move |conn| calibrations::insert(conn, account, &cal))
+    }
+
     pub fn kv_set(&self, key: String, value: String) -> Result<()> {
         self.call(move |conn| kv::set(conn, &key, &value))
     }
@@ -510,6 +538,24 @@ impl ReadOnlyStore {
 
     pub fn account_stats(&self, account: AccountId) -> Result<AccountStats> {
         stats::account_stats(&self.conn, account)
+    }
+
+    /// Cost per model of the events with `from < ts <= to` (calibration intervals).
+    pub fn model_costs_between(
+        &self,
+        account: AccountId,
+        from: Timestamp,
+        to: Timestamp,
+    ) -> Result<Vec<crate::calibration::ModelCost>> {
+        calibrations::model_costs_between(&self.conn, account, from, to)
+    }
+
+    /// The newest calibration per limit of an account (Step 13).
+    pub fn latest_calibrations(
+        &self,
+        account: AccountId,
+    ) -> Result<Vec<crate::calibration::Calibration>> {
+        calibrations::latest(&self.conn, account)
     }
 
     pub fn table_counts(&self) -> Result<Vec<(String, u64)>> {

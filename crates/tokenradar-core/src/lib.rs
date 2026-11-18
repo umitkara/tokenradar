@@ -2,6 +2,7 @@
 //!
 //! This crate has no Tauri dependency so that a headless daemon or another front end can reuse it.
 
+pub mod calibration;
 pub mod clock;
 pub mod config;
 pub mod doctor;
