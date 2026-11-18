@@ -1273,7 +1273,7 @@
 
 ### ADR-061 — Kalibrasyon kenar aralıklarından öğrenilir; aile çarpanları veriden gelir, kalibre öngörü düşük güvende kalır
 
-**Durum:** Önerildi (2026-11-19, Adım 13). "(kullanıcı kararı)" işaretli maddeler 2026-11-18'de kullanıcıyla kararlaştırıldı; kalan parametreler ajanın önerisidir ve onay bekler.
+**Durum:** Kabul edildi (2026-11-19, Adım 13). "(kullanıcı kararı)" işaretli maddeler 2026-11-18'de kullanıcıyla kararlaştırıldı; kalan parametreleri (güven formülü, CUSUM, saklama kuralları, kullanım anı güveni) kullanıcı 2026-11-19'da onayladı.
 
 - **Bağlam:**
   - Plan (`architecture.md` §9.2) ondalıklı statusline okumaları, rastgele snapshot çiftleri ve `Δp ≥ 3` birleştirmesi varsayıyordu. Statusline ve API tam sayı veriyor (ADR-060); rastgele çift ±1 puan kuantizasyon hatası taşır.

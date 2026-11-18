@@ -142,7 +142,7 @@ cargo run --release -p tokenradar-core --example backtest -- --db "$env:LOCALAPP
 
 ## Devir notu
 
-**Tarih:** 2026-11-19 · **Karar:** ADR-061 (Önerildi; kullanıcı kararları işaretli, parametreler onay bekliyor) · **Ölçüm:** `docs/perf/2026-11-19-calibration-backtest.md`
+**Tarih:** 2026-11-19 · **Karar:** ADR-061 (Kabul edildi, 2026-11-19) · **Ölçüm:** `docs/perf/2026-11-19-calibration-backtest.md`
 
 **Kullanıcıyla kararlaştırılanlar:** yukarıdaki "Kullanıcıyla kararlaştırılanlar (2026-11-18)" bölümü. Ek olarak adım sırası: 12t'den önce 13.
 
@@ -176,7 +176,7 @@ cargo run --release -p tokenradar-core --example backtest -- --db "$env:LOCALAPP
 - Olaylar kenarlara `observed_at` yerine kenarın orta nokta zamanıyla atanır (kenar belirsizliği ölçüldü, yukarıda).
 
 **Açık konular:**
-- **ADR-061 onayı:** güven formülü, CUSUM parametreleri, saklama kuralları ve kullanım anı güveni ajanın önerisi.
+- **ADR-061 onaylandı (2026-11-19):** güven formülü, CUSUM parametreleri, saklama kuralları ve kullanım anı güveni kullanıcı onayıyla kabul edildi.
 - **`weekly_all` sapması sınıra yakın (−0,46).** Kaynağı öğrenilmemiş aile dönemleri (güven düşük alt kümesinde −1,32); uygulamanın kullandığı alt kümede −0,35.
 - **`α_sonnet` 1,41** az veriyle öğrenildi; yanlı bir dönem onu oynatabilir. İzlenmeli.
 - Ayrıntı ipucu öğrenilen güveni gösterir, kullanım anı güvenini değil; ikisi öğrenilmemiş aile kullanılırken ayrışır.
