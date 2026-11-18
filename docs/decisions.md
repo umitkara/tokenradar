@@ -1270,3 +1270,54 @@
   - Statusline değerine +0,5 eklemek: ölçümü tahminle değiştirir.
   - Hiçbir şey yapmamak ve ipucunda açıklamak: gidip gelme sürer.
   - Birleşik değeri saklamak: şema değişikliği getirir, ham veriyi yeniden yorumlama imkânını kaldırır.
+
+### ADR-061 — Kalibrasyon kenar aralıklarından öğrenilir; aile çarpanları veriden gelir, kalibre öngörü düşük güvende kalır
+
+**Durum:** Önerildi (2026-11-19, Adım 13). "(kullanıcı kararı)" işaretli maddeler 2026-11-18'de kullanıcıyla kararlaştırıldı; kalan parametreler ajanın önerisidir ve onay bekler.
+
+- **Bağlam:**
+  - Plan (`architecture.md` §9.2) ondalıklı statusline okumaları, rastgele snapshot çiftleri ve `Δp ≥ 3` birleştirmesi varsayıyordu. Statusline ve API tam sayı veriyor (ADR-060); rastgele çift ±1 puan kuantizasyon hatası taşır.
+  - Ön keşif ve 2026-11-18 veri keşfi (salt okunur): statusline'daki "düşüşlerin" tamamı bayat payload taşıyan başka oturumlardan geliyor. Fable ağırlıklı aralıklarda `Δp/ΔC` yaklaşık 2 kat; cache okuma ağırlığı farkı açıklamıyor. Tek `k` ile dağılım ≈ %12, `α_fable` ile ≈ %5. Dış tüketim payı ihmal edilebilir (`seven_day_breakdown` ≈ tümüyle `claude_code`).
+  - Hesapta haftada tek pencere var, 5 saatlik pencere yok (ADR-041); plandaki "pencere sonu MAE ≤ 3 (5 sa)" ölçülemez.
+- **Karar:**
+  - **Gözlem birimi: kenar aralıkları (kullanıcı kararı).** Pencerenin birikimli maksimumunun her adımı bir kenardır; zamanı adımdan önceki son ve sonraki ilk okumanın orta noktasıdır. Belirsizliği 45 dakikayı aşan kenarlar birleştirilerek atlanır; pencerenin ilk okuması kenar değildir. Pencereler `WINDOW_MATCH_TOLERANCE_MS` ile eşlenir (bayat oturumlar önceki pencereyi bildirebilir). `ΔC` iki kenar arasındaki (`from < ts ≤ to`) yerel olayların aile başına maliyetidir.
+  - **Kaynaklar karışmaz (kullanıcı kararı).** Bir limitin en az 10 statusline aralığı varsa statusline serisi, yoksa API serisi kullanılır. Pratikte `weekly_all` statusline'dan, `weekly_scoped` API'den.
+  - **Model `Δp ≈ k · Σ α_f · ΔC_f`, `α_opus = 1`; `α` veriden öğrenilir (kullanıcı kararı). H1 (tek `k`) reddedildi.**
+    - `k`: oranların ağırlıklı medyanı. Ağırlık ham maliyet × üstel sönüm (yarı ömür 3 gün). Ağırlık `α`'ya bağlı değildir; bağlı olunca küçük bir `α` ailenin aralıklarını medyandan dışarı itip uyumu "iyileştiriyordu" (walk-forward'da `α_fable` 0,25'e çöküyordu).
+    - `α_f`: 0,25–8 arası log ızgarada (2^(i/10)) iki tur koordinat araması, ağırlıklı göreli MAD'i en aza indirir. Bir aile ancak en az 5 aralıkta maliyetin ≥ %30'unu taşıyorsa ve en az 5 aralıkta yoksa kendi ağırlığını alır. 1'e %15'ten yakın sonuç 1'e yuvarlanır. Synthetic ve Unknown aileleri her zaman 1'dir.
+    - Kapsamlı limit (`model:<aile>`) yalnızca kendi ailesinin maliyetini sayar ve `α` öğrenmez.
+    - Fiyatsız modellerin maliyet payı %10'u aşan aralıklar ve maliyeti medyanın %5'inin altında kalan aralıklar atılır.
+  - **Güven** = sayı × kesinlik × tazelik × öğrenilmiş pay:
+    - sayı `min(1, n/30)`;
+    - kesinlik `1 − se/0,15`, `se = 1,4826 · MAD_göreli / √n_etkin`;
+    - tazelik, en yeni aralık bir günden eskiyse her 3 günde yarıya iner;
+    - öğrenilmiş pay, kendi ağırlığı gereken ama öğrenilmemiş ailelerin maliyet payının tümleyenidir.
+    - Eşikler: < 0,4 düşük, 0,4–0,7 orta, > 0,7 yüksek.
+  - **Kullanım anı güveni.** Kalibrasyonu son 15 dakikanın maliyetine uygularken güven, o maliyette ağırlığı bilinmeyen ailelerin payı kadar düşürülür (`Calibration::confidence_for`). Backtest'te Fable'ın henüz görülmediği günlerde öğrenilen güven yüksekken 24 sa hatası −3 puana iniyordu.
+  - **Sapma: `ln(r / k_önce) / σ` üzerinde CUSUM.**
+    - `σ = max(1,4826 · MAD(ln r), 0,15)`; z ±3'te kırpılır; gevşeklik 0,5; alarm eşiği 6; ilk 10 gözlem ısınmadır, en az 3 temel gözlem gerekir.
+    - Alarmdan sonra `k` değişimin başından itibaren 1 günlük yarı ömürle yeniden öğrenilir; `α` tam veriyle öğrenilmiş hâlinde kalır.
+    - Sapma 3 gün görünür kalır.
+    - Eşik 5 iken gerçek veride iki kısa yanlış alarm çıktı; 6'da hiç çıkmadı, sentetik algılama 5–12 saat sürdü.
+  - **Kalıcılık.** Mevcut `calibrations` tablosu kullanılır, şema değişmez. `version` hesap başına `MAX + 1`. `alpha_json` `{alpha, fitted, source, mad_rel, drift}` taşır. Yeni satır şu durumlarda yazılır: `k` ya da bir `α` ≥ %2 oynadığında, güven düzeyi ya da sapma değiştiğinde, ya da son satır bir günden eskiyse.
+  - **Yeniden hesaplama.** Limit thread'inde, açılıştan 30 s sonra ve sonra 15 dakikada bir, yalnızca hesabın en yeni snapshot'ı değiştiyse. Geriye bakış 21 gündür. Açılışta saklı son satırlar yüklenir.
+  - **Öngörüde kullanım (kullanıcı kararı).** Yalnızca `session` ve `weekly_all` için, gözlenen eğim yokken kullanılan maliyet yedeğinde kullanılır: kullanım anı güveni en az orta ise `k0` yerine `k · Σ α · c_f` (son 15 dakika), yöntem `RateMethod::Calibrated`. Öngörünün güveni yine `Low` kalır; bildirim ve mod davranışı değişmez.
+  - **Kapsamlı limite maliyet yedeği eklenmez (kullanıcı kararı);** Adım 12t'ye bırakıldı.
+  - **Görünüm (kullanıcı kararı).** `LimitView.calibration` (`confidence`, `level`, `n_obs`, `drift`). Ayrıntı'da öngörü ipucu güveni ve aralık sayısını gösterir; sapma varsa tek satırlık bilgi çıkar. `tokenradar doctor` kalibrasyonu paketine ve terminale yazar. Ana kart değişmez. `get_calibration_status` komutu ve `CoreEvent::CalibrationUpdated` olayı eklendi.
+  - **Kabul ölçütü (kullanıcı kararı):** pencere içi walk-forward, 24 sa ufuk, `k` ve `α` yalnızca geçmişten. Ölçüt MAE ≤ 1,5 puan ve |sapma| ≤ 0,5.
+- **Sonuç** (`docs/perf/2026-11-19-calibration-backtest.md`):
+  - `weekly_all`: MAE 0,75, sapma −0,46. H1: MAE 1,58.
+  - Fable kapsamlı: MAE 0,75, sapma −0,02.
+  - Sentetik veri (40 tohum): `k` %4,7, `α` %20 içinde; yanlış sapma yok.
+  - Bir hesaplama gerçek veride ≈ 20 ms.
+- **Bedel:**
+  - `weekly_all` sapması sınıra yakın (−0,46). Öğrenilmemiş ailenin yoğun kullanıldığı dönemlerde tahmin düşük kalır; uygulama bu dönemlerde `k0`'a döner, ama Ayrıntı ipucu öğrenilen güveni gösterir.
+  - `α_sonnet` gibi az verili aileler, eşikleri geçtiği anda kendi ağırlığını alır; tek bir yanlı dönem onu oynatabilir.
+  - Kenar zamanı orta nokta varsayımına dayanır. API serisinde kenar belirsizliği statusline'ınkinden ≈ 6 kat büyüktür, bu yüzden kapsamlı limitin güveni düşük kalır.
+  - Model formülünü Anthropic değiştirirse ilk yarım gün eski `k` kullanılır (sapma algılama 5–12 sa).
+- **Alternatifler:**
+  - Plandaki snapshot çiftleri ve `Δp ≥ 3`: kuantizasyon hatası, iki kaynağın yuvarlama farkı.
+  - H1 (tek `k`): 24 sa MAE 1,58, ölçütü geçmez.
+  - `α`'yı sabitlemek (ör. tüm veriden 2,2): sızıntılı; walk-forward'da iyimser sonuç verir.
+  - Kalibre öngörüye orta güven vermek: bildirim ve mod davranışını değiştirirdi; kullanıcı istemedi.
+  - Cache okuma ağırlığını yeniden ölçeklemek: Fable farkını açıklamadı.

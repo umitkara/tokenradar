@@ -317,18 +317,23 @@ C = speed_mult(m) × [ p_in(m) × (input + 1.25·cache_w5m + 2.0·cache_w1h + r(
 
 **Hipotez H1:** Limit tüketimi C ile orantılıdır (`Δ% ≈ k·ΔC`) ve tüm modeller için aynı k geçerlidir. H1 backtest ile sınanır. Modele bağlı sistematik bir sapma görülürse aile bazlı çarpanlar (`α_f`, normalize edilmiş) öğrenilir: `Δ% ≈ k·Σ_f α_f·ΔC_f`.
 
-### 9.2 Kalibrasyon (v0.2)
+### 9.2 Kalibrasyon (v0.2, ADR-061)
 
-- **Gözlemler:** Aynı pencere içindeki ardışık snapshot çiftleri `(t0,p0)→(t1,p1)` ile o aralıktaki yerel `ΔC` değeri.
-- **Kuantizasyon:**
-  - S1 ondalıklı değer verdiği için tercih edilir. **Not (ADR-060):** S1 gözlemde tam sayı ve aşağı yuvarlanmış geliyor; Adım 13 bu kuralı yeniden ele alır.
-  - Yalnızca S2 (tam sayı) varsa aralıklar `Δp ≥ 3` olana kadar birleştirilir.
-  - `ΔC` değeri, eşiğin (gürültü tabanının) altında kalan aralıklar atılır.
-- **Model:** `Δp = k·ΔC + u + ε`. Burada `u ≥ 0` yerel olmayan tüketimdir (claude.ai, Desktop, başka cihaz).
-- **Tahminci:** `Δp/ΔC` oranlarının ağırlıklı medyanı kullanılır. Ağırlık `ΔC` ile orantılıdır ve üstel zaman sönümü uygulanır (yarı ömür 3 gün). `u > 0` aralıkları oranı yukarı iter, medyan bu aykırı değerlere karşı dayanıklıdır. Sapma (drift) takibi için CUSUM uygulanır; katsayı ani bir sıçrama yaparsa bu, Anthropic'in limit formülünü değiştirdiğine işaret edebilir ve UI'da bildirilir.
-- `k_session`, `k_weekly` ve her `weekly_scoped` için ayrı `k` tutulur.
-- **Güven skoru:** gözlem sayısı, MAD/medyan oranı ve tazelik birleştirilerek [0,1] aralığında hesaplanır. Skor < 0,4 ise atıflar "düşük güven" olarak gösterilir.
-- **Başlangıç (prior):** Kalibrasyon verisi yokken, mevcut pencerenin anlık oranı kullanılır: `k0 = p_now / C_window`. Bu yaklaşım pencerenin tamamı yerel tüketimden oluşuyorsa iyi bir tahmindir.
+- **Gözlemler: kenar aralıkları.**
+  - Statusline ve API tam sayı verir (ADR-060). Pencerenin birikimli maksimumunun her adımı bir "kenar"dır; zamanı adımdan önceki son ve sonraki ilk okumanın orta noktasıdır.
+  - Gözlem, ardışık iki kenar arasındaki `Δp` (çoğunlukla 1) ile aynı aralıktaki (`from < ts ≤ to`) aile başına yerel maliyet `ΔC_f`'dir.
+  - Belirsizliği 45 dakikayı aşan kenarlar birleştirilerek atlanır. Pencerenin ilk okuması kenar değildir. Pencereler `WINDOW_MATCH_TOLERANCE_MS` ile eşlenir.
+  - Kaynaklar karışmaz: en az 10 statusline aralığı olan limit statusline serisinden, diğerleri API serisinden öğrenilir.
+  - Atılanlar: maliyeti medyanın %5'inin altında kalan aralıklar ve fiyatsız modellerin payı %10'u aşan aralıklar.
+- **Model:** `Δp ≈ k · Σ α_f · ΔC_f`, `α_opus = 1`. Tek `k` (H1) reddedildi: Fable'ın ağırlığı ≈ 2 kat. Kapsamlı limit yalnızca kendi ailesini sayar ve `α` öğrenmez.
+- **Tahminci:**
+  - `k`: `Δp / Σ α ΔC` oranlarının ağırlıklı medyanı. Ağırlık ham maliyet × üstel sönüm (yarı ömür 3 gün), `α`'dan bağımsız.
+  - `α_f`: log ızgarada koordinat araması, ağırlıklı göreli MAD'i en aza indirir. Aile ancak yeterince aralığı taşıyorsa ve yeterince aralıkta yoksa kendi ağırlığını alır; 1'e %15'ten yakın sonuç 1'dir.
+  - Ayrı katsayılar: her `(kind, scope)` için bir kalibrasyon (`session` yalnızca 5 saatlik penceresi olan hesaplarda).
+- **Güven skoru:** sayı (`min(1, n/30)`) × kesinlik (`1 − se/0,15`) × tazelik (bir günden sonra 3 günde yarıya) × öğrenilmiş aile payı, [0,1]. Eşikler: < 0,4 düşük, 0,4–0,7 orta, > 0,7 yüksek. Uygulanırken güven, son maliyette ağırlığı bilinmeyen ailelerin payı kadar ayrıca düşer (`confidence_for`).
+- **Sapma (drift):** `ln(r/k)` artıkları üzerinde iki yönlü CUSUM (eşik 6). Alarmda `k` değişimin başından 1 günlük yarı ömürle yeniden öğrenilir; sapma 3 gün görünür. Ayrıntı'da tek satır bilgi çıkar.
+- **Kalıcılık ve döngü:** limit thread'i 15 dakikada bir, yalnızca yeni snapshot geldiyse 21 günlük veriden yeniden hesaplar (≈ 20 ms). `calibrations` tablosuna `k`/`α` ≥ %2 oynadığında, düzey ya da sapma değiştiğinde veya günde bir yeni sürüm yazılır.
+- **Başlangıç (prior):** Kalibrasyon yokken ya da kullanım anı güveni düşükken, mevcut pencerenin anlık oranı kullanılır: `k0 = p_now / C_window`. Kalibrasyon en az orta güvendeyse yedek öngörü `k · Σ α · c_f` (son 15 dk) kullanır (`RateMethod::Calibrated`); öngörünün güveni yine `Low`'dur.
 
 ### 9.3 Atıf
 

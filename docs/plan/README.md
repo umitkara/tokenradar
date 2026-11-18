@@ -68,7 +68,7 @@ Doğrulanmış Ultra hesaplarında 5 saatlik pencere kalktı (ADR-041). Bu adım
 
 | # | Adım | Bağımlılık | Durum |
 |---|---|---|---|
-| 13 | [Kalibrasyon motoru](13-kalibrasyon.md) | 12 (+ ≥ 1 hafta veri) | ⬜ 18 Kasım 2026'dan sonra (ilk tam haftalık pencere). Ön keşif adım dosyasında |
+| 13 | [Kalibrasyon motoru](13-kalibrasyon.md) | 12 (+ ≥ 1 hafta veri) | ✅ (2026-11-19, ADR-061 önerildi). 24 sa MAE 0,75; açık: ADR onayı, `weekly_all` sapması sınıra yakın |
 | 14 | [Atıf motoru ve pencere arşivi](14-atif-ve-pencereler.md) | 13 | ⬜ |
 | 15 | [Ana pencere kabuğu ve Genel Bakış](15-ana-pencere-genel-bakis.md) | 14 | ⬜ |
 | 16 | [Oturumlar ve Projeler](16-oturumlar-ve-projeler.md) | 15 | ⬜ |
