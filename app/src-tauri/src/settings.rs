@@ -26,6 +26,8 @@ pub enum SettingsSection {
     Updates,
     /// General: the compact strip (Step 18).
     Widget,
+    /// Data sources: the plan fee the overview's plan value compares with (Step 15b).
+    Plan,
 }
 
 impl SettingsSection {
@@ -38,6 +40,7 @@ impl SettingsSection {
             Self::Diagnostics => "diagnostics",
             Self::Updates => "updates",
             Self::Widget => "widget",
+            Self::Plan => "plan",
         }
     }
 }

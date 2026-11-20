@@ -634,3 +634,16 @@ font-restore-note = Her ayar dosyasının önce yedeği alınır. Fontu hâlâ k
 font-confirm-restore = Eski haline getir
 font-restored = Her şey eski haline döndü. Ayar dosyalarının yedekleri her dosyanın yanında duruyor.
 font-error-font-in-use = Font dosyası hâlâ bir programda açık, bu yüzden font kurulu kaldı. Terminal ayarları zaten geri alındı. Terminallerinizi kapatıp yeniden deneyin.
+
+## Plan ücreti (Adım 15b)
+
+plan-title = Plan ücreti
+plan-hint = Genel Bakış'taki plan değeri, bu ayın API karşılığı maliyetini bu aylık ücretle karşılaştırır.
+plan-table = Planınızın liste fiyatı: { $plan }, ayda ${ NUM($usd, 2) }.
+plan-table-none = Planınızın fiyatı bilinmiyor (örneğin Team ya da Enterprise). Ücreti kendiniz girin.
+plan-fee = Aylık ücret (USD)
+plan-fee-hint = Boş bırakırsanız liste fiyatı kullanılır.
+plan-save = Kaydet
+plan-reset = Liste fiyatına dön
+plan-invalid = { TR_SUFFIX(0, "abl") } büyük, en fazla iki ondalıklı bir tutar girin.
+plan-saved = Kaydedildi.

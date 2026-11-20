@@ -103,6 +103,11 @@ export const commands = {
 	applyFontRestore: (token: number) => typedError<RestoreDone, FontError>(__TAURI_INVOKE("apply_font_restore", { token })),
 	/**  The user's explicit yes (or withdrawal) for the usage API, stamped with the text version. */
 	setApiConsent: (granted: boolean) => typedError<DataSourcesView, string>(__TAURI_INVOKE("set_api_consent", { granted })),
+	/**
+	 *  The plan fee the plan value compares with; `None` or a non-positive value goes back to the
+	 *  embedded plan table.
+	 */
+	setPlanFee: (feeUsd: number | null) => typedError<DataSourcesView, string>(__TAURI_INVOKE("set_plan_fee", { feeUsd })),
 	/**  Folder picker for the Claude Code directory; `false` when cancelled. */
 	pickClaudeDir: () => typedError<boolean, PickError>(__TAURI_INVOKE("pick_claude_dir")),
 	resetClaudeDir: () => typedError<null, string>(__TAURI_INVOKE("reset_claude_dir")),
@@ -456,6 +461,8 @@ export type DataSourcesView = {
 	cli_missing: boolean,
 	claude_mod: ClaudeModView,
 	api: ApiConsentView,
+	/**  The primary account's plan fee for the plan value card (Step 15b). */
+	plan_fee: PlanFeeView,
 };
 
 export type DiffKind = "header" | "hunk" | "added" | "removed" | "context";
@@ -942,11 +949,25 @@ export type OtherView = {
 export type Overview = {
 	/**  The panel's current limits, passed through. */
 	limits: LimitView[],
+	/**  Limits this account does not have (ADR-041), passed through like `limits`. */
+	absent: LimitRef[],
 	week: WeekSpan,
 	/**  Last 7 days per limit with readings (5-hour and weekly). */
 	series: TimeSeries[],
 	cost: MicroUsd,
+	/**  The whole previous week. */
 	previous_cost: MicroUsd | null,
+	/**
+	 *  The previous week up to the same time into it as now is into this one: what the
+	 *  week-over-week change compares with (a running week against a whole one always looks
+	 *  lower).
+	 */
+	previous_cost_to_date: MicroUsd | null,
+	/**
+	 *  `cost / previous_cost_to_date − 1` (`0.12` is 12 % more); `None` without a previous
+	 *  week or when it cost nothing up to this point.
+	 */
+	change: number | null,
 	tokens: TokenBreakdown,
 	models: ModelSlice[],
 	top_sessions: TopSession[],
@@ -1038,6 +1059,16 @@ export type PlanFeeSource =
 /**  The user's `plan_fee_usd`. */
 "user";
 
+/**  The monthly fee the plan value compares with: the user's, otherwise the embedded table's. */
+export type PlanFeeView = {
+	/**  The plan's name in the table (`Ultra`), when it prices this plan. */
+	table_plan: string | null,
+	/**  The table's monthly fee in USD. */
+	table_fee_usd: number | null,
+	/**  `plan_fee_usd` from `config.toml`, which takes precedence. */
+	user_fee_usd: number | null,
+};
+
 export type PlanValue = {
 	/**  API-equivalent cost since local midnight on the 1st. */
 	month_cost: MicroUsd,
@@ -1048,6 +1079,15 @@ export type PlanValue = {
 	fee_source: PlanFeeSource | null,
 	/**  `month_cost / fee`. */
 	ratio: number | null,
+	/**
+	 *  Share of the local calendar month gone, 0–1: early in a month the ratio is low because
+	 *  the month has barely started, not because the plan is worth less.
+	 */
+	month_elapsed: number | null,
+	/**  API-equivalent cost of the whole previous local month; `None` when it had no usage. */
+	previous_month_cost: MicroUsd | null,
+	/**  `previous_month_cost / fee`: a finished month's ratio, measured, next to the running one. */
+	previous_ratio: number | null,
 };
 
 /**  Counters for `doctor`. */
@@ -1407,7 +1447,9 @@ export type SettingsSection = "general" |
 /**  About: a found update and "Install and restart". */
 "updates" | 
 /**  General: the compact strip (Step 18). */
-"widget";
+"widget" | 
+/**  Data sources: the plan fee the overview's plan value compares with (Step 15b). */
+"plan";
 
 /**
  *  Sent to an open settings window that should switch to `0`. A new window reads the section

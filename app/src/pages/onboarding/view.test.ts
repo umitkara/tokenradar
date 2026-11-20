@@ -24,6 +24,7 @@ function sources(overrides: Partial<DataSourcesView>): DataSourcesView {
     cli_missing: false,
     claude_mod: { state: "not_installed" },
     api: { granted: false, granted_at: null, outdated: false, status: null },
+    plan_fee: { table_plan: null, table_fee_usd: null, user_fee_usd: null },
     ...overrides,
   };
 }

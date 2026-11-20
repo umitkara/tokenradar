@@ -101,6 +101,7 @@ pub fn builder() -> Builder<tauri::Wry> {
             plan_font_restore,
             apply_font_restore,
             set_api_consent,
+            set_plan_fee,
             pick_claude_dir,
             reset_claude_dir,
             get_storage,
@@ -503,7 +504,7 @@ async fn get_heatmap(
 async fn get_overview(app: AppHandle) -> Result<Overview, String> {
     blocking(move || {
         history::run(&app, |q, ctx| {
-            queries::get_overview(&q.store, ctx, q.limits.clone(), &q.plan())
+            queries::get_overview(&q.store, ctx, q.limits.clone(), q.absent.clone(), &q.plan())
         })
     })
     .await
@@ -638,6 +639,18 @@ async fn apply_font_restore(app: AppHandle, token: u32) -> Result<RestoreDone, F
 async fn set_api_consent(app: AppHandle, granted: bool) -> Result<DataSourcesView, String> {
     blocking(move || {
         sources::set_api_consent(&app, granted)?;
+        sources::view(&app)
+    })
+    .await
+}
+
+/// The plan fee the plan value compares with; `None` or a non-positive value goes back to the
+/// embedded plan table.
+#[tauri::command]
+#[specta::specta]
+async fn set_plan_fee(app: AppHandle, fee_usd: Option<f64>) -> Result<DataSourcesView, String> {
+    blocking(move || {
+        sources::set_plan_fee(fee_usd)?;
         sources::view(&app)
     })
     .await

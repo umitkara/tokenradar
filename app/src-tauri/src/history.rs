@@ -7,7 +7,7 @@ use std::path::Path;
 use tauri::AppHandle;
 use tokenradar_core::calibration::Calibration;
 use tokenradar_core::config::AppConfig;
-use tokenradar_core::domain::{AccountId, Timestamp};
+use tokenradar_core::domain::{AccountId, LimitRef, Timestamp};
 use tokenradar_core::limits::LimitView;
 use tokenradar_core::paths::Paths;
 use tokenradar_core::queries::{PlanInput, QueryContext, SystemZone};
@@ -23,6 +23,8 @@ pub struct Query {
     /// Uuids of the running sessions.
     pub live: Vec<String>,
     pub limits: Vec<LimitView>,
+    /// Limits the account does not have (ADR-041).
+    pub absent: Vec<LimitRef>,
     subscription: Option<String>,
     tier: Option<String>,
     user_fee_usd: Option<f64>,
@@ -93,6 +95,7 @@ fn prepare(app: &AppHandle) -> Option<Query> {
             .filter_map(|s| s.session_uuid.clone())
             .collect(),
         limits: snapshot.limits,
+        absent: snapshot.absent,
         subscription: account.plan,
         tier: account.tier,
         user_fee_usd,

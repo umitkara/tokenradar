@@ -1,6 +1,7 @@
 <!--
-  Data sources: the Claude Code folders, the statusline bridge, the Claude Code mod and the usage
-  API consent. Section ids (`dirs`, `statusline`, `mod`, `api`) are the targets of links.
+  Data sources: the Claude Code folders, the statusline bridge, the Claude Code mod, the usage
+  API consent and the plan fee. Section ids (`dirs`, `statusline`, `mod`, `api`, `plan`) are the
+  targets of links.
 -->
 <script lang="ts">
 import Button from "../../lib/components/Button.svelte";
@@ -10,6 +11,7 @@ import { commands } from "../../lib/ipc/bindings";
 import { clock } from "../../lib/time/clock.svelte";
 import ApiConsent from "./ApiConsent.svelte";
 import ClaudeModCard from "./ClaudeModCard.svelte";
+import PlanFeeCard from "./PlanFeeCard.svelte";
 import StatuslineDialog from "./StatuslineDialog.svelte";
 import { loadSources, store } from "./state.svelte";
 import { pickErrorKey, type Tab } from "./view";
@@ -186,6 +188,12 @@ async function dialogDone(result: { backup: string | null } | null) {
     <ApiConsent {onerror} />
   </Card>
 </section>
+
+{#if sources}
+  <section id="plan" tabindex="-1">
+    <PlanFeeCard fee={sources.plan_fee} {onerror} />
+  </section>
+{/if}
 
 <StatuslineDialog bind:this={dialog} {currentCommand} ondone={dialogDone} />
 

@@ -19,6 +19,7 @@ use tokenradar_core::domain::Timestamp;
 use tokenradar_core::limits::ApiStatusView;
 use tokenradar_core::paths::Paths;
 use tokenradar_core::providers::claude::{self, AccountDescriptor};
+use tokenradar_core::queries;
 use tokenradar_core::statusline::claude_mod::{self, ModChange, ModPlan, ModPlanned, ModState};
 use tokenradar_core::statusline::install::{
     Change, InstallError, Plan, Planned, effective_refresh, plan_install, plan_refresh,
@@ -109,6 +110,19 @@ pub struct DataSourcesView {
     pub cli_missing: bool,
     pub claude_mod: ClaudeModView,
     pub api: ApiConsentView,
+    /// The primary account's plan fee for the plan value card (Step 15b).
+    pub plan_fee: PlanFeeView,
+}
+
+/// The monthly fee the plan value compares with: the user's, otherwise the embedded table's.
+#[derive(Debug, Clone, Serialize, Type)]
+pub struct PlanFeeView {
+    /// The plan's name in the table (`Ultra`), when it prices this plan.
+    pub table_plan: Option<String>,
+    /// The table's monthly fee in USD.
+    pub table_fee_usd: Option<f64>,
+    /// `plan_fee_usd` from `config.toml`, which takes precedence.
+    pub user_fee_usd: Option<f64>,
 }
 
 /// One line of a unified diff, classified for colouring.
@@ -344,6 +358,22 @@ pub fn view(app: &AppHandle) -> Result<DataSourcesView, String> {
                 ModState::NotInstalled => ClaudeModView::NotInstalled,
             },
         }),
+        plan_fee: {
+            let account = snapshot.as_ref().and_then(|s| s.account.as_ref());
+            let table = queries::plan_fee(
+                account.and_then(|a| a.plan.as_deref()),
+                account.and_then(|a| a.tier.as_deref()),
+            );
+            PlanFeeView {
+                #[allow(clippy::cast_precision_loss)]
+                table_fee_usd: table.as_ref().map(|t| t.monthly.0 as f64 / 1e6),
+                table_plan: table.map(|t| t.name),
+                user_fee_usd: primary
+                    .and_then(|d| config.account(d))
+                    .and_then(|a| a.plan_fee_usd)
+                    .filter(|v| v.is_finite() && *v > 0.0),
+            }
+        },
         api: ApiConsentView {
             granted: consent.is_valid(),
             granted_at: consent
@@ -592,6 +622,19 @@ pub fn set_api_consent(app: &AppHandle, granted: bool) -> Result<(), String> {
     core_bridge::with_core(app, |core| core.set_api_consent(granted));
     tracing::info!(granted, "usage API consent changed");
     Ok(())
+}
+
+/// Stores the primary account's plan fee; `None` goes back to the embedded table. The next
+/// overview query reads it.
+pub fn set_plan_fee(fee_usd: Option<f64>) -> Result<(), String> {
+    let paths = paths()?;
+    let config = load_config(&paths);
+    let dir = accounts(&config)
+        .into_iter()
+        .next()
+        .ok_or("no Claude Code directory")?
+        .config_dir;
+    config::save_plan_fee(paths.config_path(), &dir, fee_usd).map_err(|e| e.to_string())
 }
 
 /// Opens a folder picker. A picked directory becomes the primary account and the core

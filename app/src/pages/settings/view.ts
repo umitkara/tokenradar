@@ -58,6 +58,7 @@ const TARGETS: Record<SettingsSection, Target> = {
   diagnostics: { tab: "privacy", anchor: "diagnostics" },
   updates: { tab: "about", anchor: "updates" },
   widget: { tab: "general", anchor: "widget" },
+  plan: { tab: "sources", anchor: "plan" },
 };
 
 /** The target of a URL fragment (`settings.html#api`) or a `settings-section-requested` event. */
@@ -862,4 +863,19 @@ export function hotkeyFromKey(
     e.metaKey && "Win",
   ].filter(Boolean);
   return { kind: "ok", text: [...mods, key].join("+") };
+}
+
+/** Most a monthly plan fee may be, in USD: a typo guard, not a price list. */
+export const MAX_PLAN_FEE_USD = 100_000;
+
+/**
+ * The plan fee field: `null` for empty (back to the plan table), a positive amount in USD (`,` or
+ * `.` as the decimal point, a leading `$` allowed), or `undefined` for anything else.
+ */
+export function parseFee(text: string): number | null | undefined {
+  const s = text.trim().replace(/^\$/, "").trim();
+  if (s === "") return null;
+  if (!/^\d+([.,]\d{1,2})?$/.test(s)) return undefined;
+  const v = Number(s.replace(",", "."));
+  return v > 0 && v <= MAX_PLAN_FEE_USD ? v : undefined;
 }

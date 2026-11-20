@@ -655,3 +655,16 @@ font-restore-note = Each settings file is backed up first. If a terminal still u
 font-confirm-restore = Restore
 font-restored = Everything is back as it was. The settings backups are next to each file.
 font-error-font-in-use = A program still has the font file open, so the font stays installed. The terminal settings are already restored. Close your terminals and try again.
+
+## Plan fee (Step 15b)
+
+plan-title = Plan fee
+plan-hint = The overview's plan value compares this month's API-equivalent cost with this monthly fee.
+plan-table = Your plan's list price: { $plan }, ${ NUM($usd, 2) } a month.
+plan-table-none = Your plan's price is not known (Team or Enterprise, for example). Enter the fee yourself.
+plan-fee = Monthly fee (USD)
+plan-fee-hint = Leave it empty to use the list price.
+plan-save = Save
+plan-reset = Use the list price
+plan-invalid = Enter an amount above 0 with at most two decimals.
+plan-saved = Saved.
