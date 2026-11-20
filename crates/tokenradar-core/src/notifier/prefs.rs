@@ -22,6 +22,9 @@ use specta::Type;
 pub const MAX_THRESHOLDS: usize = 5;
 /// The projection rule looks this far ahead; the final warning must be shorter.
 pub const PROJECTION_HORIZON_MIN: u32 = 60;
+/// Weekly limits look a day ahead, at a high-confidence rate only (ADR-063): at a few points
+/// per hour, an hour ahead is past the 90 % threshold already.
+pub const WEEKLY_PROJECTION_HORIZON_MIN: u32 = 24 * 60;
 
 /// When and how the notifier speaks. [`NotifyPrefs::normalized`] makes any value safe to use.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]

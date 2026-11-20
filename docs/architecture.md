@@ -289,7 +289,7 @@ struct LimitObservation {
   4. **`Low` güvenli kenar hızı.**
   5. **`k0` önseli:** `p_now / C_pencere × son 15 dk maliyet hızı`, `Low`.
 
-  **Projeksiyon:** `eta_100 = (100 − p) / rate`. `eta_100 < resets_at − now` ise "reset'ten önce dolacak" denir. Uygulama bildirimi ve Claude Code mod'unun bandı/toast'u aynı kuralla uyarır: güven `Low` değil ve ETA 60 dakika (`PROJECTION_HORIZON_MIN`) içinde. Düşük güvenli öngörü gösterilir ama silik ve "kaba" işaretlidir, uyarı üretmez.
+  **Projeksiyon:** `eta_100 = (100 − p) / rate`. `eta_100 < resets_at − now` ise "reset'ten önce dolacak" denir. Uygulama bildirimi ve Claude Code mod'unun bandı/toast'u aynı kuralla uyarır (`notifier::projection_horizon`): 5 saatlik pencere ve diğerlerinde güven en az `Medium` ve ETA 60 dakika (`PROJECTION_HORIZON_MIN`) içinde; haftalık limitlerde güven `High` ve ETA 24 saat (`WEEKLY_PROJECTION_HORIZON_MIN`, ADR-063) içinde. Düşük güvenli öngörü gösterilir ama silik ve "kaba" işaretlidir, uyarı üretmez.
 
 ## 8. Pencere modeli
 

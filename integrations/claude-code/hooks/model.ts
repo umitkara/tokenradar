@@ -45,6 +45,11 @@ export const PACE_QUIET = 100 / 7
  * Step 12t), so both warn at once.
  */
 export const PROJECTION_HORIZON_MS = 60 * 60_000
+/**
+ * Weekly limits look a day ahead, at a high-confidence rate only (ADR-063,
+ * `WEEKLY_PROJECTION_HORIZON_MIN`): an hour ahead would come after the 90 % threshold.
+ */
+export const WEEKLY_PROJECTION_HORIZON_MS = 24 * 60 * 60_000
 
 const HOUR_MS = 3_600_000
 export const DAY_MS = 24 * HOUR_MS
@@ -329,14 +334,22 @@ export function mergeRows(m: Measure | null, r: Radar | null, now: number): Row[
 // --- Thresholds ----------------------------------------------------------
 
 /**
- * The app's notice rule (Step 12t): full before the reset, within the horizon, at a rate
- * that is not low-confidence. Without a confidence (an older CLI) nothing warns.
+ * The app's notice rule (Step 12t, ADR-063): full before the reset and within the
+ * window's horizon, at a rate trusted enough: an hour at medium confidence, a day at
+ * high for weekly limits. Without a confidence (an older CLI) nothing warns.
  */
-export function warnsSoon(row: Pick<Row, 'willHit' | 'etaAt' | 'confidence'>, now: number): boolean {
+export function warnsSoon(
+  row: Pick<Row, 'id' | 'willHit' | 'etaAt' | 'confidence'>,
+  now: number,
+): boolean {
   if (!row.willHit || row.etaAt === undefined) return false
-  if (row.confidence !== 'medium' && row.confidence !== 'high') return false
+  const weekly = windowLength(row.id) === 7 * DAY_MS
+  const trusted = weekly
+    ? row.confidence === 'high'
+    : row.confidence === 'medium' || row.confidence === 'high'
+  if (!trusted) return false
   const left = row.etaAt - now
-  return left > 0 && left <= PROJECTION_HORIZON_MS
+  return left > 0 && left <= (weekly ? WEEKLY_PROJECTION_HORIZON_MS : PROJECTION_HORIZON_MS)
 }
 
 export function rowLevel(row: Row): Level {

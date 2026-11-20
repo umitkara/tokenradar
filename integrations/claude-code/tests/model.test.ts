@@ -14,6 +14,7 @@ import {
   mergeRows,
   parseStatus,
   PROJECTION_HORIZON_MS,
+  WEEKLY_PROJECTION_HORIZON_MS,
   report,
   rowLevel,
   stepAlerts,
@@ -151,11 +152,11 @@ test('thresholds are the tray ones: 75 warns, 90 is critical, a projection warns
   ])
 })
 
-test('a projection warns like the app: trusted and full within the hour', () => {
-  const at = (eta: number, confidence?: string) => {
+test('a projection warns like the app: an hour at medium, a day at high for weekly', () => {
+  const at = (eta: number, confidence?: string, kind = 'weekly_scoped') => {
     const l = {
-      kind: 'weekly_scoped',
-      scope: 'model:Fable',
+      kind,
+      scope: kind === 'weekly_scoped' ? 'model:Fable' : null,
       percent: 40,
       resets_at: NOW + 50 * H,
       source: 'api',
@@ -166,26 +167,30 @@ test('a projection warns like the app: trusted and full within the hour', () => 
       will_hit_before_reset: true,
       projection_confidence: confidence,
     }
-    const [r] = mergeRows(null, parseStatus(status({ limits: [l] }), 's-1', NOW), NOW)
+    const [r] = mergeRows(null, parseStatus(status({ limits: [l], absent: [] }), 's-1', NOW), NOW)
     return r!
   }
-  const soon = at(40 * 60_000, 'medium')
-  expect(soon).toMatchObject({ confidence: 'medium', soon: true })
+  // Weekly (ADR-063): a day ahead, high confidence only.
+  const soon = at(20 * H, 'high')
+  expect(soon).toMatchObject({ confidence: 'high', soon: true })
   expect(alertsOf([soon]).map(a => a.reason)).toEqual(['projection'])
-  // The finding of Step 12t: a rough rate, or a far ETA, raises no band or toast.
-  for (const r of [at(40 * 60_000, 'low'), at(36 * H, 'high'), at(40 * 60_000)]) {
+  // The finding of Step 12t: a rough rate, a far ETA, or no confidence raises nothing;
+  // for a weekly limit, medium is not enough either.
+  for (const r of [at(40 * 60_000, 'low'), at(20 * H, 'medium'), at(36 * H, 'high'), at(40 * 60_000)]) {
     expect(r.soon).toBe(false)
     expect(rowLevel(r)).toBe(0)
     expect(alertsOf([r])).toEqual([])
   }
+  expect(at(WEEKLY_PROJECTION_HORIZON_MS, 'high').soon).toBe(true)
+  expect(at(WEEKLY_PROJECTION_HORIZON_MS + 1, 'high').soon).toBe(false)
   expect(at(40 * 60_000, 'bogus').confidence).toBeUndefined()
+  // The 5-hour window: an hour at medium, as the app's notice.
+  expect(PROJECTION_HORIZON_MS).toBe(60 * 60_000)
+  expect(at(40 * 60_000, 'medium', 'session').soon).toBe(true)
+  expect(at(PROJECTION_HORIZON_MS + 1, 'high', 'session').soon).toBe(false)
   // A rough projection still shows, marked as such.
   expect(fullIn('tr', at(36 * H, 'low'), NOW)).toBe('≈1 g 12 sa içinde dolar (kaba)')
   expect(fullIn('en', at(36 * H, 'high'), NOW)).toBe('≈full in 1d 12h')
-  // The horizon is the app's notice horizon.
-  expect(PROJECTION_HORIZON_MS).toBe(60 * 60_000)
-  expect(at(PROJECTION_HORIZON_MS, 'high').soon).toBe(true)
-  expect(at(PROJECTION_HORIZON_MS + 1, 'high').soon).toBe(false)
 })
 
 test('one toast per crossing; a reset starts over', () => {

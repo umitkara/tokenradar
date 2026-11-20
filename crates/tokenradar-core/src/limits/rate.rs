@@ -37,7 +37,8 @@ const MAX_UNCERTAINTY_SHARE: f64 = 0.25;
 /// Slack for float comparisons of percentages.
 const PERCENT_EPS: f64 = 1e-9;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Type)]
+/// Ordered: `Low < Medium < High`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Type)]
 #[serde(rename_all = "snake_case")]
 pub enum Confidence {
     Low,

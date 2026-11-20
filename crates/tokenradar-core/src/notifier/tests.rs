@@ -242,6 +242,43 @@ fn projection_needs_a_trusted_rate_and_fires_once_per_window() {
 }
 
 #[test]
+fn a_weekly_projection_warns_a_day_ahead_but_only_at_a_high_confidence() {
+    // ADR-063: at a few points per hour, an hour ahead would be past 90 % already.
+    let weekly = |eta: i64, confidence| {
+        let mut n = en();
+        let resets = 3 * 24 * 60;
+        let l = projected(limit(LimitKind::WeeklyAll, 70.0, resets), eta, confidence);
+        n.evaluate(&[l], NOW)
+    };
+    let out = weekly(20 * 60, Confidence::High);
+    assert_eq!(out.show.len(), 1, "{out:?}");
+    assert_eq!(out.show[0].rule, Rule::Projection);
+    assert!(
+        out.show[0]
+            .title
+            .starts_with("At this rate the weekly limit fills in"),
+        "{}",
+        out.show[0].title
+    );
+    // Medium is enough for an hour, not for a day; past a day nothing.
+    assert_eq!(weekly(20 * 60, Confidence::Medium), Outcome::default());
+    assert_eq!(weekly(25 * 60, Confidence::High), Outcome::default());
+    // The scoped weekly limit follows the same rule.
+    let mut n = en();
+    let l = projected(
+        limit(LimitKind::WeeklyScoped, 70.0, 3 * 24 * 60),
+        20 * 60,
+        Confidence::Medium,
+    );
+    assert_eq!(n.evaluate(&[l], NOW), Outcome::default());
+    // The 5-hour window keeps its hour at medium.
+    assert_eq!(
+        projection_horizon(&LimitKind::Session),
+        (PROJECTION_HORIZON_MIN, Confidence::Medium)
+    );
+}
+
+#[test]
 fn a_late_first_projection_goes_straight_to_the_final_warning() {
     let mut n = en();
     let out = n.evaluate(&[projected(five(60.0), 10, Confidence::High)], NOW);

@@ -1361,3 +1361,28 @@
   - Sabit süreli geriye bakış (ör. 3 sa): yavaş kullanımda kenar bulamaz, hızlı kullanımda eski veri taşır.
   - Güveni yalnızca kenar sayısıyla vermek: 15 dk belirsizlikli tek aralık 30 dk sürse ±%50 hatayla `Medium` görünürdü.
   - Mod'da yalnızca metni yumuşatmak, ya da ufku kalan sürenin oranı yapmak: gidip gelme sürer / uygulama bildirimiyle ayrışır.
+
+### ADR-063 — Haftalık limitlerde öngörü uyarısı bir gün ileriye bakar, yalnızca yüksek güvenle
+
+**Durum:** Kabul (2026-11-20, Adım 12t ek işi; kullanıcı kararı). ADR-062'deki "mod uyarısı uygulamanın kuralıyla: 60 dakika, güven `Low` değil" maddesinin haftalık limitler için yerini alır; 5 saatlik pencere ve diğer limitler için o madde geçerli kalır.
+
+- **Bağlam:**
+  - Uygulama bildiriminin 60 dakikalık ufku (`PROJECTION_HORIZON_MIN`, Adım 11) 5 saatlik pencere için tasarlanmıştı. Haftalık kullanım saatte birkaç puan arttığı için "60 dakikada dolar" ancak %97–99 civarında söylenebiliyor; bildirim %75 ve %90 eşik uyarılarından sonra geliyor ve yeni bir şey söylemiyor.
+  - 12t'den önce mod bandı haftalık pencerede erken açılıyordu, ama güven ve ufuk filtresi olmadığı için yanlış alarm veriyor ve gidip geliyordu (ADR-062 bulgusu). Uygulama bildirimi haftalık pencerede hiçbir zaman erken uyarmadı.
+  - Hesapta 5 saatlik pencere yok (ADR-041); haftalık pencere tek pencere.
+- **Karar (kullanıcı kararı):**
+  - `weekly_all` ve `weekly_scoped` için öngörü uyarısı ETA **24 saat** (`WEEKLY_PROJECTION_HORIZON_MIN`) içindeyse ve güven **`High`** ise çıkar. Diğer limitlerde 60 dakika ve en az `Medium` kalır.
+  - Kural tek yerde: `notifier::projection_horizon(kind) → (ufuk, en düşük güven)`. Claude Code mod'u aynı kuralı `warnsSoon` içinde uygular (`WEEKLY_PROJECTION_HORIZON_MS`; haftalık = pencere uzunluğu 7 gün olan satır).
+  - Son uyarı (`final_warning_min`), eşik uyarıları ve "pencere başına bir kez" kuralı değişmez. Statusline göstergesi etkilenmez (ADR-062).
+  - `Confidence` sıralı hâle getirildi (`Low < Medium < High`).
+  - Ayarlardaki ipucu metni haftalık kuralı söyler (EN/TR).
+- **Bedel:**
+  - **24 saat gerçek veriyle seçilmedi.** Kullanıcı değeri hemen istedi; `rate_compare` ile bir ufuk taraması yapılmadı.
+  - **7/24 varsayımı:** 24 saatlik öngörü o anki hızın gece de süreceğini varsayar (örüntü verisi Adım 17'de). Gün içindeki yoğun bir çalışma limiti olduğundan çabuk dolacakmış gibi gösterebilir. Yoğun çalışma kısa sürede çok sayıda keskin kenar ürettiği için `High` şartı bunu tamamen engellemez.
+  - **Tek hak erken harcanabilir:** "dolacak" bildirimi pencere başına bir kez gider. Erken bir yoğunlukta giderse, hafta sonuna doğru gerçekten dolarken ikinci bir "dolacak" bildirimi gelmez; yalnızca son uyarı ve eşik uyarıları kalır.
+  - Ters yönde: yeni hız yöntemi gerçek veride hızı düşük okuyor (≈ 0,5×, ADR-062), bu uyarıyı geciktirir. İki hata birbirini kısmen dengeler; net etki ölçülmedi.
+  - Birkaç hafta haftalık bildirimin ne zaman geldiği izlenmeli; gerekirse ufuk kısaltılır ya da yeni bir ADR ile "bir kez" kuralı haftalıkta gevşetilir.
+- **Alternatifler:**
+  - Haftalıkta da 60 dakika (ADR-062): uyarı fiilen eşik uyarılarından sonra gelir.
+  - Kalan pencere süresinin oranı: pencere sonuna yaklaştıkça ufuk kısalır; kullanıcı sabit bir gün istedi.
+  - Haftalık erken uyarıyı Adım 17'nin örüntü verisine bırakmak: o zamana kadar yalnızca mod'un tempo uyarısı (ADR-044) erken uyarır.

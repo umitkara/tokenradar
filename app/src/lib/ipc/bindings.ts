@@ -325,6 +325,7 @@ export type ColorMode =
 /**  Colors unless `NO_COLOR` is set. */
 "auto" | "always" | "never";
 
+/**  Ordered: `Low < Medium < High`. */
 export type Confidence = "low" | "medium" | "high";
 
 /**  Something in the core changed. New variants may be added in any release. */

@@ -16,6 +16,18 @@
 //! several as one summary.
 
 mod prefs;
+/// How far ahead a projection may warn, and the least confidence it needs (ADR-062, ADR-063):
+/// an hour at medium for the 5-hour window and others, a day at high for weekly limits. The
+/// Claude Code mod applies the same rule.
+pub fn projection_horizon(kind: &LimitKind) -> (u32, Confidence) {
+    match kind {
+        LimitKind::WeeklyAll | LimitKind::WeeklyScoped => {
+            (WEEKLY_PROJECTION_HORIZON_MIN, Confidence::High)
+        }
+        _ => (PROJECTION_HORIZON_MIN, Confidence::Medium),
+    }
+}
+
 #[cfg(test)]
 mod tests;
 
@@ -26,7 +38,10 @@ use specta::Type;
 use tokenradar_i18n::format::weekday_clock;
 use tokenradar_i18n::{Arg, Domain, Locale, Localizer};
 
-pub use prefs::{MAX_THRESHOLDS, NotifyPrefs, PROJECTION_HORIZON_MIN, QuietHours, parse_hhmm};
+pub use prefs::{
+    MAX_THRESHOLDS, NotifyPrefs, PROJECTION_HORIZON_MIN, QuietHours, WEEKLY_PROJECTION_HORIZON_MIN,
+    parse_hhmm,
+};
 
 use crate::clock::LocalClock;
 use crate::domain::{LimitKind, Scope, Source, Timestamp};
@@ -399,14 +414,16 @@ impl Notifier {
         }
     }
 
-    /// `Final` or `Projection` when the limit will be full within the horizon at a rate the
-    /// engine trusts; `None` otherwise or when projection notices are off.
+    /// `Final` or `Projection` when the limit will be full within its horizon at a rate the
+    /// engine trusts enough (see [`projection_horizon`]); `None` otherwise or when projection
+    /// notices are off.
     fn projection_rule(&self, limit: &LimitView, now: Timestamp) -> Option<Rule> {
         if !self.prefs.projection || limit.percent >= 100.0 {
             return None;
         }
         let p = limit.projection?;
-        if !p.will_hit_before_reset || p.confidence == Confidence::Low {
+        let (horizon_min, least) = projection_horizon(&limit.kind);
+        if !p.will_hit_before_reset || p.confidence < least {
             return None;
         }
         let left = p.eta_100_at?.as_millis() - now.as_millis();
@@ -416,7 +433,7 @@ impl Notifier {
         let final_ms = i64::from(self.prefs.final_warning_min) * MINUTE_MS;
         if final_ms > 0 && left <= final_ms {
             Some(Rule::Final)
-        } else if left <= i64::from(PROJECTION_HORIZON_MIN) * MINUTE_MS {
+        } else if left <= i64::from(horizon_min) * MINUTE_MS {
             Some(Rule::Projection)
         } else {
             None

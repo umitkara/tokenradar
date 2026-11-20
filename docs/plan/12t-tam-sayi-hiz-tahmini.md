@@ -156,6 +156,8 @@ Aşağıdakiler ajanın önerileridir, kullanıcı onaylamadan karar sayılmaz.
 - Yeni davranış gerçek Claude Code mod'unda ve kurulu uygulamada gözlenmedi (yeni sürüm gerekli).
 - Kapsamlı limitin kalibre maliyet yedeği yapılmadı (kullanıcı kararı); seyrek API adımlarında kapsamlı limitte öngörü eskisine göre daha az zaman var.
 
+**Ek iş (2026-11-20, kullanıcı kararı, ADR-063):** Haftalık limitlerde öngörü uyarısı 60 dakika yerine 24 saat ileriye bakar ve yüksek güven ister (`notifier::projection_horizon`, mod'da `warnsSoon`). Ayarlardaki ipucu güncellendi. 24 saat gerçek veriyle seçilmedi. **İzlenmeli:** birkaç hafta haftalık "dolacak" bildiriminin ne zaman geldiği. 7/24 varsayımı yüzünden gün içi bir yoğunlukta erken gidebilir ve pencere başına tek hak harcanır. Gerekirse ufuk kısaltılır. Dal: `feat/weekly-projection-horizon`. Testler: çekirdek 540, mod 42.
+
 **Sonraki adıma notlar:**
 - **Kapsam dışı kalan:** günlük kullanım örüntüsü (uyku, mola) öngörüye katılmadı; haftalık pencerede 7/24 varsayımı sürüyor. Adım 17'nin örüntü verisi bunun için uygun.
 - **Adım 14 (atıf):** atıf hızı değil maliyeti kullanıyor; bu adımın değişikliği atıfı etkilemez.
