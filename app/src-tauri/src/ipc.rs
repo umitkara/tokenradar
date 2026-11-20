@@ -20,6 +20,7 @@ use tokenradar_core::statusline::line::{IconSet, Imported, SampleState, Statusli
 use tokenradar_core::terminal_font::TargetId;
 use tokenradar_core::terminal_font::terminals::FontChange;
 
+use crate::main_window::{self, MainRouteRequested};
 use crate::prefs::{
     self, Prefs, PrefsChanged, PrefsView, SettingsChanged, SettingsView, StatuslineKind,
     StatuslinePreset, StatuslinePreview,
@@ -36,6 +37,7 @@ use crate::terminal_font::{
 use crate::tray_pin::{self, TrayPinState};
 use crate::updater::{self, UpdateChanged, UpdateView};
 use crate::{core_bridge, history, notify, onboarding, panel, tray};
+use tokenradar_core::deeplink::MainRoute;
 use tokenradar_core::domain::{LimitRef, ProjectId, SessionId};
 use tokenradar_core::queries::{
     self, HeatMetric, Heatmap, ImpactRow, Overview, ProjectDetail, ProjectFilter, ProjectPage,
@@ -127,6 +129,8 @@ pub fn builder() -> Builder<tauri::Wry> {
             get_muted,
             toggle_mute,
             open_settings,
+            open_main,
+            main_ready,
             get_tray_pin,
             pin_tray_icon,
             open_taskbar_settings,
@@ -138,6 +142,7 @@ pub fn builder() -> Builder<tauri::Wry> {
             PrefsChanged,
             MuteChanged,
             SettingsSectionRequested,
+            MainRouteRequested,
             UpdateChanged,
             terminal_font::FontInstallProgress,
             panel::PanelShown
@@ -756,6 +761,20 @@ async fn toggle_mute(app: AppHandle) {
 #[specta::specta]
 async fn open_settings(app: AppHandle, section: SettingsSection) -> Result<(), String> {
     settings::show(&app, Some(section)).map_err(|e| e.to_string())
+}
+
+/// Opens the main window, on `route` when given (the panel's button).
+#[tauri::command]
+#[specta::specta]
+async fn open_main(app: AppHandle, route: Option<MainRoute>) -> Result<(), String> {
+    main_window::show(&app, route).map_err(|e| e.to_string())
+}
+
+/// The main window's page rendered: show the window.
+#[tauri::command]
+#[specta::specta]
+async fn main_ready(app: AppHandle) {
+    main_window::ready(&app);
 }
 
 /// Whether the tray icon is on the taskbar or in the overflow flyout (Windows 11).

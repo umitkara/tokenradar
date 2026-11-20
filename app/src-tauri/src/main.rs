@@ -10,6 +10,7 @@ mod gallery;
 mod history;
 mod ipc;
 mod logging;
+mod main_window;
 mod notify;
 mod onboarding;
 mod paint;
@@ -26,7 +27,16 @@ mod tray_pin;
 mod updater;
 mod widget;
 
-use tauri::RunEvent;
+use tauri::{AppHandle, RunEvent};
+use tokenradar_core::deeplink::Link;
+
+/// Opens what a launch link names.
+pub fn open_link(app: &AppHandle, link: Link) {
+    match link {
+        Link::Panel => panel::report(panel::show(app)),
+        Link::Main(route) => panel::report(main_window::show(app, route)),
+    }
+}
 
 fn main() {
     logging::init();
@@ -45,8 +55,10 @@ fn main() {
 
     let app = builder
         // Must be the first plugin so a second launch exits before doing any work.
-        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
-            panel::report(panel::show(app));
+        // A second launch opens what its `tokenradar://` argument names (a toast click,
+        // `tokenradar open`), otherwise the panel.
+        .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+            open_link(app, Link::find(args.iter().skip(1)).unwrap_or(Link::Panel));
         }))
         .plugin(tauri_plugin_notification::init())
         // Used from Rust only; no window has a dialog or opener permission.
@@ -63,6 +75,7 @@ fn main() {
         .setup(move |app| {
             // Tray first, so it shows within its 300 ms budget; the core starts behind it.
             panel::init(app.handle());
+            main_window::init(app.handle());
             tray::create(app.handle())?;
             bridge.mount_events(app);
             // Before the settings: reading them may start the widget.

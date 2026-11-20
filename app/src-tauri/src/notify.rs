@@ -7,7 +7,8 @@
 //! or in the Action Center, starts `tokenradar-app.exe tokenradar://panel`. The installer
 //! registers the scheme (`plugins > deep-link` in `tauri.conf.json`). The single-instance plugin
 //! hands that launch to the running app, and a cold start opens the panel itself (`init`).
-//! A portable copy registers no scheme, so there a click does nothing.
+//! A portable copy registers no scheme, so there a click does nothing. The same launch path
+//! carries `tokenradar://main` from `tokenradar open` (Step 15, `tokenradar_core::deeplink`).
 //!
 //! Windows names the sender by the `AppUserModelID`. Builds run from `target\debug` or
 //! `target\release` show as PowerShell; any other copy uses the app identifier, which only the
@@ -15,19 +16,21 @@
 //! an error.
 
 use tauri::AppHandle;
+use tokenradar_core::deeplink::Link;
 use tokenradar_core::notifier::Notice;
 
+#[cfg(not(windows))]
 use crate::panel;
 
 /// What a toast click launches. Registered by the installer only.
 pub const PANEL_URI: &str = "tokenradar://panel";
 
-/// Opens the panel when this process was started by a toast click. On other platforms it
-/// registers the plugin's click handler; toasts shown before this report nothing.
+/// Opens what a `tokenradar://` launch argument names (a toast click, `tokenradar open`). On
+/// other platforms it also registers the plugin's click handler; toasts shown before this report
+/// nothing.
 pub fn init(app: &AppHandle) {
-    #[cfg(windows)]
-    if std::env::args().skip(1).any(|arg| is_panel_uri(&arg)) {
-        panel::report(panel::show(app));
+    if let Some(link) = Link::find(std::env::args().skip(1)) {
+        crate::open_link(app, link);
     }
     #[cfg(not(windows))]
     {
@@ -39,15 +42,6 @@ pub fn init(app: &AppHandle) {
             }
         });
     }
-}
-
-/// Whether a launch argument is the toast's URI. Windows normalizes the toast's `launch` value
-/// before starting the app, so an Action Center click passes `tokenradar://panel/`. Scheme and
-/// host are case-insensitive; anything else, such as another path or a query, is not accepted.
-#[cfg_attr(not(windows), allow(dead_code))]
-fn is_panel_uri(arg: &str) -> bool {
-    let arg = arg.strip_suffix('/').unwrap_or(arg);
-    arg.eq_ignore_ascii_case(PANEL_URI)
 }
 
 /// Shows `notice` as a toast.
@@ -182,23 +176,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn panel_uri_accepts_the_normalized_launch_only() {
-        for arg in [
-            "tokenradar://panel",
-            "tokenradar://panel/",
-            "TokenRadar://Panel/",
-        ] {
-            assert!(is_panel_uri(arg), "{arg}");
-        }
-        for arg in [
-            "tokenradar://panel//",
-            "tokenradar://panel/x",
-            "tokenradar://panel?x=1",
-            "tokenradar://settings",
-            "tokenradar:panel",
-            "",
-        ] {
-            assert!(!is_panel_uri(arg), "{arg}");
-        }
+    fn toast_uri_is_the_panel_link() {
+        assert_eq!(Link::parse(PANEL_URI), Some(Link::Panel));
+        assert_eq!(Link::Panel.uri(), PANEL_URI);
     }
 }

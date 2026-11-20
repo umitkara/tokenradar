@@ -39,6 +39,7 @@ use visual::{TrayModel, TrayVisual};
 
 const TRAY_ID: &str = "main";
 const MENU_OPEN_PANEL: &str = "open-panel";
+const MENU_OPEN_MAIN: &str = "open-main";
 const MENU_MUTE: &str = "mute";
 const MENU_SETTINGS: &str = "settings";
 const MENU_ONBOARDING: &str = "onboarding";
@@ -138,6 +139,7 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| match event.id().as_ref() {
             MENU_OPEN_PANEL => panel::report(panel::show(app)),
+            MENU_OPEN_MAIN => panel::report(crate::main_window::show(app, None)),
             MENU_MUTE => send(app, TrayMsg::ToggleMute),
             MENU_SETTINGS | MENU_ABOUT => panel::report(settings::show(app, None)),
             MENU_UPDATE => panel::report(settings::show(
@@ -242,6 +244,7 @@ fn build_menu(
         app,
         &[
             &item(MENU_OPEN_PANEL, "tray-menu-open-panel")?,
+            &item(MENU_OPEN_MAIN, "tray-menu-open-main")?,
             &mute,
             &item(MENU_WIDGET, widget_key)?,
             &PredefinedMenuItem::separator(app)?,
@@ -256,13 +259,13 @@ fn build_menu(
     if widget.click_through {
         menu.insert(
             &item(MENU_WIDGET_INTERACTIVE, "tray-menu-widget-interactive")?,
-            3,
+            4,
         )?;
     }
     // Development builds only: the component gallery (Step 09), before "About".
     #[cfg(debug_assertions)]
     {
-        let at = if widget.click_through { 8 } else { 7 };
+        let at = if widget.click_through { 9 } else { 8 };
         menu.insert(&item(MENU_GALLERY, "tray-menu-gallery")?, at)?;
     }
     // A found update goes first, so it is seen without being in the way (Step 12).

@@ -156,6 +156,10 @@ export const commands = {
 	toggleMute: () => __TAURI_INVOKE<void>("toggle_mute"),
 	/**  Opens the settings window on `section`. */
 	openSettings: (section: SettingsSection) => typedError<null, string>(__TAURI_INVOKE("open_settings", { section })),
+	/**  Opens the main window, on `route` when given (the panel's button). */
+	openMain: (route: MainRoute | null) => typedError<null, string>(__TAURI_INVOKE("open_main", { route })),
+	/**  The main window's page rendered: show the window. */
+	mainReady: () => __TAURI_INVOKE<void>("main_ready"),
 	/**  Whether the tray icon is on the taskbar or in the overflow flyout (Windows 11). */
 	getTrayPin: () => __TAURI_INVOKE<TrayPinState>("get_tray_pin"),
 	/**  "Always show the icon": the user clicked it; answers with the state read back. */
@@ -170,6 +174,7 @@ export const commands = {
 export const events = {
 	coreEventEmitted: makeEvent<CoreEventEmitted, CoreEventEmitted>("core-event-emitted"),
 	fontInstallProgress: makeEvent<FontInstallProgress, FontInstallProgress>("font-install-progress"),
+	mainRouteRequested: makeEvent<MainRouteRequested, MainRouteRequested>("main-route-requested"),
 	muteChanged: makeEvent<MuteChanged, MuteChanged>("mute-changed"),
 	panelShown: makeEvent<PanelShown, PanelShown>("panel-shown"),
 	prefsChanged: makeEvent<PrefsChanged, PrefsChanged>("prefs-changed"),
@@ -836,6 +841,15 @@ export type LocalePref = "system" | "en" | "tr";
 
 /**  How much goes into the log file. Never content or tokens, at any level. */
 export type LogLevel = "error" | "warn" | "info" | "debug" | "trace";
+
+/**  A page of the main window, in navigation order (`Ctrl+1..5`). */
+export type MainRoute = "overview" | "windows" | "sessions" | "projects" | "patterns";
+
+/**
+ *  Sent to an open main window that should switch to `0`. A new window reads the route from
+ *  its URL fragment (`main.html#sessions`).
+ */
+export type MainRouteRequested = MainRoute;
 
 export type Method = "calibrated" | "proportional" | "estimated" | "cost_only";
 

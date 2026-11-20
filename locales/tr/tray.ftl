@@ -31,6 +31,7 @@ tray-muted-short = Sessiz: { TR_SUFFIX($until, "dat") } kadar
 ## Sağ tık menüsü
 
 tray-menu-open-panel = Paneli aç
+tray-menu-open-main = TokenRadar'ı aç
 tray-menu-mute = Bildirimleri 1 saat sustur
 tray-menu-unmute = Susturmayı kaldır
 tray-menu-settings = Ayarlar…

@@ -31,6 +31,7 @@ tray-muted-short = Muted until { $until }
 ## Context menu
 
 tray-menu-open-panel = Open panel
+tray-menu-open-main = Open TokenRadar
 tray-menu-mute = Mute notifications for 1 hour
 tray-menu-unmute = Unmute notifications
 tray-menu-settings = Settings…
