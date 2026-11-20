@@ -1618,7 +1618,7 @@
 
 ### ADR-069 — Projeler: SQL'de geçici dizin filtresi, çekirdekte klasör ağacı, şema v5 görünen yol
 
-**Durum:** Önerildi (2026-11-21, Adım 16b). "(kullanıcı kararı)" işaretli maddeler adım başında kullanıcıyla kararlaştırıldı. Diğer maddeler kullanıcı onayı bekliyor.
+**Durum:** Kabul edildi (2026-11-21, Adım 16b). "(kullanıcı kararı)" işaretli maddeler adım sırasında kullanıcıyla kararlaştırıldı. Diğer maddeler (proje listesinin varsayılanları, URL biçimi, düz listede satırın bağlantı olmaması, ağaçta ← →, gizli sayısı sorgusu, ayrıntı yerleşimi, varsayılan desenlerin arka uçtan gelmesi) adım sonunda kullanıcı tarafından onaylandı.
 
 - **Bağlam:**
   - Gerçek veride (salt-okunur sayım) projelerin yaklaşık %80'i `AppData\Local\Temp` altında. Bunlar Claude Code'u geçici bir klasörde çalıştıran araçların bıraktığı tek oturumluk projeler.

@@ -208,7 +208,7 @@ pnpm dev   # Oturumlar → filtre → detay → proje → geri
 
 ### 16b
 
-**Yapılanlar (2026-11-21, `step/16b-projects`, ADR-069 önerildi):**
+**Yapılanlar (2026-11-21, `step/16b-projects`, ADR-069):**
 - **Çekirdek:**
   - Şema v5: `projects.display_path`. Yollar orijinal yazımla görünür; göç canlı dosyaları yeniden okutur.
   - `[data] temp_dirs` desenleri (`temp_like_patterns`) ve SQL `LIKE` filtresi. `list_projects` ilk sayfada gizlenen proje sayısını döner (`hidden`).
@@ -244,7 +244,9 @@ pnpm dev   # Oturumlar → filtre → detay → proje → geri
 - Adım başındaki dört karar ve şema v5 (yukarıda, "16b öncesi kararlar").
 - **"Haftalık" sütunu pencere başına ortalamadır** (yan ajan notu üzerine). Değer toplam bölü aralığın dokunduğu haftalık pencere sayısıdır ve `≈%4,5/hafta` biçiminde gösterilir. Öncesinde değer toplamdı; 30 günlük varsayılanda bile %100'ü aşabiliyordu.
 
-**Önerilen kararlar (kullanıcı onayı bekliyor, ADR-069):**
+**Karar (oturum sonunda, 2026-11-21):** Aşağıdaki öneriler kullanıcı tarafından onaylandı; ADR-069 kabul edildi.
+
+**Onaylanan öneriler (ADR-069):**
 - Proje listesinin varsayılanları: son 30 gün, son etkinliğe göre sıralı, ağaç kapalı. Ağaç açılınca bütün klasörler açık başlar.
 - Filtrelerin URL biçimi; `temp=1` "göster" demektir.
 - Düz listede satırlar bağlantı değildir, oturum listesi gibi tıklama ya da Enter ile açılır. Ağaçta proje adı bağlantıdır.
