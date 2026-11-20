@@ -1669,7 +1669,7 @@
 
 ### ADR-070 — Pencereler ve Örüntüler: haftalık öncelikli sayfa, 24 saatlik günler, yalnızca 5 saatlik limit riski, CSV/JSON dışa aktarma
 
-**Durum:** Önerildi (2026-11-21, Adım 17a). "(kullanıcı kararı)" işaretli maddeler adımın başında kullanıcıyla kararlaştırıldı. Diğer maddeler adım sonunda kullanıcının onayını bekliyor.
+**Durum:** Kabul edildi (2026-11-21, Adım 17a). "(kullanıcı kararı)" işaretli maddeler adımın başında kullanıcıyla kararlaştırıldı; diğerlerini kullanıcı adım sonunda onayladı.
 
 - **Bağlam:**
   - Plan 5 saatlik pencereleri varsayıyordu: 14 günlük şerit ve "en riskli saatler" bunlara dayanıyordu.

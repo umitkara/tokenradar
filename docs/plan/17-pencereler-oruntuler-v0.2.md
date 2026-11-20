@@ -32,7 +32,7 @@ Gerçek veride (salt okunur sayım) hiç 5 saatlik pencere yok (ADR-041): yalnı
 - **Pencereler haftalık öncelikli:** Ana görünüm haftalık döngülerdir. Her hafta bir satırdır: 7 günlük şeritte gün başına puan, tepe değer, limite takılınan gün, ilk 3 proje ve kapsamlı limit sütunları. Liste ve detay çekmecesi her tür pencerede çalışır. 5 saatlik zaman şeridi de yazılır, ama yalnızca hesapta 5 saatlik pencere varsa görünür. Sentetik üretici bunu sınamak için 5 saatlik pencere üretir.
 - **Limit riski yalnızca 5 saatlik pencerelerde:** Genel olarak yazılır ve sentetik veriyle sınanır. 5 saatlik penceresi olmayan hesapta açıklayıcı bir boş durum gösterilir; haftalık için bir karşılık uydurulmaz.
 
-**Önerilen kararlar (kullanıcı onayı bekliyor, ADR-070):** Devir notunda listelenir.
+**Adım sonunda onaylananlar (ADR-070, 2026-11-21):** Devir notundaki sekiz öneri kullanıcı tarafından onaylandı.
 
 ## Kapsam
 
@@ -177,7 +177,7 @@ pnpm tauri build
 - Katkı grafiği beş yerine dört oturum adlandırıyor: doğrulanmış kategorik renk dört tane (`CONTRIB_SESSIONS = 4`).
 - Günlük toplamlar yalnızca CSV (plandaki gibi), oturum ve pencere CSV/JSON.
 
-**Önerilen kararlar (kullanıcı onayı bekliyor, ADR-070):**
+**Onaylanan kararlar (ADR-070, kullanıcı 2026-11-21'de onayladı):**
 1. Günler sıfırlanmadan başlayan 24 saatlik dilimler; değerleri `≈` yerel tahmin, "Diğer" yok, toplamları tepenin altında kalabilir (not ile).
 2. Limite takıldığı an ölçümdür (%100 olan ilk okuma); tahmini pencerede "Bilinmiyor".
 3. Katkılar: saklanan pay, birikimli maliyetle orantılı zamana yayılır; dört oturum ve "Diğer oturumlar".
