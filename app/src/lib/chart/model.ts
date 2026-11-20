@@ -33,6 +33,19 @@ export interface ChartBand {
   kind: "window" | "hit" | "estimated";
 }
 
+/**
+ * A span drawn in a lane under the plot, on the same time axis: a session from its start to its
+ * end. Hover or focus names it and gives its share.
+ */
+export interface ChartSpan {
+  id: string;
+  from: number;
+  to: number;
+  label: string;
+  /** `≈` points of the limit; `null` without a percentage. */
+  percent: number | null;
+}
+
 export interface ChartModel {
   /** The x range, Unix milliseconds. */
   from: number;
@@ -43,6 +56,27 @@ export interface ChartModel {
   bands: ChartBand[];
   /** Faint dashed horizontal lines (75 and 90). */
   thresholds: number[];
+  /** Session spans in a lane under the plot, one row each. */
+  spans?: ChartSpan[];
+}
+
+/**
+ * Where a span sits in a plot `width` px wide showing `[from, to]`: left offset and width in px,
+ * clipped to the plot, at least `min` px wide so a short session stays visible and hoverable.
+ * `null` when it lies outside the range.
+ */
+export function spanBox(
+  span: { from: number; to: number },
+  from: number,
+  to: number,
+  width: number,
+  min = 6,
+): { left: number; width: number } | null {
+  if (to <= from || span.to < from || span.from > to) return null;
+  const x = (t: number) => ((Math.min(Math.max(t, from), to) - from) / (to - from)) * width;
+  const x0 = x(span.from);
+  const w = Math.max(min, x(span.to) - x0);
+  return { left: Math.min(x0, Math.max(0, width - w)), width: Math.min(w, width) };
 }
 
 export interface AlignedSeries {

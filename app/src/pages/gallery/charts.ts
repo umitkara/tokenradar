@@ -1,6 +1,6 @@
 // Chart fixtures for the gallery (Step 15): synthetic, relative to the page's load time.
 
-import type { ChartLine, ChartModel } from "../../lib/chart/model";
+import type { ChartLine, ChartModel, ChartSpan } from "../../lib/chart/model";
 
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
@@ -52,8 +52,28 @@ export function twoLines(names: { fiveHour: string; weekly: string }): ChartMode
     thresholds: [75, 90],
     bands,
     lines: [fiveHourLine(from, to, names.fiveHour), weeklyLine(from, to, names.weekly, true)],
+    spans: spans(from),
   };
 }
+
+/** Five sessions for the lane under the chart: one long, one too short to see, one without a share. */
+function spans(from: number): ChartSpan[] {
+  const at = (day: number, hour: number) => from + day * DAY + hour * HOUR;
+  return [
+    { id: "a", from: at(0, 10), to: at(0, 18), label: "refactor-indexer", percent: 8.4 },
+    { id: "b", from: at(2, 9), to: at(2, 14), label: "fix-tray-icon", percent: 5.1 },
+    { id: "c", from: at(3, 20), to: at(3, 20.2), label: "quick question", percent: 0.6 },
+    { id: "d", from: at(4, 11), to: at(5, 2), label: "migrate-db", percent: 3.2 },
+    { id: "e", from: at(6, 8), to: at(6, 12), label: "docs pass", percent: null },
+  ];
+}
+
+/** Daily cost series for the sparkline demos: rising, flat at zero, one busy day. */
+export const sparks: { key: string; values: number[] }[] = [
+  { key: "gallery-spark-rising", values: [0.2, 0.4, 0.3, 0.9, 1.4, 1.2, 2.1] },
+  { key: "gallery-spark-flat", values: [0, 0, 0, 0, 0, 0, 0] },
+  { key: "gallery-spark-spike", values: [0.1, 0.1, 3.5, 0.2, 0.1, 0, 0.1] },
+];
 
 export function weeklyOnly(name: string): ChartModel {
   const { from, to } = range();

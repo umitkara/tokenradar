@@ -27,7 +27,8 @@ export interface Limits {
   scoped: LimitView[];
 }
 
-export function limitsOf(snapshot: PanelSnapshot): Limits {
+/** The limits as the ring and rows use them; takes a panel snapshot or an overview. */
+export function limitsOf(snapshot: Pick<PanelSnapshot, "limits" | "absent">): Limits {
   const find = (kind: string) => snapshot.limits.find((l) => l.kind === kind) ?? null;
   return {
     fiveHour: find("session"),

@@ -9,6 +9,8 @@
   - Lines are 2 px, estimates dashed (design-language.md §2). Bands: alternating limit windows,
     a window that reached its limit in the critical tint, an estimated window in grey.
   - No animation (ADR-019): uPlot draws once per change.
+  - `model.spans`: a lane under the plot, one row per session, on the plot's own x scale. Each
+    span is a focusable mark; hover or focus shows its name and share in the same tooltip.
 -->
 <script lang="ts">
 import { onMount } from "svelte";
@@ -21,6 +23,7 @@ import {
   align,
   type ChartModel,
   latest,
+  spanBox,
   tickLabel,
   timeTicks,
   tooltipTime,
@@ -45,10 +48,14 @@ let width = $state(0);
 /** Bumped when the page theme changes: rebuild with the new colors. */
 let themeEpoch = $state(0);
 let tip = $state<{ title: string; rows: TooltipRow[]; x: number; y: number } | null>(null);
+/** The plot area inside the canvas, CSS px: where the span lane lines up. */
+let box = $state<{ left: number; width: number } | null>(null);
 
 const FONT = '11px "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif';
 const Y_SPLITS = [0, 25, 50, 75, 100];
 const TIP_WIDTH = 180;
+/** Height of one span row in the lane, px. */
+const SPAN_ROW = 10;
 
 const aligned = $derived(align(model.lines));
 const empty = $derived(aligned.xs.length === 0);
@@ -206,6 +213,30 @@ function destroy() {
   plot?.destroy();
   plot = null;
   tip = null;
+  box = null;
+}
+
+function measure(u: uPlot) {
+  u.syncRect();
+  box = { left: u.bbox.left / devicePixelRatio, width: u.bbox.width / devicePixelRatio };
+}
+
+const spans = $derived(model.spans ?? []);
+
+function spanText(percent: number | null): string {
+  return percent == null ? t("value-none") : valueText(percent, true);
+}
+
+function showSpan(index: number, left: number, w: number) {
+  const span = spans[index];
+  if (!span || !box) return;
+  const x = box.left + left + w / 2;
+  tip = {
+    title: span.label,
+    rows: [{ label: t("chart-span-share"), value: spanText(span.percent), color: "", note: false }],
+    x: Math.max(0, Math.min(x - TIP_WIDTH / 2, width - TIP_WIDTH)),
+    y: height + index * SPAN_ROW - 56,
+  };
 }
 
 // Build (or rebuild) whenever the inputs that shape the canvas change; only while on screen.
@@ -225,7 +256,7 @@ $effect(() => {
   plot = built;
   // uPlot caches the plot's screen rect for the cursor; a chart rebuilt under a resting pointer
   // (theme change) or before layout settled would map the pointer to the wrong time.
-  const frame = requestAnimationFrame(() => built.syncRect());
+  const frame = requestAnimationFrame(() => measure(built));
   return () => {
     cancelAnimationFrame(frame);
     destroy();
@@ -236,7 +267,7 @@ $effect(() => {
 $effect(() => {
   if (plot && width > 0) {
     plot.setSize({ width, height });
-    plot.syncRect();
+    measure(plot);
   }
 });
 
@@ -266,6 +297,34 @@ onMount(() => {
   {#if empty}
     <p class="empty">{t("chart-empty")}</p>
   {/if}
+  {#if box && spans.length > 0 && !empty}
+    <ul
+      class="spans"
+      style:margin-left="{box.left}px"
+      style:width="{box.width}px"
+      aria-label={t("chart-spans")}
+    >
+      {#each spans as span, i (span.id)}
+        {@const at = spanBox(span, model.from, model.to, box.width)}
+        <li style:height="{SPAN_ROW}px">
+          {#if at}
+            <button
+              type="button"
+              class="span"
+              class:none={span.percent == null}
+              style:left="{at.left}px"
+              style:width="{at.width}px"
+              aria-label={t("chart-span-alt", { name: span.label, value: spanText(span.percent) })}
+              onpointerenter={() => showSpan(i, at.left, at.width)}
+              onpointerleave={() => (tip = null)}
+              onfocus={() => showSpan(i, at.left, at.width)}
+              onblur={() => (tip = null)}
+            ></button>
+          {/if}
+        </li>
+      {/each}
+    </ul>
+  {/if}
   {#if tip}
     <ChartTooltip {...tip} />
   {/if}
@@ -286,6 +345,49 @@ onMount(() => {
   }
   .plot {
     width: 100%;
+  }
+  .spans {
+    margin-top: var(--space-1);
+    margin-bottom: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .spans li {
+    position: relative;
+  }
+  /* A session from its start to its end: a 4 px bar with round ends, in muted ink (not a
+     series color: identity is in the tooltip). Hit target is the whole 10 px row. */
+  .span {
+    position: absolute;
+    top: 0;
+    height: 10px;
+    padding: 0;
+    border: 0;
+    background: none;
+    cursor: default;
+  }
+  .span::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 3px;
+    height: 4px;
+    border-radius: var(--radius-pill);
+    background: var(--text-2);
+    opacity: 0.55;
+  }
+  .span.none::before {
+    opacity: 0.3;
+  }
+  .span:hover::before,
+  .span:focus-visible::before {
+    opacity: 1;
+  }
+  .span:focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 1px;
+    border-radius: var(--radius-control);
   }
   .legend {
     display: flex;

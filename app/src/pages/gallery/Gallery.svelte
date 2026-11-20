@@ -14,6 +14,7 @@ import RingGauge from "../../lib/components/RingGauge.svelte";
 import SessionRow from "../../lib/components/SessionRow.svelte";
 import Skeleton from "../../lib/components/Skeleton.svelte";
 import SourceBadge from "../../lib/components/SourceBadge.svelte";
+import Sparkline from "../../lib/components/Sparkline.svelte";
 import Toggle from "../../lib/components/Toggle.svelte";
 import Tooltip from "../../lib/components/Tooltip.svelte";
 import type { Locale } from "../../lib/i18n/format";
@@ -21,10 +22,12 @@ import { locale, setLocale, t } from "../../lib/i18n/i18n.svelte";
 import type { Source, ThemePref } from "../../lib/ipc/bindings";
 import { inTauri } from "../../lib/ipc/runtime";
 import { applyTheme, settings } from "../../lib/settings.svelte";
+import OverviewBody from "../main/overview/OverviewBody.svelte";
 import Detail from "../panel/Detail.svelte";
 import { detailOf, session, snapshot } from "../panel/fixtures";
-import { emptyChart, twoLines, weeklyOnly } from "./charts";
+import { emptyChart, sparks, twoLines, weeklyOnly } from "./charts";
 import { bars as initialBars, limit, nudge, ringCases, sessions, weekly } from "./fixtures";
+import { overviewDemo } from "./overview";
 
 let rings = $state(ringCases);
 let bars = $state(initialBars);
@@ -126,6 +129,20 @@ function change() {
           <Chart model={emptyChart()} height={160} />
         </Card>
       </div>
+      <Card title={t("gallery-sparklines")}>
+        <ul class="sparks">
+          {#each sparks as spark (spark.key)}
+            <li><Sparkline values={spark.values} label={t(spark.key)} /><span>{t(spark.key)}</span></li>
+          {/each}
+        </ul>
+      </Card>
+    </div>
+  </section>
+
+  <section id="overview">
+    <h2>{t("gallery-overview")}</h2>
+    <div class="overview">
+      <OverviewBody overview={overviewDemo()} />
     </div>
   </section>
 
@@ -238,6 +255,27 @@ function change() {
   }
   .segmented :global(button[aria-pressed="true"]) {
     border-color: var(--text-2);
+  }
+  .overview {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+    container-type: inline-size;
+    min-width: 0;
+  }
+  .sparks {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-5);
+  }
+  .sparks li {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    color: var(--text-2);
   }
   .rings {
     display: flex;
