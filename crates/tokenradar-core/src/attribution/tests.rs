@@ -530,6 +530,7 @@ mod store {
     }
 
     #[test]
+    #[allow(clippy::too_many_lines)] // one scenario: first run, close, estimate, catch up
     fn refresh_attributes_finalizes_and_estimates() {
         let e = env();
         let r = T0 + WEEK;
@@ -550,7 +551,7 @@ mod store {
         assert_eq!(attribution_fill(&e), 0, "idempotent");
 
         let now = ts(T0 + DAY);
-        let done = refresh(&e.store, e.account, &cals, now, false).expect("refresh");
+        let done = refresh(&e.store, e.account, &cals, now, false, false).expect("refresh");
         assert_eq!(done.recomputed, 2);
         let windows = e.store.limit_windows(e.account).expect("windows");
         let (est, live): (Vec<_>, Vec<_>) = windows.iter().partition(|w| w.estimated);
@@ -584,17 +585,38 @@ mod store {
         assert!((total - 2.0).abs() < 0.01);
 
         // No new data: nothing to do. New data within the minute: nothing either.
-        let again = refresh(&e.store, e.account, &cals, ts(T0 + DAY + 2 * MIN), false);
+        let again = refresh(
+            &e.store,
+            e.account,
+            &cals,
+            ts(T0 + DAY + 2 * MIN),
+            false,
+            false,
+        );
         assert_eq!(again.expect("refresh").recomputed, 0);
-        let soon = refresh(&e.store, e.account, &cals, ts(T0 + DAY + 30_000), true);
+        let soon = refresh(
+            &e.store,
+            e.account,
+            &cals,
+            ts(T0 + DAY + 30_000),
+            true,
+            false,
+        );
         assert_eq!(soon.expect("refresh").recomputed, 0);
-        let later = refresh(&e.store, e.account, &cals, ts(T0 + DAY + 2 * MIN), true);
+        let later = refresh(
+            &e.store,
+            e.account,
+            &cals,
+            ts(T0 + DAY + 2 * MIN),
+            true,
+            false,
+        );
         assert_eq!(later.expect("refresh").recomputed, 1);
 
         // After the reset the window is finalized once.
         let after = ts(r + MIN);
         assert_eq!(
-            refresh(&e.store, e.account, &cals, after, false)
+            refresh(&e.store, e.account, &cals, after, false, false)
                 .expect("refresh")
                 .recomputed,
             1
@@ -602,7 +624,7 @@ mod store {
         let final_run = e.store.attribution(live[0].id).expect("read").expect("run");
         assert!(final_run.run.closed);
         assert_eq!(
-            refresh(&e.store, e.account, &cals, ts(r + DAY), true)
+            refresh(&e.store, e.account, &cals, ts(r + DAY), true, false)
                 .expect("refresh")
                 .recomputed,
             0
@@ -657,6 +679,7 @@ mod store {
             e.account,
             &[cal(1.0, &[], 0.9)],
             ts(T0 + 4 * HOUR),
+            false,
             false,
         )
         .expect("refresh");

@@ -1296,7 +1296,7 @@ impl LimitsCtx {
                 .get(&account)
                 .cloned()
                 .unwrap_or_default();
-            match attribution::refresh(&self.store, account, &cals, now, new_data) {
+            match attribution::refresh(&self.store, account, &cals, now, new_data, estimate) {
                 Ok(done) => {
                     more |= done.more;
                     for window_id in done.newly_suspect {

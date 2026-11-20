@@ -3,8 +3,9 @@
 //! - [`refresh`] runs on the limits thread: windows without an attribution get one, windows
 //!   that closed since get their final one, the open window is redone at most every
 //!   [`LIVE_REFRESH_MS`] and only when new data arrived (no idle wake-ups).
-//! - [`ensure`] is for viewing: a window attributed with an older calibration is redone then,
-//!   not in the background.
+//! - [`ensure`] is for viewing: a window attributed with an older calibration is redone then.
+//!   The calibration pass also redoes such closed windows in the background (`catch_up`,
+//!   Step 14b), so lists reading the stored rows catch up within 15 minutes.
 //! - [`fill_estimated`] adds weekly windows for the weeks the logs cover but no snapshot did.
 
 use std::collections::BTreeMap;
@@ -163,13 +164,16 @@ pub fn compute(
 
 /// Brings the account's attributions up to date (module docs), newest window first and at
 /// most [`MAX_PER_REFRESH`] of them; [`Refreshed::more`] says to call again soon. `new_data`:
-/// snapshots or usage arrived since the last call.
+/// snapshots or usage arrived since the last call. `catch_up`: also redo closed windows
+/// attributed with an older calibration (the calibration pass, Step 14b), so lists that read
+/// the stored attribution do not lag behind.
 pub fn refresh(
     store: &Store,
     account: AccountId,
     cals: &[Calibration],
     now: Timestamp,
     new_data: bool,
+    catch_up: bool,
 ) -> Result<Refreshed, StoreError> {
     let runs: BTreeMap<i64, AttributionRun> = store
         .attribution_runs(account)?
@@ -183,7 +187,10 @@ pub fn refresh(
         let prev = runs.get(&w.id);
         let due = match prev {
             None => true,
-            Some(r) if r.closed => false,
+            Some(r) if r.closed => {
+                catch_up
+                    && r.calibration_version != calibration_for(cals, &w).map_or(0, |c| c.version)
+            }
             Some(r) => {
                 now >= w.resets_at
                     || (new_data && now.as_millis() - r.computed_at.as_millis() >= LIVE_REFRESH_MS)
