@@ -19,6 +19,15 @@ görebilmeli. Projeler için aynı bilgi toplu halde sunulur.
 - `docs/architecture.md` §5, §13 (içerik **asla** gösterilmez)
 - Adım 14'teki sorgu API'leri: `list_sessions`, `get_session`, `get_session_impact`, `list_projects`, `get_project`
 
+## Kullanıcıyla kararlaştırılanlar (2026-11-20)
+
+- **Adım 16a + 16b'ye bölünür.**
+  - 16a: sanal liste, Oturumlar listesi ve Oturum detayı, şema v4 (oturum `cwd` ve effort değerleri), fast mode ve "transcript silindi" rozetleri, klasör açma komutu.
+  - 16b: Projeler listesi ve Proje detayı, geçici dizin filtresi ve desen düzenleyicisi, klasör ağacı, Genel Bakış bağlantıları, gerçek veriyle performans ölçümü.
+- **Eksik veri şema v4 ile eklenir.** Çekirdek effort'u ve oturumun farklı `cwd` değerlerini saklamıyordu. Ön keşifte (yalnızca alan adları sayıldı) assistant kayıtlarında `effort` alanı vardı (`low`/`medium`/`high`/`xhigh`). Son 400 transcript'in 303'ünde birden fazla farklı `cwd` vardı. `speed: "fast"` hiç görülmedi.
+- **"Klasörü aç" bir arka uç komutudur.** Yol yalnızca veritabanından okunur; frontend rastgele bir yol gönderemez ve pencereye `opener` izni verilmez.
+- **Geçici dizin desenleri Ayarlar'da düzenlenir** (16b).
+
 ## Kapsam
 
 - **Sanal liste bileşeni:** hafif ve kütüphanesiz. Sabit satır yüksekliği, keyset sayfalamasıyla sonsuz kaydırma, klavye navigasyonu.

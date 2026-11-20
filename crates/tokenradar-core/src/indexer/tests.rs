@@ -543,3 +543,110 @@ fn compactions_count_once_per_main_session() {
     env.scan();
     assert_eq!(counts(D1), Some(c1));
 }
+
+fn attr_line(id: &str, ts: &str, cwd: &str, effort: Option<&str>, speed: &str) -> String {
+    let effort = effort.map_or_else(String::new, |e| format!(r#""effort":"{e}","#));
+    format!(
+        r#"{{"type":"assistant","timestamp":"{ts}","cwd":"{cwd}",{effort}"requestId":"req_{id}","message":{{"id":"msg_{id}","model":"claude-opus-5-5","usage":{{"input_tokens":1,"output_tokens":9,"speed":"{speed}"}}}}}}"#
+    )
+}
+
+#[test]
+fn session_attrs_keep_distinct_cwds_efforts_and_fast_mode() {
+    const E1: &str = "0d4e0000-0000-4000-8000-00000000e001";
+    let env = Env::new();
+    let path = env.path(&format!("C--Work-Echo/{E1}.jsonl"));
+    fs::create_dir_all(path.parent().expect("parent")).expect("mkdir");
+    // `cwd` values as they appear in JSON: backslashes escaped.
+    let (echo, sub) = (r"D:\\echo", r"D:\\echo\\sub");
+    let lines = [
+        attr_line(
+            "1",
+            "2026-10-20T11:00:00.000Z",
+            echo,
+            Some("high"),
+            "standard",
+        ),
+        attr_line(
+            "2",
+            "2026-10-20T11:05:00.000Z",
+            sub,
+            Some("xhigh"),
+            "standard",
+        ),
+        attr_line("3", "2026-10-20T11:10:00.000Z", echo, None, "fast"),
+        attr_line(
+            "4",
+            "2026-10-20T11:15:00.000Z",
+            echo,
+            Some("high"),
+            "standard",
+        ),
+    ];
+    fs::write(&path, lines.join("\n") + "\n").expect("write");
+
+    let read = |env: &Env| -> Vec<(String, String, i64, i64)> {
+        env.store
+            .writer()
+            .call(|c| {
+                Ok(c.prepare(
+                    "SELECT kind, value, first_ts, last_ts FROM session_attrs
+                     WHERE session_id = (SELECT id FROM sessions WHERE uuid = ?1)
+                     ORDER BY kind, value",
+                )?
+                .query_map([E1], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))?
+                .collect::<rusqlite::Result<_>>()?)
+            })
+            .expect("attrs")
+    };
+    env.scan();
+    let at = |s: &str| Timestamp::parse_iso(s).expect("ts").as_millis();
+    let attrs = read(&env);
+    let expected = vec![
+        (
+            "cwd".to_owned(),
+            r"D:\echo".to_owned(),
+            at("2026-10-20T11:00:00Z"),
+            at("2026-10-20T11:15:00Z"),
+        ),
+        (
+            "cwd".to_owned(),
+            r"D:\echo\sub".to_owned(),
+            at("2026-10-20T11:05:00Z"),
+            at("2026-10-20T11:05:00Z"),
+        ),
+        (
+            "effort".to_owned(),
+            "high".to_owned(),
+            at("2026-10-20T11:00:00Z"),
+            at("2026-10-20T11:15:00Z"),
+        ),
+        (
+            "effort".to_owned(),
+            "xhigh".to_owned(),
+            at("2026-10-20T11:05:00Z"),
+            at("2026-10-20T11:05:00Z"),
+        ),
+        (
+            "speed".to_owned(),
+            "fast".to_owned(),
+            at("2026-10-20T11:10:00Z"),
+            at("2026-10-20T11:10:00Z"),
+        ),
+    ];
+    assert_eq!(attrs, expected);
+
+    // Reading the file again from the start changes nothing.
+    env.store
+        .writer()
+        .call(|c| {
+            c.execute(
+                "UPDATE source_files SET offset = 0, size = 0, mtime = 0",
+                [],
+            )?;
+            Ok(())
+        })
+        .expect("reset");
+    env.scan();
+    assert_eq!(read(&env), expected);
+}

@@ -134,6 +134,41 @@ pub struct CompactEvent {
     pub pre_tokens: Option<u64>,
 }
 
+/// Which metadata field a [`SessionAttr`] holds.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize, Type,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum SessionAttrKind {
+    /// A working directory of assistant records (`cwd`).
+    Cwd,
+    /// An `/effort` level of assistant records (`effort`).
+    Effort,
+    /// Fast mode (`usage.speed = "fast"`); only the value `fast` is kept.
+    Speed,
+}
+
+impl SessionAttrKind {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Cwd => "cwd",
+            Self::Effort => "effort",
+            Self::Speed => "speed",
+        }
+    }
+}
+
+/// One distinct `cwd`, `effort` or fast-mode value of a session and when it was seen (Step 16a, schema
+/// v4). Metadata only; re-reading a file only widens the time span.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SessionAttr {
+    pub session_id: SessionId,
+    pub kind: SessionAttrKind,
+    pub value: String,
+    pub first_ts: Timestamp,
+    pub last_ts: Timestamp,
+}
+
 /// A session title and its source.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
 pub struct SessionTitle {

@@ -7,8 +7,8 @@ use rusqlite::{Connection, OptionalExtension, Transaction, params};
 
 use super::{Result, StoreError, catalog, events};
 use crate::domain::{
-    AccountId, CompactEvent, CompactTrigger, SessionId, SessionKind, SessionSpec, Timestamp,
-    UsageEvent,
+    AccountId, CompactEvent, CompactTrigger, SessionAttr, SessionId, SessionKind, SessionSpec,
+    Timestamp, UsageEvent,
 };
 
 /// Read position of one transcript file.
@@ -37,6 +37,8 @@ pub struct IndexBatch {
     pub files: Vec<SourceFileState>,
     /// Main-session compactions (Step 12n); a uuid already stored is left alone.
     pub compacts: Vec<CompactEvent>,
+    /// Distinct `cwd` and `effort` values per session (Step 16a); existing rows widen.
+    pub attrs: Vec<SessionAttr>,
 }
 
 pub(crate) fn commit(conn: &mut Connection, batch: &IndexBatch) -> Result<events::UpsertStats> {
@@ -46,6 +48,7 @@ pub(crate) fn commit(conn: &mut Connection, batch: &IndexBatch) -> Result<events
     }
     let stats = events::upsert(&tx, &batch.events)?;
     insert_compacts(&tx, &batch.compacts)?;
+    upsert_attrs(&tx, &batch.attrs)?;
     for file in &batch.files {
         upsert_file(&tx, file)?;
     }
@@ -181,6 +184,26 @@ fn insert_compacts(tx: &Transaction<'_>, compacts: &[CompactEvent]) -> Result<()
             c.at,
             c.trigger.as_str(),
             c.pre_tokens.and_then(|t| i64::try_from(t).ok()),
+        ])?;
+    }
+    Ok(())
+}
+
+fn upsert_attrs(tx: &Transaction<'_>, attrs: &[SessionAttr]) -> Result<()> {
+    let mut stmt = tx.prepare_cached(
+        "INSERT INTO session_attrs (session_id, kind, value, first_ts, last_ts)
+         VALUES (?1, ?2, ?3, ?4, ?5)
+         ON CONFLICT (session_id, kind, value) DO UPDATE SET
+           first_ts = MIN(first_ts, excluded.first_ts),
+           last_ts  = MAX(last_ts, excluded.last_ts)",
+    )?;
+    for a in attrs {
+        stmt.execute(params![
+            a.session_id,
+            a.kind.as_str(),
+            a.value,
+            a.first_ts,
+            a.last_ts
         ])?;
     }
     Ok(())

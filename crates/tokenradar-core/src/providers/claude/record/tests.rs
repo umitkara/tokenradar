@@ -273,3 +273,21 @@ fn the_word_compact_boundary_elsewhere_is_not_a_compaction() {
         ParseOutcome::Unknown(UnknownReason::BadTimestamp)
     ));
 }
+
+#[test]
+fn effort_is_read_when_it_is_a_string_and_ignored_otherwise() {
+    let with = ASSISTANT.replace(
+        r#""entrypoint":"cli","#,
+        r#""entrypoint":"cli","effort":"xhigh","#,
+    );
+    assert_eq!(usage_of(&with).effort.as_deref(), Some("xhigh"));
+    assert_eq!(usage_of(ASSISTANT).effort, None);
+    // Another shape does not make the line malformed.
+    let object = ASSISTANT.replace(
+        r#""entrypoint":"cli","#,
+        r#""entrypoint":"cli","effort":{"level":"high","n":[1,2]},"#,
+    );
+    let u = usage_of(&object);
+    assert_eq!(u.effort, None);
+    assert_eq!(u.usage.tokens.output, 50);
+}

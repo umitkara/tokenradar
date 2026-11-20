@@ -47,8 +47,9 @@ pub use series::{
     get_timeseries,
 };
 pub use sessions::{
-    CacheStats, ImpactRow, SessionDetail, SessionFilter, SessionPage, SessionRow, SessionSort,
-    SubagentRow, TimelineBucket, get_session, get_session_impact, list_sessions,
+    CacheStats, CwdRow, ImpactRow, SessionDetail, SessionFilter, SessionPage, SessionRow,
+    SessionSort, SubagentRow, TimelineBucket, get_session, get_session_impact, list_sessions,
+    session_dirs,
 };
 pub use windows::{
     OtherView, ShareRow, WindowDetail, WindowFilter, WindowPage, WindowRow, get_window,

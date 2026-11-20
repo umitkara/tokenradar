@@ -786,3 +786,144 @@ fn cursors_round_trip_and_bad_ones_start_over() {
     assert_eq!(Cursor::decode(None), None);
     assert_eq!(like_pattern("a%b_c\\"), "%a\\%b\\_c\\\\%");
 }
+
+#[test]
+fn session_detail_lists_cwds_efforts_fast_mode_and_a_deleted_transcript() {
+    let e = Env::new();
+    let main = e.session("s-attrs", e.proj_a, Some("attrs"));
+    let agent = e.subagent("agent-attrs", main);
+    e.use_(main, e.opus, T0, 1.0, 0);
+    e.use_(agent, e.opus, T0 + HOUR, 1.0, 0);
+    let attr = |sid: SessionId, kind: &str, value: &str, first: i64, last: i64| {
+        let (kind, value) = (kind.to_owned(), value.to_owned());
+        e.store
+            .writer()
+            .call(move |c| {
+                c.execute(
+                    "INSERT INTO session_attrs VALUES (?1, ?2, ?3, ?4, ?5)",
+                    rusqlite::params![sid.0, kind, value, first, last],
+                )?;
+                Ok(())
+            })
+            .expect("attr");
+    };
+    attr(main, "cwd", "D:/work/alpha", T0, T0 + 2 * HOUR);
+    attr(main, "cwd", "D:/work/alpha/sub", T0 + HOUR, T0 + HOUR);
+    attr(main, "effort", "high", T0, T0 + HOUR);
+    attr(agent, "effort", "xhigh", T0 + HOUR, T0 + 3 * HOUR);
+    attr(main, "unknown", "ignored", T0, T0);
+    let file = |path: &str, deleted: Option<i64>| {
+        let (path, account) = (path.to_owned(), e.account.0);
+        e.store
+            .writer()
+            .call(move |c| {
+                c.execute(
+                    "INSERT INTO source_files (account_id, path, kind, size, mtime, offset,
+                                               session_id, deleted_at)
+                     VALUES (?1, ?2, 'main', 1, 1, 1, ?3, ?4)",
+                    rusqlite::params![account, path, main.0, deleted],
+                )?;
+                Ok(())
+            })
+            .expect("file");
+    };
+    let cals = [];
+    let zone = FixedZone::utc();
+    let ctx = e.ctx(&cals, &zone, T0 + DAY);
+    let detail = || {
+        get_session(&e.store, &ctx, main, &[])
+            .expect("get")
+            .expect("found")
+    };
+
+    let d = detail();
+    let paths: Vec<&str> = d.cwds.iter().map(|c| c.path.as_str()).collect();
+    assert_eq!(
+        paths,
+        ["D:/work/alpha", "D:/work/alpha/sub"],
+        "first used first"
+    );
+    assert_eq!(
+        d.efforts,
+        ["xhigh", "high"],
+        "latest first, the subagent's included"
+    );
+    assert!(!d.fast);
+    assert!(
+        !d.session.transcript_deleted,
+        "never indexed is not deleted"
+    );
+
+    attr(agent, "speed", "fast", T0 + HOUR, T0 + HOUR);
+    file("a.jsonl", None);
+    file("b.jsonl", Some(T0 + DAY));
+    let d = detail();
+    assert!(d.fast);
+    assert!(!d.session.transcript_deleted, "one file is still there");
+
+    e.store
+        .writer()
+        .call(|c| {
+            c.execute("UPDATE source_files SET deleted_at = 1", [])?;
+            Ok(())
+        })
+        .expect("delete");
+    assert!(detail().session.transcript_deleted);
+    let page = list_sessions(
+        &e.store,
+        &ctx,
+        &SessionFilter::default(),
+        SessionSort::LastActive,
+        None,
+        None,
+        &[],
+    )
+    .expect("list");
+    assert!(
+        page.items
+            .iter()
+            .any(|r| r.id == main && r.transcript_deleted)
+    );
+}
+
+#[test]
+fn session_dirs_are_the_tree_cwds_and_a_resolved_project_path() {
+    let e = Env::new();
+    let main = e.session("s-dirs", e.proj_a, None);
+    let agent = e.subagent("agent-dirs", main);
+    e.store
+        .writer()
+        .call(move |c| {
+            c.execute(
+                "INSERT INTO session_attrs VALUES (?1, 'cwd', 'D:/work/alpha/sub', 1, 2)",
+                [agent.0],
+            )?;
+            Ok(())
+        })
+        .expect("attr");
+    let cals = [];
+    let zone = FixedZone::utc();
+    let ctx = e.ctx(&cals, &zone, T0);
+    assert_eq!(
+        session_dirs(&e.store, &ctx, agent).expect("dirs"),
+        ["D:/work/alpha/sub", "d:/work/alpha"]
+    );
+    assert_eq!(
+        session_dirs(&e.store, &ctx, SessionId(9_999)).expect("dirs"),
+        Vec::<String>::new()
+    );
+    let unresolved = e
+        .store
+        .writer()
+        .upsert_project(ProjectSpec {
+            account_id: e.account,
+            path_norm: "unresolved:C--x".into(),
+            display_name: "x".into(),
+        })
+        .expect("project");
+    let lone = e.session("s-lone", unresolved, None);
+    assert_eq!(
+        session_dirs(&e.store, &ctx, lone).expect("dirs"),
+        Vec::<String>::new()
+    );
+}

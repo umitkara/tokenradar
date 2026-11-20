@@ -122,6 +122,7 @@ pub fn builder() -> Builder<tauri::Wry> {
             list_sessions,
             get_session,
             get_session_impact,
+            open_session_dir,
             list_projects,
             get_project,
             get_timeseries,
@@ -425,6 +426,30 @@ async fn get_session(app: AppHandle, id: SessionId) -> Result<Option<SessionDeta
         })
     })
     .await
+}
+
+/// Opens one of a session's folders in the file manager. `path` must be one the core lists for
+/// the session (its working directories or its project), so the frontend cannot open an
+/// arbitrary path; `Err("missing")` when the folder no longer exists.
+#[tauri::command]
+#[specta::specta]
+async fn open_session_dir(app: AppHandle, id: SessionId, path: String) -> Result<(), String> {
+    use tauri_plugin_opener::OpenerExt as _;
+    let opener = app.clone();
+    let allowed =
+        blocking(move || history::run(&app, |q, ctx| queries::session_dirs(&q.store, ctx, id)))
+            .await?;
+    if !allowed.iter().any(|d| d == &path) {
+        tracing::warn!("open_session_dir: path not listed for the session");
+        return Err("not allowed".to_owned());
+    }
+    if !std::path::Path::new(&path).is_dir() {
+        return Err("missing".to_owned());
+    }
+    opener
+        .opener()
+        .open_path(path, None::<&str>)
+        .map_err(|e| e.to_string())
 }
 
 /// Every window a session tree has a share in, newest first.

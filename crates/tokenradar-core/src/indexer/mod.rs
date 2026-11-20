@@ -36,9 +36,11 @@ pub use retention::{CHECK_EVERY, DEFAULT_KEEP_DAYS, RetentionScheduler};
 use serde::Serialize;
 use specta::Type;
 
+use crate::domain::Speed;
 use crate::domain::{
-    AccountId, CompactEvent, CompactTrigger, ModelId, MsgKey, ProjectId, ProjectSpec, SessionId,
-    SessionKind, SessionSpec, SessionTitle, Timestamp, TitleSource, Usage, UsageEvent,
+    AccountId, CompactEvent, CompactTrigger, ModelId, MsgKey, ProjectId, ProjectSpec, SessionAttr,
+    SessionAttrKind, SessionId, SessionKind, SessionSpec, SessionTitle, Timestamp, TitleSource,
+    Usage, UsageEvent,
 };
 use crate::pricing::{Pricing, family_of};
 use crate::providers::claude::{
@@ -249,6 +251,8 @@ struct Chunk {
     compacts: Vec<RawCompact>,
     /// First cwd seen in this chunk.
     cwd: Option<String>,
+    /// Every distinct `cwd` and `effort` value with the first and last time it was seen.
+    attrs: HashMap<(SessionAttrKind, String), (Timestamp, Timestamp)>,
     git_branch: Option<String>,
     version: Option<String>,
     entrypoint: Option<String>,
@@ -569,6 +573,7 @@ impl Indexer {
                 cost: priced.cost,
             });
         }
+        state.batch.attrs.extend(attrs_of(session, chunk.attrs));
         // Only a main session's own compactions count; a subagent's are its own business.
         if let SourceKind::Main { session: file, .. } = &entry.kind {
             state
@@ -1034,9 +1039,19 @@ fn collect_line(parser: &LineParser, line: &[u8], chunk: &mut Chunk) {
             if chunk.cwd.is_none() {
                 chunk.cwd = rec
                     .cwd
-                    .map(std::borrow::Cow::into_owned)
-                    .filter(|c| !c.is_empty());
+                    .as_deref()
+                    .filter(|c| !c.is_empty())
+                    .map(str::to_owned);
             }
+            note_attr(chunk, SessionAttrKind::Cwd, rec.cwd.as_deref(), rec.ts);
+            note_attr(
+                chunk,
+                SessionAttrKind::Effort,
+                rec.effort.as_deref(),
+                rec.ts,
+            );
+            let fast = (rec.usage.speed == Speed::Fast).then_some("fast");
+            note_attr(chunk, SessionAttrKind::Speed, fast, rec.ts);
             set_latest(&mut chunk.git_branch, rec.git_branch.as_deref());
             set_latest(&mut chunk.version, rec.version.as_deref());
             set_latest(&mut chunk.entrypoint, rec.entrypoint.as_deref());
@@ -1082,6 +1097,40 @@ fn collect_line(parser: &LineParser, line: &[u8], chunk: &mut Chunk) {
         ParseOutcome::Unknown(UnknownReason::Malformed) => chunk.stats.malformed += 1,
         ParseOutcome::Unknown(UnknownReason::BadTimestamp) => chunk.stats.bad_timestamps += 1,
     }
+}
+
+fn attrs_of(
+    session: SessionId,
+    attrs: HashMap<(SessionAttrKind, String), (Timestamp, Timestamp)>,
+) -> impl Iterator<Item = SessionAttr> {
+    attrs
+        .into_iter()
+        .map(move |((kind, value), (first_ts, last_ts))| SessionAttr {
+            session_id: session,
+            kind,
+            value,
+            first_ts,
+            last_ts,
+        })
+}
+
+/// Widens the span of one distinct value; empty values are not kept.
+fn note_attr(chunk: &mut Chunk, kind: SessionAttrKind, value: Option<&str>, ts: Timestamp) {
+    let Some(value) = value.map(str::trim).filter(|v| !v.is_empty()) else {
+        return;
+    };
+    // Look up by borrowed key first: the same value repeats on almost every line.
+    if let Some(span) = chunk
+        .attrs
+        .iter_mut()
+        .find(|((k, v), _)| *k == kind && v == value)
+        .map(|(_, span)| span)
+    {
+        span.0 = span.0.min(ts);
+        span.1 = span.1.max(ts);
+        return;
+    }
+    chunk.attrs.insert((kind, value.to_owned()), (ts, ts));
 }
 
 fn set_latest(slot: &mut Option<String>, value: Option<&str>) {

@@ -50,6 +50,8 @@ pub struct UsageRecord<'a> {
     pub git_branch: Option<Cow<'a, str>>,
     pub version: Option<Cow<'a, str>>,
     pub entrypoint: Option<Cow<'a, str>>,
+    /// The session's `/effort` level when the record was written (`low` … `max`).
+    pub effort: Option<Cow<'a, str>>,
     /// Advisor iterations. Their tokens are billed to the advisor model and are not part of
     /// the top-level `usage` (data-sources.md S3, ADR-026).
     pub advisors: Vec<AdvisorRecord<'a>>,
@@ -214,6 +216,7 @@ fn parse_usage(line: &[u8], loose_match: bool) -> ParseOutcome<'_> {
         git_branch: parsed.git_branch.map(|s| s.0),
         version: parsed.version.map(|s| s.0),
         entrypoint: parsed.entrypoint.map(|s| s.0),
+        effort: parsed.effort.0,
         advisors,
         loose_match,
     })
@@ -345,6 +348,75 @@ impl<'de: 'a, 'a> Deserialize<'de> for Str<'a> {
     }
 }
 
+/// A string when the value is one, otherwise nothing: an unexpected type does not fail the line.
+#[derive(Debug, Default)]
+struct LooseStr<'a>(Option<Cow<'a, str>>);
+
+impl<'de: 'a, 'a> Deserialize<'de> for LooseStr<'a> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct LooseVisitor;
+
+        impl<'de> Visitor<'de> for LooseVisitor {
+            type Value = LooseStr<'de>;
+
+            fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                f.write_str("any value")
+            }
+
+            fn visit_borrowed_str<E: de::Error>(self, v: &'de str) -> Result<Self::Value, E> {
+                Ok(LooseStr(Some(Cow::Borrowed(v))))
+            }
+
+            fn visit_str<E: de::Error>(self, v: &str) -> Result<Self::Value, E> {
+                Ok(LooseStr(Some(Cow::Owned(v.to_owned()))))
+            }
+
+            fn visit_string<E: de::Error>(self, v: String) -> Result<Self::Value, E> {
+                Ok(LooseStr(Some(Cow::Owned(v))))
+            }
+
+            fn visit_bool<E: de::Error>(self, _: bool) -> Result<Self::Value, E> {
+                Ok(LooseStr(None))
+            }
+
+            fn visit_i64<E: de::Error>(self, _: i64) -> Result<Self::Value, E> {
+                Ok(LooseStr(None))
+            }
+
+            fn visit_u64<E: de::Error>(self, _: u64) -> Result<Self::Value, E> {
+                Ok(LooseStr(None))
+            }
+
+            fn visit_f64<E: de::Error>(self, _: f64) -> Result<Self::Value, E> {
+                Ok(LooseStr(None))
+            }
+
+            fn visit_unit<E: de::Error>(self) -> Result<Self::Value, E> {
+                Ok(LooseStr(None))
+            }
+
+            fn visit_none<E: de::Error>(self) -> Result<Self::Value, E> {
+                Ok(LooseStr(None))
+            }
+
+            fn visit_seq<A: de::SeqAccess<'de>>(self, mut seq: A) -> Result<Self::Value, A::Error> {
+                while seq.next_element::<de::IgnoredAny>()?.is_some() {}
+                Ok(LooseStr(None))
+            }
+
+            fn visit_map<A: de::MapAccess<'de>>(self, mut map: A) -> Result<Self::Value, A::Error> {
+                while map
+                    .next_entry::<de::IgnoredAny, de::IgnoredAny>()?
+                    .is_some()
+                {}
+                Ok(LooseStr(None))
+            }
+        }
+
+        deserializer.deserialize_any(LooseVisitor)
+    }
+}
+
 fn cow(s: Option<Str<'_>>) -> Cow<'_, str> {
     s.map(|s| s.0).unwrap_or_default()
 }
@@ -367,6 +439,9 @@ struct Line<'a> {
     version: Option<Str<'a>>,
     #[serde(borrow, default)]
     entrypoint: Option<Str<'a>>,
+    /// A field Claude Code added late; anything but a string is ignored, not malformed.
+    #[serde(borrow, default)]
+    effort: LooseStr<'a>,
     #[serde(rename = "requestId", borrow, default)]
     request_id: Option<Str<'a>>,
     #[serde(borrow, default)]

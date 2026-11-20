@@ -108,7 +108,7 @@ fn migrations_run_once_and_reopen_is_idempotent() {
         })
         .expect("read");
     assert_eq!(version, migrate::LATEST);
-    assert_eq!(tables, 16);
+    assert_eq!(tables, 17);
     // Data survives and the account keeps its id.
     assert_eq!(
         store

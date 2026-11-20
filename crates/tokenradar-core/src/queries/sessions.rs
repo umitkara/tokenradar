@@ -13,7 +13,8 @@ use super::{
 };
 use crate::attribution::Method;
 use crate::domain::{
-    BUCKET_MS, LimitKind, MicroUsd, ModelFamily, ProjectId, Scope, SessionId, Timestamp,
+    BUCKET_MS, LimitKind, MicroUsd, ModelFamily, ProjectId, Scope, SessionAttrKind, SessionId,
+    Timestamp,
 };
 use crate::pricing::Pricing;
 use crate::store::Store;
@@ -64,6 +65,8 @@ pub struct SessionRow {
     pub session_percent: Option<f64>,
     /// The weakest basis behind the two sums.
     pub impact_basis: Option<Basis>,
+    /// Claude Code deleted the main transcript; the stored totals remain.
+    pub transcript_deleted: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Type)]
@@ -118,6 +121,15 @@ pub struct CacheStats {
     pub savings: MicroUsd,
 }
 
+/// One working directory of a session tree.
+#[derive(Debug, Clone, PartialEq, Serialize, Type)]
+pub struct CwdRow {
+    /// As Claude Code wrote it.
+    pub path: String,
+    pub first_ts: Timestamp,
+    pub last_ts: Timestamp,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Type)]
 pub struct SessionDetail {
     /// Totals over the session's whole life.
@@ -127,6 +139,13 @@ pub struct SessionDetail {
     pub entrypoint: Option<String>,
     /// The project's normalized path (`unresolved:<dir>` when the cwd is unknown).
     pub path: Option<String>,
+    /// Working directories of the tree, first used first; empty for files indexed before
+    /// schema v4 that Claude Code has since deleted.
+    pub cwds: Vec<CwdRow>,
+    /// `/effort` levels of the tree, most recently used first.
+    pub efforts: Vec<String>,
+    /// Some request ran in fast mode.
+    pub fast: bool,
     /// Cost per model per 5 minutes; merged into wider buckets beyond 1,500 buckets.
     pub timeline: Vec<TimelineBucket>,
     /// Width of a `timeline` bucket in ms.
@@ -297,6 +316,7 @@ pub fn list_sessions(
                 session_percent: r.get(13)?,
                 subagents: u32::try_from(r.get::<_, i64>(14)?).unwrap_or(0),
                 impact_basis: None,
+                transcript_deleted: false,
             });
             keys.push(r.get::<_, f64>(15)?);
         }
@@ -318,6 +338,7 @@ pub fn list_sessions(
         for row in &mut items {
             row.models = tree_models(c, row.id, from, to)?;
             row.impact_basis = impact_basis(c, ctx, row.id, from, to)?;
+            row.transcript_deleted = transcript_deleted(c, row.id)?;
         }
         Ok(())
     })?;
@@ -468,7 +489,30 @@ pub fn get_session(
                     Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))
                 })?;
             let (timeline, bucket_ms) = timeline(c, root)?;
+            let attrs = tree_attrs(c, root)?;
+            let mut cwds: Vec<CwdRow> = attrs
+                .iter()
+                .filter(|a| a.0 == SessionAttrKind::Cwd)
+                .map(|a| CwdRow {
+                    path: a.1.clone(),
+                    first_ts: a.2,
+                    last_ts: a.3,
+                })
+                .collect();
+            cwds.sort_by(|a, b| {
+                a.first_ts
+                    .cmp(&b.first_ts)
+                    .then_with(|| a.path.cmp(&b.path))
+            });
+            let mut efforts: Vec<_> = attrs
+                .iter()
+                .filter(|a| a.0 == SessionAttrKind::Effort)
+                .collect();
+            efforts.sort_by(|a, b| b.3.cmp(&a.3).then_with(|| a.1.cmp(&b.1)));
             Ok(SessionDetail {
+                cwds,
+                efforts: efforts.into_iter().map(|a| a.1.clone()).collect(),
+                fast: attrs.iter().any(|a| a.0 == SessionAttrKind::Speed),
                 git_branch,
                 cc_version,
                 entrypoint,
@@ -532,6 +576,7 @@ fn tree_row(
                 weekly_percent: None,
                 session_percent: None,
                 impact_basis: None,
+                transcript_deleted: false,
             })
         })
         .optional()?;
@@ -539,6 +584,7 @@ fn tree_row(
         return Ok(None);
     };
     row.models = tree_models(c, root, 0, i64::MAX)?;
+    row.transcript_deleted = transcript_deleted(c, root)?;
     let impact = impact_rows(c, ctx, root)?;
     let sum = |kind: LimitKind| {
         let v: Vec<f64> = impact
@@ -557,6 +603,46 @@ fn tree_row(
             .map(|i| i.basis),
     );
     Ok(Some(row))
+}
+
+/// Distinct `cwd`, `effort` and fast-mode values of a tree, each with its widest span.
+fn tree_attrs(
+    c: &Connection,
+    root: SessionId,
+) -> Result<Vec<(SessionAttrKind, String, Timestamp, Timestamp)>> {
+    let rows: Vec<(String, String, Timestamp, Timestamp)> = c
+        .prepare_cached(
+            "SELECT kind, value, MIN(first_ts), MAX(last_ts) FROM session_attrs
+             WHERE session_id IN (SELECT id FROM sessions WHERE id = ?1 OR root_id = ?1)
+             GROUP BY kind, value",
+        )?
+        .query_map([root.0], |r| {
+            Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))
+        })?
+        .collect::<rusqlite::Result<_>>()?;
+    Ok(rows
+        .into_iter()
+        .filter_map(|(kind, value, first, last)| {
+            let kind = match kind.as_str() {
+                "cwd" => SessionAttrKind::Cwd,
+                "effort" => SessionAttrKind::Effort,
+                "speed" => SessionAttrKind::Speed,
+                _ => return None,
+            };
+            Some((kind, value, first, last))
+        })
+        .collect())
+}
+
+/// The main transcript was indexed and every file of it is gone now.
+fn transcript_deleted(c: &Connection, root: SessionId) -> Result<bool> {
+    let (files, present): (i64, i64) = c
+        .prepare_cached(
+            "SELECT COUNT(*), COALESCE(SUM(deleted_at IS NULL), 0) FROM source_files
+             WHERE session_id = ?1",
+        )?
+        .query_row([root.0], |r| Ok((r.get(0)?, r.get(1)?)))?;
+    Ok(files > 0 && present == 0)
 }
 
 /// Buckets per model, merged into wider buckets so at most 1,500 bucket times remain.
@@ -691,4 +777,35 @@ pub(crate) fn root_costs(
         .query_map(params![account.0, from, to], |r| Ok((r.get(0)?, r.get(1)?)))?
         .collect::<rusqlite::Result<_>>()?;
     Ok(rows)
+}
+
+/// The folders the session detail may open for a tree: its working directories and the
+/// project's path (not an `unresolved:` one). Opening anything else is refused, so the
+/// frontend cannot name an arbitrary path.
+pub fn session_dirs(store: &Store, ctx: &QueryContext<'_>, id: SessionId) -> Result<Vec<String>> {
+    store.read(|c| {
+        let root: Option<i64> = c
+            .prepare_cached(
+                "SELECT COALESCE(root_id, id) FROM sessions WHERE id = ?1 AND account_id = ?2",
+            )?
+            .query_row(params![id.0, ctx.account.0], |r| r.get(0))
+            .optional()?;
+        let Some(root) = root.map(SessionId) else {
+            return Ok(Vec::new());
+        };
+        let mut dirs: Vec<String> = tree_attrs(c, root)?
+            .into_iter()
+            .filter(|a| a.0 == SessionAttrKind::Cwd)
+            .map(|a| a.1)
+            .collect();
+        let project: Option<String> = c
+            .prepare_cached(
+                "SELECT p.path_norm FROM sessions s JOIN projects p ON p.id = s.project_id
+                 WHERE s.id = ?1",
+            )?
+            .query_row([root.0], |r| r.get(0))
+            .optional()?;
+        dirs.extend(project.filter(|p| !p.starts_with("unresolved:")));
+        Ok(dirs)
+    })
 }

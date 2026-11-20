@@ -143,6 +143,12 @@ export const commands = {
 	getSession: (id: SessionId) => typedError<SessionDetail | null, string>(__TAURI_INVOKE("get_session", { id })),
 	/**  Every window a session tree has a share in, newest first. */
 	getSessionImpact: (id: SessionId) => typedError<ImpactRow[], string>(__TAURI_INVOKE("get_session_impact", { id })),
+	/**
+	 *  Opens one of a session's folders in the file manager. `path` must be one the core lists for
+	 *  the session (its working directories or its project), so the frontend cannot open an
+	 *  arbitrary path; `Err("missing")` when the folder no longer exists.
+	 */
+	openSessionDir: (id: SessionId, path: string) => typedError<null, string>(__TAURI_INVOKE("open_session_dir", { id, path })),
 	/**  Projects with usage in the filter's range, one keyset page after `cursor`. */
 	listProjects: (filter: ProjectFilter, sort: ProjectSort, cursor: string | null, limit: number | null) => typedError<ProjectPage, string>(__TAURI_INVOKE("list_projects", { filter, sort, cursor, limit })),
 	/**  One project over all time: weekly trend, model mix, most expensive sessions. */
@@ -439,6 +445,14 @@ export type CoreEvent =
 
 /**  A core event, forwarded to the windows that are visible. */
 export type CoreEventEmitted = CoreEvent;
+
+/**  One working directory of a session tree. */
+export type CwdRow = {
+	/**  As Claude Code wrote it. */
+	path: string,
+	first_ts: Timestamp,
+	last_ts: Timestamp,
+};
 
 /**  `[data]`: what is kept and whether updates are looked for. */
 export type DataConfig = {
@@ -1339,6 +1353,15 @@ export type SessionDetail = {
 	entrypoint: string | null,
 	/**  The project's normalized path (`unresolved:<dir>` when the cwd is unknown). */
 	path: string | null,
+	/**
+	 *  Working directories of the tree, first used first; empty for files indexed before
+	 *  schema v4 that Claude Code has since deleted.
+	 */
+	cwds: CwdRow[],
+	/**  `/effort` levels of the tree, most recently used first. */
+	efforts: string[],
+	/**  Some request ran in fast mode. */
+	fast: boolean,
 	/**  Cost per model per 5 minutes; merged into wider buckets beyond 1,500 buckets. */
 	timeline: TimelineBucket[],
 	/**  Width of a `timeline` bucket in ms. */
@@ -1407,6 +1430,8 @@ export type SessionRow = {
 	session_percent: number | null,
 	/**  The weakest basis behind the two sums. */
 	impact_basis: Basis | null,
+	/**  Claude Code deleted the main transcript; the stored totals remain. */
+	transcript_deleted: boolean,
 };
 
 /**  One session tree's part in the current 5-hour window. */
