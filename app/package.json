@@ -26,6 +26,7 @@
   },
   "dependencies": {
     "@fluent/bundle": "^0.19.1",
-    "@tauri-apps/api": "^2.12.4"
+    "@tauri-apps/api": "^2.12.4",
+    "uplot": "^1.6.32"
   }
 }

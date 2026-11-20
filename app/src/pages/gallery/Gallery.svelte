@@ -4,6 +4,7 @@
 -->
 <script lang="ts">
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import Chart from "../../lib/chart/Chart.svelte";
 import Button from "../../lib/components/Button.svelte";
 import Card from "../../lib/components/Card.svelte";
 import EmptyState from "../../lib/components/EmptyState.svelte";
@@ -22,6 +23,7 @@ import { inTauri } from "../../lib/ipc/runtime";
 import { applyTheme, settings } from "../../lib/settings.svelte";
 import Detail from "../panel/Detail.svelte";
 import { detailOf, session, snapshot } from "../panel/fixtures";
+import { emptyChart, twoLines, weeklyOnly } from "./charts";
 import { bars as initialBars, limit, nudge, ringCases, sessions, weekly } from "./fixtures";
 
 let rings = $state(ringCases);
@@ -107,6 +109,23 @@ function change() {
           <figcaption>{t(ring.key)}</figcaption>
         </figure>
       {/each}
+    </div>
+  </section>
+
+  <section>
+    <h2>{t("gallery-charts")}</h2>
+    <div class="stack">
+      <Card title={t("gallery-chart-two")}>
+        <Chart model={twoLines({ fiveHour: t("limit-five-hour"), weekly: t("limit-weekly") })} />
+      </Card>
+      <div class="columns">
+        <Card title={t("gallery-chart-weekly")}>
+          <Chart model={weeklyOnly(t("limit-weekly"))} height={160} />
+        </Card>
+        <Card title={t("gallery-chart-empty")}>
+          <Chart model={emptyChart()} height={160} />
+        </Card>
+      </div>
     </div>
   </section>
 

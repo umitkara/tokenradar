@@ -55,6 +55,7 @@ describe("design tokens on Mica and Acrylic", () => {
 
   it("signal colors reach 3:1 as data ink", () => {
     for (const s of ["ok", "warn", "crit", "other"]) check(`--signal-${s}`, 3, true);
+    check("--series-2", 3, true);
   });
 
   it("text on the accent fill reaches AA", () => {

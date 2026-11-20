@@ -2,14 +2,14 @@
 // from the backend's `LimitView`; this picks the message and fills in its arguments.
 
 import { t } from "../i18n/i18n.svelte";
-import type { LimitView } from "../ipc/bindings";
+import type { LimitRef, LimitView } from "../ipc/bindings";
 
 export function isEstimate(limit: LimitView): boolean {
   return limit.source === "estimate";
 }
 
 /** The limit's display name: "5-hour window", "Weekly limit", "Fable · weekly". */
-export function limitName(limit: LimitView): string {
+export function limitName(limit: LimitView | LimitRef): string {
   const { kind, scope } = limit;
   if (kind === "session") return t("limit-five-hour");
   if (kind === "weekly_scoped" && scope) {
