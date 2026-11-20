@@ -16,8 +16,6 @@ main-load-failed = Bu sayfa yüklenemedi. Pencereyi kapatıp yeniden açın.
 
 main-soon-windows = Limit pencerelerinin arşivi geliyor
 main-soon-windows-body = Kapanan her 5 saatlik ve haftalık pencere: ne kadar doldu, neyin tükettiği.
-main-soon-sessions = Oturum listesi geliyor
-main-soon-sessions-body = Her Claude Code oturumu, maliyeti ve limitlerinizdeki payıyla.
 main-soon-projects = Proje listesi geliyor
 main-soon-projects-body = Projeleriniz, oturumları, maliyetleri ve limitlerinizdeki paylarıyla.
 main-soon-patterns = Kullanım örüntüleri geliyor
@@ -125,3 +123,107 @@ overview-plan-no-fee = Bu planın ücreti bilinmiyor. Ayarlardan girebilirsiniz.
 overview-plan-elapsed = Ayın { TR_SUFFIX(PCT($pct), "poss") } geçti
 overview-plan-previous = Geçen ay ×{ NUM($x, 1) } (API ${ NUM($usd, 2) })
 overview-plan-edit = Plan ücretini düzenle
+
+## Oturumlar (Adım 16a)
+
+sessions-filters = Filtreler
+sessions-search = Oturumlarda ara
+sessions-search-placeholder = Ad, proje ya da oturum kimliği
+sessions-range = Zaman aralığı
+sessions-range-today = Bugün
+sessions-range-7d = 7 gün
+sessions-range-30d = 30 gün
+sessions-range-all = Tümü
+sessions-range-custom = Özel
+sessions-from = Başlangıç
+sessions-to = Bitiş
+sessions-project = Proje
+sessions-project-all = Tüm projeler
+sessions-model = Model
+sessions-model-all = Tüm modeller
+sessions-live = Yalnızca çalışanlar
+sessions-sort = Sıralama
+sessions-sort-last-active = Son etkinlik
+sessions-sort-started = Başlangıç
+sessions-sort-cost = Maliyet
+sessions-sort-tokens = Token
+sessions-sort-impact = Etki
+sessions-list = Oturumlar
+sessions-col-name = Oturum
+sessions-col-start = Başlangıç
+sessions-col-duration = Süre
+sessions-col-models = Modeller
+sessions-col-cost = Maliyet
+sessions-col-tokens = Token
+sessions-col-impact = Etki
+sessions-col-subagents = Alt ajanlar
+sessions-running = Çalışıyor
+sessions-ago = { DUR($ms) } önce
+sessions-just-now = Az önce
+sessions-usd = ${ NUM($usd, 2) }
+sessions-impact-weekly = Bu aralıkta haftalık limitteki pay. Kullanımdan bölüştürülür, bu yüzden tahmindir.
+sessions-impact-session = Bu aralıkta 5 saatlik pencerelerdeki payların toplamı.
+sessions-impact-dim = Düşük güven: kalibrasyon hâlâ öğreniyor.
+sessions-deleted = Transcript silindi
+sessions-deleted-tip = Claude Code bu oturumun transcript dosyasını sildi. Daha önce kaydedilen toplamlar duruyor.
+sessions-loading-more = Daha fazla oturum yükleniyor…
+sessions-empty = Bu aralıkta oturum yok
+sessions-empty-body = Claude Code kullanım yazar yazmaz oturumlar burada görünür.
+sessions-empty-filtered = Bu filtrelere uyan oturum yok
+sessions-empty-filtered-body = Daha uzun bir zaman aralığı seçin ya da aramayı temizleyin.
+sessions-clear = Filtreleri temizle
+
+## Oturum ayrıntısı (Adım 16a)
+
+session-back = Oturumlara dön
+session-breadcrumb = Konum
+session-not-found = Bu oturum artık veritabanında yok.
+# $level Claude Code'un /effort değeridir; bilinmeyen değerler olduğu gibi gösterilir.
+session-effort = Efor: { $level ->
+        [low] düşük
+        [medium] orta
+        [high] yüksek
+        [xhigh] çok yüksek
+       *[other] { $level }
+    }
+session-fast = Hızlı mod
+session-fast-tip = Bu oturumda en az bir istek hızlı modda çalıştı.
+session-chart = Zamana göre maliyet
+# $ms bir çubuğun kapsadığı süredir.
+session-chart-bucket = Bir çubuk { DUR($ms) }
+# $total biçimlendirilmiş maliyettir ("$4.20").
+session-chart-alt = Bu oturumun zamana göre maliyeti, model ailesine göre yığılmış. Toplam { $total }.
+session-chart-empty = Bu oturum için kaydedilmiş maliyet yok.
+session-chart-other = Diğer modeller
+session-chart-window = Limit penceresi
+session-impact = Limit payları
+session-impact-window = Pencere
+session-impact-share = Pay
+session-impact-peak = Tepe
+session-impact-hit = Limite takıldı mı
+session-impact-yes = Evet
+session-impact-no = Hayır
+session-impact-unknown = Bilinmiyor
+session-impact-estimated = Tahmini pencere, ölçüm yok.
+session-impact-empty = Bu oturum bilinen bir limit penceresine denk gelmedi.
+session-impact-note = Paylar kullanımdan bölüştürülür ve ≈ ile gösterilir; soluk değerlerin güveni düşüktür.
+session-subagents = Alt ajanlar
+session-subagents-empty = Alt ajan yok.
+session-subagent-untitled = Adsız alt ajan
+session-cache = Cache
+session-cache-hit = İsabet oranı
+session-cache-write-5m = 5 dk cache yazma
+session-cache-write-1h = 1 sa cache yazma
+session-cache-savings = Tasarruf
+session-cache-savings-value = ≈${ NUM($usd, 2) }
+session-cache-savings-tip = Cache'ten okunanlar düz girdi olarak API fiyatıyla ne tutardı, eksi gerçekte ne tuttu.
+session-meta = Ayrıntılar
+session-branch = Git dalı
+session-version = Claude Code sürümü
+session-entrypoint = Başlatıldığı yer
+session-dirs = Klasörler
+session-dirs-none = Kayıtlı klasör yok. Klasörler ve efor yalnızca bu sürüm ilk okuduğunda transcript'i hâlâ diskte olan oturumlar için bilinir.
+session-open-dir = Klasörü aç
+session-dir-missing = Bu klasör artık yok.
+session-dir-failed = Klasör açılamadı.
+session-tokens = Token

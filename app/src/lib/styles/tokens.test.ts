@@ -56,6 +56,8 @@ describe("design tokens on Mica and Acrylic", () => {
   it("signal colors reach 3:1 as data ink", () => {
     for (const s of ["ok", "warn", "crit", "other"]) check(`--signal-${s}`, 3, true);
     check("--series-2", 3, true);
+    // Model families: drawn only inside cards (the session cost chart).
+    for (const n of [3, 4, 5]) check(`--series-${n}`, 3, false);
   });
 
   it("text on the accent fill reaches AA", () => {

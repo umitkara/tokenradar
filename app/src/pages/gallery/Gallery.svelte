@@ -23,11 +23,14 @@ import type { Source, ThemePref } from "../../lib/ipc/bindings";
 import { inTauri } from "../../lib/ipc/runtime";
 import { applyTheme, settings } from "../../lib/settings.svelte";
 import OverviewBody from "../main/overview/OverviewBody.svelte";
+import SessionDetail from "../main/sessions/SessionDetail.svelte";
+import SessionList from "../main/sessions/SessionList.svelte";
 import Detail from "../panel/Detail.svelte";
 import { detailOf, session, snapshot } from "../panel/fixtures";
 import { emptyChart, sparks, twoLines, weeklyOnly } from "./charts";
 import { bars as initialBars, limit, nudge, ringCases, sessions, weekly } from "./fixtures";
 import { overviewDemo } from "./overview";
+import { sessionDetailDemo, sessionsDemo } from "./sessions";
 
 let rings = $state(ringCases);
 let bars = $state(initialBars);
@@ -35,6 +38,11 @@ let theme = $state<ThemePref>("system");
 let estimates = $state(true);
 
 const DAY = 24 * 3_600_000;
+/** Rows of the sessions list demo; `?rows=10000` for the frame-time measurement. */
+const sessionRows = Math.min(
+  20_000,
+  Math.max(1, Number(new URLSearchParams(location.search).get("rows")) || 40),
+);
 /** The panel's detail view (ADR-048): ahead of the time line, two costed sessions. */
 const detailSnapshot = snapshot({
   limits: [
@@ -143,6 +151,21 @@ function change() {
     <h2>{t("gallery-overview")}</h2>
     <div class="overview">
       <OverviewBody overview={overviewDemo()} />
+    </div>
+  </section>
+
+  <!-- `?rows=10000` fills the list for the frame-time measurement (docs/perf). -->
+  <section id="sessions">
+    <h2>{t("gallery-sessions")}</h2>
+    <div class="sessions">
+      <SessionList query="" preset={sessionsDemo(Date.now(), sessionRows)} />
+    </div>
+  </section>
+
+  <section id="session-detail">
+    <h2>{t("gallery-session-detail")}</h2>
+    <div class="overview">
+      <SessionDetail id={1000} preset={sessionDetailDemo(Date.now())} />
     </div>
   </section>
 
@@ -255,6 +278,11 @@ function change() {
   }
   .segmented :global(button[aria-pressed="true"]) {
     border-color: var(--text-2);
+  }
+  .sessions {
+    display: flex;
+    flex-direction: column;
+    height: 520px;
   }
   .overview {
     display: flex;

@@ -18,7 +18,8 @@ import { inTauri } from "../../lib/ipc/runtime";
 import NavIcon from "./NavIcon.svelte";
 import { hrefFor, navKey, parseHash, ROUTES, shortcutFor } from "./router";
 
-type Page = Component<{ param: string | null }>;
+/** `param`: `#sessions/42` → `"42"`; `query`: the text after `?` (a list's filters). */
+type Page = Component<{ param: string | null; query: string }>;
 
 const PAGES: Record<MainRoute, () => Promise<{ default: Page }>> = {
   overview: () => import("./routes/Overview.svelte"),
@@ -83,7 +84,8 @@ function go(route: MainRoute) {
 
 function onhashchange() {
   const next = parseHash(location.hash);
-  if (next.route !== where.route) content.scrollTop = 0;
+  // A new page or item starts at the top; a filter change (only `query`) keeps the place.
+  if (next.route !== where.route || next.param !== where.param) content.scrollTop = 0;
   where = next;
 }
 
@@ -137,7 +139,7 @@ onMount(() => {
     {:else if page}
       {@const Page = page.component}
       {#key page.route}
-        <Page param={where.param} />
+        <Page param={where.param} query={where.query} />
       {/key}
     {:else}
       <span class="visually-hidden">{t("main-loading")}</span>

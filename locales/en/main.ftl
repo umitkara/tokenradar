@@ -16,8 +16,6 @@ main-load-failed = This page could not be loaded. Close the window and open it a
 
 main-soon-windows = The limit window archive is coming
 main-soon-windows-body = Each closed 5-hour and weekly window, how full it got and what used it.
-main-soon-sessions = The session list is coming
-main-soon-sessions-body = Every Claude Code session with its cost and its share of your limits.
 main-soon-projects = The project list is coming
 main-soon-projects-body = Your projects with their sessions, cost and share of your limits.
 main-soon-patterns = Usage patterns are coming
@@ -125,3 +123,107 @@ overview-plan-no-fee = This plan's fee is not known. You can enter it in the set
 overview-plan-elapsed = { PCT($pct) } of the month gone
 overview-plan-previous = Last month ×{ NUM($x, 1) } (API ${ NUM($usd, 2) })
 overview-plan-edit = Edit plan fee
+
+## Sessions (Step 16a)
+
+sessions-filters = Filters
+sessions-search = Search sessions
+sessions-search-placeholder = Name, project or session ID
+sessions-range = Time range
+sessions-range-today = Today
+sessions-range-7d = 7 days
+sessions-range-30d = 30 days
+sessions-range-all = All
+sessions-range-custom = Custom
+sessions-from = From
+sessions-to = To
+sessions-project = Project
+sessions-project-all = All projects
+sessions-model = Model
+sessions-model-all = All models
+sessions-live = Running only
+sessions-sort = Sort by
+sessions-sort-last-active = Last active
+sessions-sort-started = Started
+sessions-sort-cost = Cost
+sessions-sort-tokens = Tokens
+sessions-sort-impact = Impact
+sessions-list = Sessions
+sessions-col-name = Session
+sessions-col-start = Started
+sessions-col-duration = Duration
+sessions-col-models = Models
+sessions-col-cost = Cost
+sessions-col-tokens = Tokens
+sessions-col-impact = Impact
+sessions-col-subagents = Subagents
+sessions-running = Running
+sessions-ago = { DUR($ms) } ago
+sessions-just-now = Just now
+sessions-usd = ${ NUM($usd, 2) }
+sessions-impact-weekly = Share of the weekly limit in this range. Split from usage, so it is an estimate.
+sessions-impact-session = Share of 5-hour windows in this range, summed.
+sessions-impact-dim = Low confidence: calibration is still learning.
+sessions-deleted = Transcript deleted
+sessions-deleted-tip = Claude Code deleted this session's transcript. The totals recorded before remain.
+sessions-loading-more = Loading more sessions…
+sessions-empty = No sessions in this range
+sessions-empty-body = Sessions show up here as soon as Claude Code writes usage.
+sessions-empty-filtered = No session matches these filters
+sessions-empty-filtered-body = Try a longer time range or clear the search.
+sessions-clear = Clear filters
+
+## Session detail (Step 16a)
+
+session-back = Back to sessions
+session-breadcrumb = Breadcrumb
+session-not-found = This session is not in the database any more.
+# $level is Claude Code's /effort value; unknown values are shown as they are.
+session-effort = Effort: { $level ->
+        [low] low
+        [medium] medium
+        [high] high
+        [xhigh] extra high
+       *[other] { $level }
+    }
+session-fast = Fast mode
+session-fast-tip = At least one request in this session ran in fast mode.
+session-chart = Cost over time
+# $ms is how long one bar is.
+session-chart-bucket = One bar is { DUR($ms) }
+# $total is the formatted cost ("$4.20").
+session-chart-alt = Cost of this session over time, stacked by model family. Total { $total }.
+session-chart-empty = No cost recorded for this session.
+session-chart-other = Other models
+session-chart-window = Limit window
+session-impact = Share of limits
+session-impact-window = Window
+session-impact-share = Share
+session-impact-peak = Peak
+session-impact-hit = Hit the limit
+session-impact-yes = Yes
+session-impact-no = No
+session-impact-unknown = Unknown
+session-impact-estimated = Estimated window, no readings.
+session-impact-empty = This session touched no known limit window.
+session-impact-note = Shares are split from usage and marked ≈; dim values have low confidence.
+session-subagents = Subagents
+session-subagents-empty = No subagents.
+session-subagent-untitled = Untitled subagent
+session-cache = Cache
+session-cache-hit = Hit ratio
+session-cache-write-5m = 5 min cache write
+session-cache-write-1h = 1 h cache write
+session-cache-savings = Saved
+session-cache-savings-value = ≈${ NUM($usd, 2) }
+session-cache-savings-tip = What the cache reads would have cost as plain input, at API prices, minus what they cost.
+session-meta = Details
+session-branch = Git branch
+session-version = Claude Code version
+session-entrypoint = Started from
+session-dirs = Folders
+session-dirs-none = No folder recorded. Folders and effort are only known for sessions whose transcript was still on disk when this version first read it.
+session-open-dir = Open folder
+session-dir-missing = This folder no longer exists.
+session-dir-failed = The folder could not be opened.
+session-tokens = Tokens

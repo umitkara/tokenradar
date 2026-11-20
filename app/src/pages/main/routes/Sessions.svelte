@@ -1,9 +1,22 @@
-<!-- The sessions page: an empty state until it is built. -->
+<!--
+  The sessions page (Step 16a): the list at `#sessions?filters`, one session at `#sessions/<id>`.
+-->
 <script lang="ts">
-import Soon from "./Soon.svelte";
+import SessionDetail from "../sessions/SessionDetail.svelte";
+import SessionList from "../sessions/SessionList.svelte";
 
-/** `#route/param`: unused until the page has detail views. */
-let _props: { param: string | null } = $props();
+let { param, query }: { param: string | null; query: string } = $props();
+
+const id = $derived.by(() => {
+  const n = Number(param);
+  return param != null && Number.isSafeInteger(n) && n > 0 ? n : null;
+});
 </script>
 
-<Soon route="sessions" />
+{#if id != null}
+  {#key id}
+    <SessionDetail {id} />
+  {/key}
+{:else}
+  <SessionList {query} />
+{/if}

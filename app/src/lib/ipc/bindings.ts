@@ -1732,6 +1732,11 @@ export type TimeSeries = {
 export type TimelineBucket = {
 	at: Timestamp,
 	model: string,
+	/**
+	 *  The model's family: the chart colors stacks by family, so a color names the same
+	 *  models on every session.
+	 */
+	family: ModelFamily,
 	cost: MicroUsd,
 };
 

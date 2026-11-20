@@ -34,6 +34,13 @@
   /* The second chart series (the weekly limit beside the 5-hour window's --signal-ok, Step 15).
      Checked with the dataviz validator against --signal-ok: CVD and normal-vision ΔE >= 14. */
   --series-2: light-dark(oklch(0.53 0.18 275), oklch(0.66 0.13 260));
+  /* Model families in the session cost chart (Step 16a, ADR-068), with --series-2 for Opus:
+     Fable, Sonnet, Haiku. All four passed the dataviz validator, all pairs, both modes (light on
+     the Mica card #eeeff1, dark on the lightest card #282d33): CVD ΔE >= 8, normal vision >= 18,
+     contrast >= 3. */
+  --series-3: light-dark(oklch(0.6 0.12 170), oklch(0.66 0.13 170));
+  --series-4: light-dark(oklch(0.45 0.17 340), oklch(0.61 0.2 340));
+  --series-5: light-dark(oklch(0.58 0.16 45), oklch(0.67 0.15 60));
   /* Text on an accent (phosphor) fill: primary buttons, the toggle thumb. */
   --accent: var(--signal-ok);
   --on-accent: light-dark(oklch(1 0 0), oklch(0.2 0.01 250));

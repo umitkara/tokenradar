@@ -97,6 +97,9 @@ pub struct ImpactRow {
 pub struct TimelineBucket {
     pub at: Timestamp,
     pub model: String,
+    /// The model's family: the chart colors stacks by family, so a color names the same
+    /// models on every session.
+    pub family: ModelFamily,
     pub cost: MicroUsd,
 }
 
@@ -647,15 +650,17 @@ fn transcript_deleted(c: &Connection, root: SessionId) -> Result<bool> {
 
 /// Buckets per model, merged into wider buckets so at most 1,500 bucket times remain.
 fn timeline(c: &Connection, root: SessionId) -> Result<(Vec<TimelineBucket>, i64)> {
-    let rows: Vec<(i64, String, i64)> = c
+    let rows: Vec<(i64, String, String, i64)> = c
         .prepare_cached(
-            "SELECT u.bucket_ts, m.name, SUM(u.cost_micro_usd) FROM usage_5m u
+            "SELECT u.bucket_ts, m.name, m.family, SUM(u.cost_micro_usd) FROM usage_5m u
              JOIN models m ON m.id = u.model_id
              WHERE u.account_id = (SELECT account_id FROM sessions WHERE id = ?1)
            AND u.session_id IN (SELECT id FROM sessions WHERE id = ?1 OR root_id = ?1)
              GROUP BY +u.bucket_ts, 2 ORDER BY 1",
         )?
-        .query_map([root.0], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
+        .query_map([root.0], |r| {
+            Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))
+        })?
         .collect::<rusqlite::Result<_>>()?;
     let (Some(first), Some(last)) = (rows.first().map(|r| r.0), rows.last().map(|r| r.0)) else {
         return Ok((Vec::new(), BUCKET_MS));
@@ -665,17 +670,18 @@ fn timeline(c: &Connection, root: SessionId) -> Result<(Vec<TimelineBucket>, i64
     // Whole 5-minute buckets, wide enough that at most `max` remain.
     let buckets = (span + BUCKET_MS - 1) / BUCKET_MS;
     let width = ((buckets + max - 1) / max).max(1) * BUCKET_MS;
-    let mut merged: BTreeMap<(i64, String), i64> = BTreeMap::new();
-    for (at, model, cost) in rows {
+    let mut merged: BTreeMap<(i64, String), (String, i64)> = BTreeMap::new();
+    for (at, model, family, cost) in rows {
         let b = first + (at - first) / width * width;
-        *merged.entry((b, model)).or_default() += cost;
+        merged.entry((b, model)).or_insert((family, 0)).1 += cost;
     }
     Ok((
         merged
             .into_iter()
-            .map(|((at, model), cost)| TimelineBucket {
+            .map(|((at, model), (family, cost))| TimelineBucket {
                 at: Timestamp::from_millis(at),
                 model,
+                family: family.parse().unwrap_or(ModelFamily::Unknown),
                 cost: MicroUsd(cost),
             })
             .collect(),
