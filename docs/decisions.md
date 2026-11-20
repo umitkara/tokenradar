@@ -1517,3 +1517,48 @@
   - Tek çizgi kalınca camgöbeği: renk sıraya bağlanmış olur, 5 saatlik pencere geri geldiğinde haftalık çizgi renk değiştirir.
   - CLI'dan pipe ile `open` işlemi: protokol sürümü değişirdi ve uygulama kapalıyken yine başlatma gerekirdi.
   - `tauri-plugin-window-state`: geometriyi kendi dosyasına yazar, ekran dışı konum kontrolü sınırlıdır.
+
+### ADR-067 — Genel Bakış: yukarıdan aşağı yerleşim, haftanın aynı anıyla karşılaştırma, ay ilerlemesiyle plan değeri
+
+**Durum:** Önerildi (2026-11-20, Adım 15b). "(kullanıcı kararı)" işaretli maddeler 2026-11-20'de kullanıcıyla kararlaştırıldı. Diğerleri bu adımın önerisidir ve kullanıcı onayı bekler.
+
+- **Bağlam:**
+  - Genel Bakış dört soruyu yanıtlar: şu an neredeyim, bu hafta nasıl gidiyor, limiti ne tüketiyor, ne kadar değer alıyorum. Altı bölüm tek sayfaya sığmalı.
+  - Haftanın maliyeti süren bir pencereden gelir. Bunu geçen haftanın tamamıyla karşılaştırmak, hafta başında her zaman büyük bir düşüş gösterir.
+  - Bu ayın maliyeti de ay sürerken birikir. Tam aylık ücrete oranlamak, ay başında oranı yanıltıcı biçimde düşük gösterir (yan ajan notu, kullanıcı iletti).
+  - Kalibrasyonun ne zaman "iyi" olacağı tahmin edilemez: gözlem sayısına değil, okumaların ve kullanımın çeşitliliğine bağlıdır.
+- **Karar:**
+  - **Yerleşim yukarıdan aşağıdır (kullanıcı kararı).**
+    - Sıra: Şimdi → Son 7 gün (grafik + oturum şeridi) → Bu hafta (maliyet ▲▼ | token türleri, model karışımı) → En çok tüketenler (Oturumlar | Projeler) → alt sırada Diğer | Plan değeri.
+    - Taslak: design-language §5.
+  - **Hafta, geçen haftanın aynı anıyla karşılaştırılır (kullanıcı kararı).**
+    - Çekirdek yeni alanlar verir: `previous_cost_to_date` (geçen haftanın başından, bu haftada geçen süre kadarı) ve `change` (`cost / previous_cost_to_date − 1`). Geçen hafta 0 ise `change` boştur.
+    - Geçen haftanın tamamı (`previous_cost`) bilgi olarak altında gösterilir.
+    - Değişim yarım yüzdenin altındaysa "aynı" sayılır.
+  - **Kalibrasyon boş durumunda gün yoktur, durum vardır (kullanıcı kararı).** Metin güven düzeyini ve öğrenilen aralık sayısını söyler ("Şu an düşük güven, 14 aralık"). "≈ X gün sonra" yazılmaz.
+  - **Plan ücreti ayarı Kaynaklar sekmesinde, hesabın altındadır (kullanıcı kararı).**
+    - Boş bırakılırsa gömülü plan tablosunun liste fiyatı kullanılır. Değer birincil hesabın `plan_fee_usd` alanına yazılır (config.toml, `save_plan_fee`).
+    - Genel Bakış'taki "Plan ücretini değiştir" bağlantısı ayarları `plan` bölümünde açar (`SettingsSection::Plan`).
+  - **Plan değeri, geçen ayın tam oranını ve ayın ilerlemesini gösterir (kullanıcı kararı).**
+    - Çekirdek yeni alanlar verir: `month_elapsed` (0–1), `previous_month_cost` ve `previous_ratio`. Geçen ay maliyeti 0 ise ikisi de boştur.
+    - Kart "Ayın %24'ü geçti · Geçen ay ×3,2 (API $640,00)" der. Bu ayın oranı tam ücrete göre kalır; ücret ay günlerine bölünmez.
+  - **Token türleri satır olarak gösterilir, yığılmış çubuk olarak değil.** Önbellek okuması diğer türleri bastırır; yığılmış çubukta girdi ve çıktı görünmez olur. Her satır en büyük türe göre boyutlanır ve tek renk taşır (dataviz: büyüklük tek renk). Model karışımı aynı bileşenle, ilk 5 model ve "diğer modeller" satırıyla gösterilir.
+  - **Oturum şeridi grafiğin içindedir.** Haftalık limitte payı en büyük 5 oturum, grafiğin altında aynı zaman ekseninde 4 px'lik çubuklar olarak çizilir. Çubuklar odaklanabilir düğmelerdir ve ortak ipucunda oturum adını, zaman aralığını ve `≈` payı gösterir. Konum uPlot'un çizim alanından (`bbox`) okunur.
+  - **Canlı yenileme kısılır.** Sayfa `usage_appended`, `limits_updated`, `calibration_updated` ve `calibration_suspect` olaylarında en fazla 10 saniyede bir yeniden yüklenir. Pencere yeniden görünür olunca hemen yüklenir.
+  - **Paylar her zaman `≈` taşır.** Kalibrasyon iyi değilse ve `basis.dim` ise soluk gösterilir; altındaki not payların nasıl bölündüğünü söyler. Eski kalibrasyonla hesaplanmış satırlar varsa ayrı bir not çıkar.
+  - **"Diğer" kartı iki kaynağı yan yana koyar.** Kendi tahminimiz (yalnızca kullanılabilir kalibrasyonla, ADR-064) ve Anthropic'in `seven_day_breakdown`'ı. Aralarında 10 puandan fazla fark varsa not gösterilir.
+  - **Sayfa pencere genişliğini doldurur (kullanıcı geri bildirimi, 2026-11-20):** İlk sürümdeki `max-width: 1200px` tam ekranda sağda boşluk bırakıyordu ve kaldırıldı. Izgaralar dar pencerede taşmaz (`minmax(min(…, 100%), 1fr)`).
+  - **Ölçüm işareti:** Genel Bakış verisi ilk kez boyandığında `overview:data` ölçümü (gezinmenin başından) kaydedilir. `main_ready` iskelet boyandığında gelir; bütçe, verinin boyandığı anla ölçülür.
+- **Sonuç** (`docs/perf/2026-11-20-main-window.md`): ikinci süreç dahil soğuk açılış medyan 434 ms (≤ 600 ms), veri boyanması 161 ms; rota geçişi medyan 9,5 ms; bellek en fazla 129,2 MB (≤ 180 MB); `main.html` JS 77,9 KB (≤ 180 KB).
+- **Bedel:**
+  - Haftanın aynı anıyla karşılaştırma, kullanımı haftanın başına yığan biri için hafta ortasında büyük artış, sonunda düşüş gösterebilir. Tam hafta bu yüzden altta bilgi olarak durur.
+  - Ay ilerlemesi yerel saate göre hesaplanır. Ücret takvim ayına göre değil fatura dönemine göre işliyorsa ilerleme birkaç gün kayabilir.
+  - Oturum şeridi en fazla 5 oturum gösterir. Kısa oturumlar 6 px'lik en küçük genişlikle çizilir, bu yüzden süreleri gerçeğinden uzun görünür.
+  - Geniş pencerede büyüklük çubukları çok uzar; etiketle değer arası açılır.
+- **Alternatifler:**
+  - Sekmeli ya da iki sütunlu yerleşim: sayfanın "yukarıdan aşağı" okunan sırası bozulur (kullanıcı reddetti).
+  - Geçen haftanın tamamıyla karşılaştırma: hafta başında her zaman düşüş gösterir.
+  - Günlere bölünmüş ücret: oran ay boyunca dalgalanır, kullanıcının bildiği "aylık ücret" görünmez olur.
+  - "≈ X gün sonra kalibre olur": dürüst hesaplanamaz.
+  - Token türleri için halka grafik: büyüklük karşılaştırmasında açılar zor okunur (dataviz).
+  - Her olayda yeniden yükleme: indeksleme sırasında saniyede birkaç sorgu.

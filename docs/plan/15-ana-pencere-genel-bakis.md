@@ -2,7 +2,7 @@
 
 | Sürüm | Bağımlılık | Tahmini süre | Durum |
 |---|---|---|---|
-| v0.2 | 14 | 1-2 oturum | ⬜ |
+| v0.2 | 14 | 1-2 oturum | ✅ |
 
 ## Amaç
 
@@ -42,18 +42,18 @@ Analitik deneyiminin kapısı olan ana pencereyi yapmak. Bu adım iki parçadan 
 
 ## Görevler
 
-- [ ] Tasarım: Genel Bakış yerleşimi `frontend-design` veya `impeccable` skill'i ile tasarlanır; ardından `design-language.md` §5'e bir yerleşim taslağı eklenir. **Kontrol listesi:** Bilgi hiyerarşisi şu soruları sırayla yanıtlamalı: (1) Şu an neredeyim? (2) Bu hafta nasıl gidiyor? (3) Ne tüketiyor? (4) Ne kadar değer alıyorum?
-- [ ] **Kabuk:**
+- [x] Tasarım: Genel Bakış yerleşimi `frontend-design` veya `impeccable` skill'i ile tasarlanır; ardından `design-language.md` §5'e bir yerleşim taslağı eklenir. **Kontrol listesi:** Bilgi hiyerarşisi şu soruları sırayla yanıtlamalı: (1) Şu an neredeyim? (2) Bu hafta nasıl gidiyor? (3) Ne tüketiyor? (4) Ne kadar değer alıyorum?
+- [x] **Kabuk:**
   - Navigasyon etiketleri i18n'den gelir.
   - Klavye kısayolları: `Ctrl+1..5` ile rotalar arasında geçiş, `Ctrl+,` ile ayarlar.
   - Pencere başlığı rotayla güncellenir.
   - Odak yönetimi: rota değişince ana başlığa odaklanılır (ekran okuyucu için).
-- [ ] **uPlot sarmalayıcı:**
+- [x] **uPlot sarmalayıcı:**
   - Tema değişikliğinde yeniden renklendirir.
   - `ResizeObserver` ile boyutlanır.
   - Yalnızca görünürken çizer.
   - Seri renkleri: 5s için `--signal-ok`, haftalık için ikincil ton; eşik çizgileri (75/90) soluk kesikli; pencere sınırları dikey bantlar olarak çizilir.
-- [ ] **Genel Bakış bölümleri:**
+- [x] **Genel Bakış bölümleri:**
   1. **Şimdi:** Büyük ikili halka + limit satırları (paneldeki bileşenlerin büyük varyantı) + projeksiyon. Kaynak ve kalibrasyon güveni rozetleri.
   2. **7 gün:** 5s ve haftalık % serisi. Oturum işaretleri (başlangıç ve bitiş noktaları; hover ile oturum adı ve payı). Limite takılan pencereler kırmızı bantla gösterilir. Tahmini bölümler kesikli çizilir.
   3. **Bu hafta:**
@@ -64,16 +64,16 @@ Analitik deneyiminin kapısı olan ana pencereyi yapmak. Bu adım iki parçadan 
   4. **En çok tüketenler:** Haftalık limite etkisi en yüksek 5 oturum ve 5 proje: `≈ %` değeri, maliyet, mini sparkline. Tıklanınca ilgili detay sayfası açılır (Adım 16'da etkinleşir).
   5. **Diğer:** claude.ai, Desktop ve Cowork payı. Kendi tahminimiz ve `seven_day_breakdown` yan yana gösterilir; şüpheli fark varsa bilgi notu eklenir.
   6. **Plan değeri:** "Bu ay API karşılığı $X · Plan ücreti $Y · ×Z". Ayarlarda plan ücreti düzenlenebilir. "Bu sayılar bilgi amaçlıdır" notu bulunur.
-- [ ] **Boş durumlar:**
+- [x] **Boş durumlar:**
   - Kalibrasyon verisi yetersiz: "Atıflar ≈ X gün sonra kesinleşecek" + mevcut veri.
   - Yalnızca tahmini veri var.
   - Hiç snapshot yok.
-- [ ] **Performans:**
+- [x] **Performans:**
   - Ana pencere soğuk açılış ≤ 600 ms, bellek ≤ 180 MB.
   - Bundle ≤ 180 KB JS (gzip; uPlot dahil).
   - Rota geçişi ≤ 100 ms.
   - Ölç ve raporla.
-- [ ] **Testler:** Router (Vitest), grafik veri dönüşümleri, biçimlendirme. Galeri sayfasına grafik bileşenleri eklenir.
+- [x] **Testler:** Router (Vitest), grafik veri dönüşümleri, biçimlendirme. Galeri sayfasına grafik bileşenleri eklenir.
 
 ## Teknik notlar ve tuzaklar
 
@@ -84,10 +84,10 @@ Analitik deneyiminin kapısı olan ana pencereyi yapmak. Bu adım iki parçadan 
 
 ## Kabul kriterleri
 
-- [ ] Genel Bakış, gerçek veriyle 4 soruyu da tek ekranda yanıtlar (devir notunda ekran görüntüsü).
-- [ ] Tüm sayılar kaynak ve tahmin durumunu doğru gösterir; "≈" işareti ve kesikli çizgi tutarlı kullanılır.
-- [ ] Performans ve bundle bütçeleri sağlanır.
-- [ ] EN ve TR biçimlendirmeleri doğrudur (eksen etiketleri, tarih ve saat, para birimi).
+- [x] Genel Bakış, gerçek veriyle 4 soruyu da tek ekranda yanıtlar (devir notunda ekran görüntüsü).
+- [x] Tüm sayılar kaynak ve tahmin durumunu doğru gösterir; "≈" işareti ve kesikli çizgi tutarlı kullanılır.
+- [x] Performans ve bundle bütçeleri sağlanır.
+- [x] EN ve TR biçimlendirmeleri doğrudur (eksen etiketleri, tarih ve saat, para birimi).
 
 ## Doğrulama
 
@@ -154,3 +154,60 @@ pnpm dev
 - Gerçek veride 7 günlük aralığın başında pencere bandı soldan kesik başlıyor; `windows`'un aralık dışına taşanları kırpılıyor, bu doğru.
 - Eşik çizgisi 75 açık temada gri-zeytin görünüyor (`--signal-warn` %60 karışım); 15b ekran incelemesinde değerlendirilmeli.
 - İpucu, imleç yakınındaki çizginin üstünü örtebiliyor.
+
+### 15b (2026-11-20, ADR-067)
+
+**Yapılanlar:**
+- **Çekirdek (`queries::overview`):**
+  - `Overview.absent` (panel gibi "5 saatlik pencere yok" bilgisi).
+  - Haftanın aynı anıyla karşılaştırma: `previous_cost_to_date` ve `change`. `previous_cost` geçen haftanın tamamı olarak kaldı.
+  - Plan değeri: `month_elapsed`, `previous_month_cost`, `previous_ratio` (`MonthSpan`, yerel saatle).
+  - `config::save_plan_fee` (birincil hesabın `plan_fee_usd`'i, boş ya da geçersiz değer anahtarı siler).
+- **Uygulama:** `set_plan_fee` komutu, `DataSourcesView.plan_fee` (tablo planı ve ücreti, kullanıcının ücreti), `SettingsSection::Plan`.
+- **Genel Bakış (`pages/main/overview/`):**
+  - Bölümler yukarıdan aşağı: Şimdi · Son 7 gün · Bu hafta · En çok tüketenler · Diğer | Plan değeri. Ortak düzen `OverviewBody`; sayfa ve galeri aynı bileşeni kullanır.
+  - Görünüm yardımcıları `overview/view.ts`: token satırları, model satırları, oturum şeridi, değişim yönü, kısa sayı, veri durumu.
+  - Canlı yenileme: dört çekirdek olayında en fazla 10 sn'de bir, pencere görünür olunca hemen.
+  - Boş durumlar: limit okuması yok (statusline ve API düğmeleri), yalnızca tahmin, kalibrasyon öğreniliyor (düzey + aralık sayısı), haftalık pencere bilinmiyor, bu hafta kullanım yok, plan ücreti bilinmiyor.
+- **Bileşenler:** `Sparkline`, `BarList`, grafikte oturum şeridi (`ChartSpan`, `spanBox`, `bbox`'tan hizalama).
+- **Ayarlar:** Kaynaklar sekmesinde `#plan` kartı (`PlanFeeCard`, `parseFee`); boş = liste fiyatı.
+- **Galeri:** oturum şeritli grafik, kıvılcım çizgileri, sentetik Genel Bakış (`gallery/overview.ts`).
+- **Belgeler:** design-language (§4 oturum şeridi, büyüklük listesi, kıvılcım çizgisi; §5 Genel Bakış taslağı; §8 terimler), architecture (`Queries` satırı), ADR-067, `docs/perf/2026-11-20-main-window.md`.
+
+**Ekran görüntüleri (sentetik veri, galeri):**
+
+| Açık · TR | Koyu · TR |
+|---|---|
+| ![Genel Bakış, açık tema, Türkçe](img/15b-overview-light-tr.png) | ![Genel Bakış, koyu tema, Türkçe](img/15b-overview-dark-tr.png) |
+
+| Açık · EN | Dar pencere · TR |
+|---|---|
+| ![Overview, light theme, English](img/15b-overview-light-en.png) | ![Genel Bakış, dar pencere](img/15b-overview-narrow-tr.png) |
+
+**Doğrulama:**
+- `cargo fmt` ve `cargo clippy --workspace --all-targets -D warnings` temiz. `cargo test --workspace`: core 582, app 104, CLI 29 ve diğerleri geçti (sorgu testlerinde haftanın aynı anı ve plan değeri, config'te plan ücreti testleri yeni).
+- `pnpm -C app test` 176/176; `check` ve `lint` temiz; `build` başarılı.
+- `check-bundle-size`: `main.html` JS 77,9 / 180 KB (gzip), panel 46,5 / 60 KB.
+- Release ölçümü (`docs/perf/2026-11-20-main-window.md`): ikinci süreç dahil soğuk açılış medyan 434 ms (≤ 600), `main_ready` 72,6 ms, veri boyanması 161 ms; rota geçişi medyan 9,5 ms, Genel Bakış'a veriyle 42,7 ms (≤ 100); bellek en fazla 129,2 MB (≤ 180), TTL sonrası 13,3 MB.
+- Gerçek veriyle deneme: gerçek veritabanının kopyası portable modda, release build ile. Dört soru, değerler ve kaynaklar kontrol edildi. Kopya ve gerçek veriden alınan görüntüler sonra silindi.
+- Taşma: release pencerede 900×600, orta boy ve tam ekranda `main` yatay taşmıyor; galeride 640–2400 px arasında taşma yok.
+
+**Ekran incelemesinde bulunanlar ve düzeltilenler:**
+- Kullanıcı gördü: tam ekranda sağda boşluk ve dar pencerede yatay kaydırma çubuğu. Nedenler: istenmemiş `max-width: 1200px` (sayfa) ve `520px` (limit satırları), sabit en küçük ızgara genişlikleri, "Şimdi" kartının köşesindeki kaynak rozetinin ipucunun kenardan taşması. Sınırlar kaldırıldı, ızgaralar `minmax(min(…, 100%), 1fr)` oldu, rozet `tip-end` ile sarıldı.
+- Dar listede oturum adı ve proje adı birlikte sığmıyordu; liste 420 px'ten darsa proje adı gizlenir, ipucunda görünür.
+- Release ölçümünün ilk açılışında sayfa aşağı kaydırılmış göründü; sonraki açılışlarda tekrarlanmadı, nedeni bulunamadı.
+
+**Sapmalar:**
+- Token kırılımı yığılmış çubuk değil satırlar (önbellek okuması diğerlerini bastırıyor). Oturum işaretleri nokta değil grafiğin altında bir şerit. "≈ X gün sonra kesinleşecek" yerine güven düzeyi ve aralık sayısı (kullanıcı kararı). Hepsi ADR-067'de.
+- Devir notundaki ekran görüntüleri gerçek veriyle değil sentetik veriyle (galeri). Gerçek veride proje adları, oturum başlıkları ve maliyetler görünüyordu; repo açık kaynak olacak (yan ajan notu).
+- Genel Bakış 1180×760'ta ve tam ekranda tek ekrana sığmıyor; alt bölümler için kaydırmak gerekiyor.
+- `measure-memory.ps1 -Scenario main-window` betikte yok (15a'da da not edildi); `-RootPid` ve elle sürülen senaryo kullanıldı.
+- Geniş pencerede token ve model çubukları çok uzuyor; sınır kullanıcının isteğiyle kaldırıldı.
+
+**Açık konular (kullanıcı onayı bekleyen öneriler, ADR-067):**
+- Token satırları, oturum şeridinin biçimi, 10 sn kısma, `overview:data` ölçümü.
+- 15a'dan devreden: 75 eşik çizgisi açık temada zeytin-turuncu görünüyor (değiştirilmedi); ipucunun imleç yakınındaki çizgiyi örtmesi denenmedi.
+
+**Adım 16'ya notlar:**
+- En çok tüketenler satırları tıklanabilir değil; detay sayfaları gelince `#sessions/<id>` ve `#projects/<id>` bağlantısı eklenmeli (satır şimdiden `session_id` ve `project.id` taşıyor).
+- `OverviewBody` deseni (sayfa + galeri aynı bileşen) liste sayfaları için de sentetik ekran görüntüsünü kolaylaştırır.

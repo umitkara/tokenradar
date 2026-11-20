@@ -118,6 +118,23 @@ Başlığın altında iki eşit düğmeli bir segment kontrolü: `Özet | Ayrın
 - İki ve daha fazla çizgide grafiğin altında açıklama (legend) bulunur; tek çizgide kartın başlığı adı verir.
 - Grafik yalnızca ekrandayken kurulur. Tema ya da dil değişince yeniden kurulur; genişlik değişince yalnızca boyutlanır. Animasyon yoktur.
 
+### Oturum şeridi (zaman grafiği, Adım 15b)
+
+- Grafiğin altında, aynı zaman ekseninde 10 px'lik bir şerit. Haftalık limitte payı en büyük 5 oturum (5 saatlik pencere yalnızca haftalık yoksa) 4 px'lik `--text-2` çubuklarla çizilir; payı bilinmeyen oturum daha soluktur.
+- Konum ve genişlik uPlot'un çizim alanından (`bbox`) okunur; çok kısa oturum en az 6 px'tir.
+- Her çubuk bir düğmedir: imleç ya da klavye odağı ortak ipucunu açar (oturum adı, zaman aralığı, `≈` pay). Renk taşımaz; kimliği ad verir.
+
+### Büyüklük listesi (Genel Bakış)
+
+- Etiket, en büyük satıra göre boyutlanan 6 px'lik çubuk, sağda değer. Tüm satırlar tek renk (`--signal-ok`): iş büyüklük, kimlik değil.
+- Çubuğun veri ucu 3 px yuvarlak, taban düz; iz (track) yoktur. Değer `--text-2`, tabular rakam. İpucu tam değeri ve payı verir.
+- Token türleri bu listeyle gösterilir, yığılmış çubukla değil: cache okuma diğer türleri bastırır (ADR-067). Model karışımı ilk 5 model + "Diğer modeller".
+
+### Kıvılcım çizgisi (sparkline)
+
+- 64×20 px, 1,5 px `--text-3` çizgi; son nokta 2 px yarıçaplı `--accent` daire. Eksen, ızgara ve etiket yoktur; satırın ipucu ne gösterdiğini söyler ("Bu haftanın günlerine göre maliyet").
+- Düz seri tabana yatar. Yüksek kontrastta çizgi `CanvasText` olur.
+
 ### Segment kontrolü (ayarlar)
 
 `Segmented` bileşeni iki ila dört kısa seçenek içindir; açılır liste bunlar için kullanılmaz. `radiogroup` olarak çalışır: oklar seçimi değiştirir, `Tab` gruptan çıkar. Seçili düğme `--surface-2` zeminli ve kalındır, altında 2 px `--accent` çizgi vardır. Kullanıldığı yerler: statusline teması, renk modu, örnek durum, terminal genişliği, öğe biçimi, sıfırlanma biçimi, çubuk genişliği ve çubuk stili. Bir seçenek isteğe bağlı bir glif örneği taşıyabilir; örnek `--font-term` ile, metinden önce ve `aria-hidden` olarak çizilir (Adım 12m: çubuk stilleri `██░░░`, `▬▬▭▭▭`, `⣿⣿⣀⣀⣀`).
@@ -188,6 +205,37 @@ Native çizilir (`tiny-skia` + layered window, ADR-058). Üst çubuk haftalık, 
 - **Köşe yarıçapı (hiyerarşiye göre):** pencerelerde ve kartlarda 8 px (Windows 11 standardı), düğme/tooltip/iskelet gibi kontrollerde 4 px, rozet ve toggle'da 999 px.
 - **Panel:** 360 px genişlik, yükseklik içeriğe göre ve en fazla 600 px. Tray'e hizalanır (görev çubuğu konumu ve çoklu monitör DPI'ı hesaba katılır).
 - **Ana pencere (v0.2):** Sol tarafta dar bir navigasyon (ikon + etiket) ve içerik alanı bulunur. Minimum boyut 900×600'dür.
+- **Genel Bakış (Adım 15b, ADR-067):** yukarıdan aşağı okunur ve pencere genişliğini doldurur (sınır yok). Kartlar arası `--space-4`; ızgara sütunları dar pencerede taşmaz (`minmax(min(300px, 100%), 1fr)`). 640 px'ten dar içerikte "Bu hafta" tek sütuna iner; alt sıra 320 px'in altında alt alta dizilir.
+
+```
+┌ Şimdi ───────────────────────────────────── [Canlı · 2 dk önce] ┐
+│  ◯ halka    Haftalık  ███████░░░░░  %58   Çar 10:59'da yenilenir │
+│  (168 px)   Bu hızla limite ulaşmaz.                             │
+│             Kalibrasyon: orta güven                              │
+└──────────────────────────────────────────────────────────────────┘
+┌ Son 7 gün ───────────────────────────────────────────────────────┐
+│  zaman grafiği (220 px): pencere bantları, 75/90 eşikleri        │
+│  ▬▬   ▬      ▬▬▬▬     ▬      oturum şeridi (en çok 5)            │
+└──────────────────────────────────────────────────────────────────┘
+┌ Bu hafta ──────────────────────────── Hafta başlangıcı Çar 11:00 ┐
+│  API karşılığı maliyet   │ Token       Girdi      ██         1,2 Mn│
+│  $412,30                 │             Çıktı      █       640 bin │
+│  ▲ %12 geçen haftanın    │             Cache okuma ██████████ 48 Mn│
+│  aynı anına göre         │ Model karışımı  opus ███████   $380   │
+│  Geçen haftanın tamamı   │                 sonnet █        $32   │
+└──────────────────────────────────────────────────────────────────┘
+┌ En çok tüketenler ───────────────────────────────────────────────┐
+│  Oturumlar                        │ Projeler                     │
+│  ad · proje    ≈ %8,4  $96  ⌒╱    │ proje   ≈ %21  $240  ⌒╱      │
+│  (5 satır)                        │ (5 satır)                    │
+│  Paylar şimdilik maliyete oranla dağıtılıyor… (kalibrasyon notu) │
+└──────────────────────────────────────────────────────────────────┘
+┌ Diğer kullanım ─────────────┐ ┌ Plan değeri ─────────────────────┐
+│ Tahminimiz  ≈ %6            │ │ Bu ay $620 · Ücret $200 · ×3,1   │
+│ Anthropic'in kırılımı       │ │ Ayın %64'ü geçti · Geçen ay ×4,0 │
+│  claude.ai %4 · Cowork %1   │ │ Bilgi amaçlı, fatura değil.      │
+└─────────────────────────────┘ └──────────────────────────────────┘
+```
 
 ## 6. Hareket
 
@@ -234,6 +282,13 @@ Native çizilir (`tiny-skia` + layered window, ADR-058). Üst çubuk haftalık, 
 | Calibration | Kalibrasyon | |
 | Live / API / Estimated | Canlı / API / Tahmini | Kaynak rozetleri |
 | API-equivalent cost | API karşılığı maliyet | İkincil metrik |
+| Overview | Genel Bakış | Ana pencerenin ilk sayfası |
+| This week / Top consumers | Bu hafta / En çok tüketenler | Genel Bakış bölümleri |
+| against the same point last week | geçen haftanın aynı anına göre | `▲ %12` / `▼ %12`; yarım yüzdenin altı "Değişmedi" (ADR-067) |
+| Model mix | Model karışımı | Fazlası "Diğer modeller" |
+| Input / Output / Cache read / Cache write | Girdi / Çıktı / Cache okuma / Cache yazma | Token türleri; büyük sayılar `12,4 bin`, `3,1 Mn`, `1,2 Mr` |
+| Sessions (chart lane) | Oturumlar | Grafiğin altındaki oturum şeridi |
+| Plan value / Plan fee | Plan değeri / Plan ücreti | "×3,1" ücretin katı; "Ayın %64'ü geçti"; her zaman "bilgi amaçlı, fatura değil" notuyla |
 | Context window | Bağlam penceresi | Statusline'da kısa form her dilde "ctx" |
 | Time mark (statusline) | Zaman işareti | Bar üstünde `│`, metinde `⏱ 43%` / `⏱ %43`; geçen zaman bir ölçümdür, `≈` almaz |
 | Time line (mod `/radar`, panel) | Zaman çizgisi | |
