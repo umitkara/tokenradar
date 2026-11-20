@@ -15,11 +15,13 @@ use std::time::{Duration, Instant};
 
 use criterion::{Criterion, criterion_group, criterion_main};
 use tokenradar_core::domain::{LimitKind, LimitRef, Scope, SessionId, Timestamp};
+use tokenradar_core::export::{self, ExportFormat, ExportRequest};
 use tokenradar_core::queries::{
     self, FixedZone, HeatMetric, PlanInput, ProjectFilter, ProjectSort, QueryContext,
     SessionFilter, SessionSort, TimeRange, WindowFilter,
 };
 use tokenradar_core::store::Store;
+use tokenradar_i18n::Locale;
 
 const SAMPLES: usize = 40;
 const BUDGET: Duration = Duration::from_millis(50);
@@ -92,6 +94,21 @@ fn cases<'a>(store: &'a Store, ctx: &'a QueryContext<'a>) -> Vec<(&'static str, 
     )
     .expect("sessions")
     .next;
+    let twelve = TimeRange::last_days(now, 84);
+    let five_hour = queries::list_windows(
+        store,
+        ctx,
+        &WindowFilter {
+            range: None,
+            limit: Some(LimitRef::new(LimitKind::Session, None)),
+        },
+        None,
+        Some(1),
+    )
+    .expect("windows")
+    .items
+    .first()
+    .map(|w| w.id);
     let plan = PlanInput {
         subscription: Some("max"),
         tier: Some("default_claude_max_20x"),
@@ -267,6 +284,61 @@ fn cases<'a>(store: &'a Store, ctx: &'a QueryContext<'a>) -> Vec<(&'static str, 
             "get_heatmap/percent_year",
             Box::new(move || {
                 black_box(queries::get_heatmap(store, ctx, year, HeatMetric::Percent).expect("q"));
+            }),
+        ),
+        (
+            "get_window/five_hour",
+            Box::new(move || {
+                // Absent on a database generated before Step 17a.
+                if let Some(id) = five_hour {
+                    black_box(queries::get_window(store, ctx, id).expect("q"));
+                }
+            }),
+        ),
+        (
+            "list_weeks/12w",
+            Box::new(move || {
+                black_box(queries::list_weeks(store, ctx, twelve).expect("q"));
+            }),
+        ),
+        (
+            "list_weeks/year",
+            Box::new(move || {
+                black_box(queries::list_weeks(store, ctx, year).expect("q"));
+            }),
+        ),
+        (
+            "window_strip/12w",
+            Box::new(move || {
+                black_box(queries::window_strip(store, ctx, twelve).expect("q"));
+            }),
+        ),
+        (
+            "window_strip/year",
+            Box::new(move || {
+                black_box(queries::window_strip(store, ctx, year).expect("q"));
+            }),
+        ),
+        (
+            "limit_risk/year",
+            Box::new(move || {
+                black_box(queries::limit_risk(store, ctx, year).expect("q"));
+            }),
+        ),
+        (
+            "model_mix_trend/year",
+            Box::new(move || {
+                black_box(queries::model_mix_trend(store, ctx, year, 0).expect("q"));
+            }),
+        ),
+        (
+            "export/daily_csv_year",
+            Box::new(move || {
+                let r = ExportRequest::Daily { range: year };
+                black_box(
+                    export::export(store, ctx, &r, ExportFormat::Csv, false, Locale::Tr)
+                        .expect("q"),
+                );
             }),
         ),
         (

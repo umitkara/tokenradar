@@ -60,10 +60,12 @@ pub enum Domain {
     Tray,
     /// Desktop notifications.
     Notify,
+    /// Column headers and values of exported CSV files (Step 17a).
+    Export,
 }
 
 impl Domain {
-    pub const ALL: [Self; 3] = [Self::Cli, Self::Tray, Self::Notify];
+    pub const ALL: [Self; 4] = [Self::Cli, Self::Tray, Self::Notify, Self::Export];
 
     /// Embedded Fluent source.
     pub const fn source(self, locale: Locale) -> &'static str {
@@ -74,6 +76,8 @@ impl Domain {
             (Self::Tray, Locale::Tr) => include_str!("../../../locales/tr/tray.ftl"),
             (Self::Notify, Locale::En) => include_str!("../../../locales/en/notify.ftl"),
             (Self::Notify, Locale::Tr) => include_str!("../../../locales/tr/notify.ftl"),
+            (Self::Export, Locale::En) => include_str!("../../../locales/en/export.ftl"),
+            (Self::Export, Locale::Tr) => include_str!("../../../locales/tr/export.ftl"),
         }
     }
 }

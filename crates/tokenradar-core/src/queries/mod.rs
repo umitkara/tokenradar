@@ -11,8 +11,10 @@
 //! - **Local time.** Day, week-day and hour boundaries come from a [`LocalZone`]; storage and
 //!   cursors stay in UTC.
 
+mod cycles;
 mod lttb;
 mod overview;
+mod patterns;
 mod plans;
 mod projects;
 mod series;
@@ -34,10 +36,18 @@ use crate::domain::{AccountId, LimitWindow, Timestamp};
 use crate::limits::Confidence;
 use crate::store::StoreError;
 
+pub use cycles::{
+    CycleDay, CycleProject, CycleRow, ScopedPeak, StripDay, StripSegment, StripSession,
+    StripWindow, SurfaceShare, WeekCycles, WindowStrip, list_weeks, window_strip,
+};
 pub use lttb::lttb;
 pub use overview::{
     ModelSlice, Overview, OverviewOther, PlanFeeSource, PlanInput, PlanValue, TokenBreakdown,
     TopProject, TopSession, WeekSpan, get_overview,
+};
+pub use patterns::{
+    HourSplit, LimitRisk, MIN_RISK_WINDOWS, MixTrend, MixWeek, RiskHour, RiskSpan, limit_risk,
+    model_mix_trend,
 };
 pub use plans::{PlanFee, plan_fee};
 pub use projects::{
@@ -55,9 +65,10 @@ pub use sessions::{
 };
 pub use temp::temp_like_patterns;
 pub use windows::{
-    OtherView, ShareRow, WindowDetail, WindowFilter, WindowPage, WindowRow, get_window,
-    list_windows,
+    AlertRow, CONTRIB_SESSIONS, Contrib, ContribSeries, ContribUnit, OtherView, ShareRow,
+    WindowDetail, WindowFilter, WindowPage, WindowRow, get_window, list_windows,
 };
+pub(crate) use zone::spans as local_spans;
 pub use zone::{FixedZone, LocalZone, SystemZone, local_day_start, local_month_start};
 
 pub type Result<T, E = StoreError> = std::result::Result<T, E>;

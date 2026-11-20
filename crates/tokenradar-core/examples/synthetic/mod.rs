@@ -51,6 +51,9 @@ pub struct Params {
     /// Readings start this many days after the first usage (earlier weeks are estimated).
     pub readings_after_days: i64,
     pub raw_retention_days: i64,
+    /// Also write 5-hour window readings (a Pro/Max account; verified Ultra has none,
+    /// ADR-041).
+    pub session_windows: bool,
     pub seed: u64,
 }
 
@@ -65,6 +68,7 @@ impl Default for Params {
             projects: 40,
             readings_after_days: 28,
             raw_retention_days: 90,
+            session_windows: true,
             seed: 0x7e57_da7a,
         }
     }
@@ -124,6 +128,11 @@ const MODELS: [(&str, ModelFamily, f64); 4] = [
 ];
 
 /// The first weekly reset (Wednesdays 08:00 UTC) at or after `t`.
+/// The reset of a 5-hour window opened by activity at `t`: five hours after its hour began.
+fn session_reset(t: i64) -> i64 {
+    t - t.rem_euclid(HOUR) + 5 * HOUR
+}
+
 fn next_reset(t: i64) -> i64 {
     // 2026-11-18T08:00:00Z, a Wednesday.
     const ANCHOR: i64 = 1_794_988_800_000;
@@ -307,6 +316,11 @@ pub fn generate(path: &Path, p: &Params) -> Summary {
     let readings_from = start + p.readings_after_days * DAY;
     let mut snapshot =
         |kind: LimitKind, scope: Option<Scope>, source: Source, at: i64, pct: f64, resets: i64| {
+            let length = if kind == LimitKind::Session {
+                5 * HOUR
+            } else {
+                WEEK
+            };
             w.record_snapshot(
                 LimitObservation {
                     account,
@@ -319,12 +333,36 @@ pub fn generate(path: &Path, p: &Params) -> Summary {
                     session_uuid: None,
                     observed_at: Timestamp::from_millis(at),
                 },
-                Some(WEEK),
+                Some(length),
             )
             .expect("snapshot");
             summary.snapshots += 1;
         };
     let fable_scope = || Some(Scope::Model("Fable".into()));
+    // 5-hour windows: one opens at the first activity after the last one reset (its end on the
+    // hour), k5 so the busiest fifth of windows reach the limit.
+    let k5 = if p.session_windows {
+        let mut sums: Vec<f64> = Vec::new();
+        let (mut open_until, mut acc) = (i64::MIN, 0.0);
+        for (&t, &(all, _)) in weighted.range(readings_from..) {
+            if all <= 0.0 {
+                continue;
+            }
+            if t >= open_until {
+                if acc > 0.0 {
+                    sums.push(acc);
+                }
+                open_until = session_reset(t);
+                acc = 0.0;
+            }
+            acc += all;
+        }
+        sums.sort_by(f64::total_cmp);
+        100.0 / sums.get(sums.len() * 4 / 5).copied().unwrap_or(1.0)
+    } else {
+        0.0
+    };
+    let (mut s_reset, mut cum5, mut last5) = (i64::MIN, 0.0, -1.0);
     let mut reset = next_reset(readings_from + 1);
     let (mut cum, mut cum_f, mut last_sl, mut last_sl_at) = (0.0, 0.0, -1.0, 0i64);
     let mut t = readings_from - readings_from.rem_euclid(5 * MIN);
@@ -337,6 +375,24 @@ pub fn generate(path: &Path, p: &Params) -> Summary {
         let (all, fab) = weighted.get(&t).copied().unwrap_or_default();
         cum += k * all * (1.0 + OUTSIDE);
         cum_f += k_fable * fab;
+        if p.session_windows && all > 0.0 {
+            if t >= s_reset {
+                (s_reset, cum5, last5) = (session_reset(t), 0.0, -1.0);
+            }
+            cum5 += k5 * all;
+            let shown = cum5.round().min(100.0);
+            if shown != last5 {
+                snapshot(
+                    LimitKind::Session,
+                    None,
+                    Source::Statusline,
+                    t + 4 * MIN,
+                    shown,
+                    s_reset,
+                );
+                last5 = shown;
+            }
+        }
         if all > 0.0 {
             // Statusline: on activity, when the rounded value changes or every 30 minutes.
             let shown = cum.round();
@@ -426,6 +482,26 @@ pub fn generate(path: &Path, p: &Params) -> Summary {
             version: 0,
         },
     ];
+    if p.session_windows {
+        cals.push(Calibration {
+            kind: LimitKind::Session,
+            scope: None,
+            source: Source::Statusline,
+            k: k5,
+            alpha: MODELS
+                .iter()
+                .filter(|m| m.2 != 1.0)
+                .map(|m| (m.1, m.2))
+                .collect(),
+            fitted: vec![ModelFamily::Opus, ModelFamily::Sonnet],
+            confidence: 0.7,
+            n_obs: 200,
+            mad_rel: 0.05,
+            drift: None,
+            computed_at: p.end,
+            version: 0,
+        });
+    }
     for c in &mut cals {
         c.version = w
             .insert_calibration(account, c.clone())

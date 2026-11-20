@@ -10,6 +10,7 @@ pub mod deeplink;
 pub mod doctor;
 pub mod domain;
 pub mod events;
+pub mod export;
 mod fsutil;
 pub mod indexer;
 pub mod ipc;

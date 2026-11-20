@@ -580,7 +580,7 @@ fn labels(c: &Connection, roots: impl Iterator<Item = i64>) -> Result<HashMap<i6
 }
 
 /// The newest `seven_day_breakdown` of the window starting at `starts_at`, largest first.
-fn breakdown_rows(
+pub(crate) fn breakdown_rows(
     c: &Connection,
     ctx: &QueryContext<'_>,
     starts_at: i64,

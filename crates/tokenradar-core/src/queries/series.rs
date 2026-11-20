@@ -240,6 +240,8 @@ pub struct Heatmap {
     /// Set for [`HeatMetric::Percent`]; `None` without a usable calibration (then every
     /// total is 0).
     pub basis: Option<super::Basis>,
+    /// The same totals per hour of the day, weekday and weekend averages (Step 17a).
+    pub hours: Vec<super::patterns::HourSplit>,
 }
 
 /// Usage per local week-day and hour in `range`.
@@ -314,6 +316,11 @@ pub fn get_heatmap(
         cell.total += v;
         cell.active_days += 1;
     }
+    let profile: Vec<(u8, u8, f64)> = cells.iter().map(|c| (c.weekday, c.hour, c.total)).collect();
+    let first = store
+        .earliest_bucket(ctx.account)?
+        .map_or(to, |e| e.max(range.from));
+    let hours = super::patterns::hour_splits(ctx.zone, &profile, first, to);
     let mut max_total = 0.0f64;
     for c in &mut cells {
         if c.active_days > 0 {
@@ -335,12 +342,13 @@ pub fn get_heatmap(
         cells,
         max_total,
         basis,
+        hours,
     })
 }
 
 /// `CASE` over model ids giving `k · α` per micro-USD; 0 for families a scoped limit does not
 /// count.
-fn percent_weight(store: &Store, c: &crate::calibration::Calibration) -> Result<String> {
+pub(crate) fn percent_weight(store: &Store, c: &crate::calibration::Calibration) -> Result<String> {
     use std::fmt::Write as _;
     let models: Vec<(i64, String)> = store.read(|conn| {
         Ok(conn

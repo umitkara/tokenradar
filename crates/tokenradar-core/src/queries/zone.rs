@@ -126,7 +126,7 @@ pub fn local_month_start(zone: &dyn LocalZone, at: Timestamp) -> Timestamp {
 
 /// The UTC instant shown as `local` ms: offset taken where it applies (one correction step
 /// covers a DST change between the guess and the answer).
-fn to_utc(zone: &dyn LocalZone, local: i64) -> Timestamp {
+pub(crate) fn to_utc(zone: &dyn LocalZone, local: i64) -> Timestamp {
     let guess = local - zone.offset_ms(Timestamp::from_millis(local));
     let utc = local - zone.offset_ms(Timestamp::from_millis(guess));
     Timestamp::from_millis(utc)

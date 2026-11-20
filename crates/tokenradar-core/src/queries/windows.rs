@@ -1,6 +1,7 @@
 //! Limit windows: the list (stored attribution, keyset by `resets_at`) and one window with its
 //! shares, readings and the "Other" check.
 
+use std::collections::HashMap;
 use std::fmt::Write as _;
 
 use rusqlite::{Connection, params_from_iter, types::Value};
@@ -90,7 +91,55 @@ pub struct WindowDetail {
     pub other: Option<OtherView>,
     /// Measured readings, fused (ADR-060) and thinned; empty for an estimated window.
     pub points: Vec<super::SeriesPoint>,
+    /// The sessions' shares building up over the window (Step 17a).
+    pub contrib: Contrib,
+    /// Notifications fired for this window (the log keeps 30 days).
+    pub alerts: Vec<AlertRow>,
 }
+
+/// What [`Contrib`] values count.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Type)]
+#[serde(rename_all = "snake_case")]
+pub enum ContribUnit {
+    /// `≈` points: each session's stored share spread over time like its cost.
+    Percent,
+    /// Micro-USD, when the window's shares have no percentage.
+    Cost,
+}
+
+/// One stacked series of [`Contrib`].
+#[derive(Debug, Clone, PartialEq, Serialize, Type)]
+pub struct ContribSeries {
+    /// `None` for "the other sessions" (everything after the largest four).
+    pub session_id: Option<SessionId>,
+    pub name: Option<SessionName>,
+    /// Running total at each of [`Contrib::at`].
+    pub values: Vec<f64>,
+}
+
+/// Cumulative session contributions over the window, largest share at the bottom.
+#[derive(Debug, Clone, PartialEq, Serialize, Type)]
+pub struct Contrib {
+    pub unit: ContribUnit,
+    /// Bucket ends, oldest first; up to now for an open window.
+    pub at: Vec<Timestamp>,
+    pub series: Vec<ContribSeries>,
+}
+
+/// A notification the window caused.
+#[derive(Debug, Clone, PartialEq, Serialize, Type)]
+pub struct AlertRow {
+    /// `threshold`, `projection`, `final` or `reset`.
+    pub rule: String,
+    pub threshold: Option<u8>,
+    pub at: Timestamp,
+}
+
+/// Sessions a contribution chart names; the rest share one series. Four, because the design
+/// has four validated categorical colours (design-language.md); a fifth would need a new hue.
+pub const CONTRIB_SESSIONS: usize = 4;
+/// Buckets a contribution chart has at most.
+const CONTRIB_BUCKETS: i64 = 168;
 
 const ROW_SQL: &str = "
     SELECT w.id, w.limit_kind, w.scope, w.starts_at, w.resets_at, w.peak_percent, w.hit_limit,
@@ -233,6 +282,28 @@ pub(crate) fn window_row(
     Ok(raw.map(|r| to_row(ctx, r)))
 }
 
+/// The 5-hour windows overlapping `[from, to)`, oldest first, in one statement (the strip).
+pub(crate) fn session_rows(
+    c: &Connection,
+    ctx: &QueryContext<'_>,
+    from: Timestamp,
+    to: Timestamp,
+) -> Result<Vec<WindowRow>> {
+    let sql = format!(
+        "{ROW_SQL} WHERE w.account_id = ?1 AND w.limit_kind = 'session'
+           AND w.resets_at > ?2 AND w.starts_at < ?3 ORDER BY w.starts_at"
+    );
+    let account = ctx.account;
+    let raws = c
+        .prepare_cached(&sql)?
+        .query_map(
+            rusqlite::params![account.0, from.as_millis(), to.as_millis()],
+            |r| raw_row(r, account),
+        )?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    Ok(raws.into_iter().map(|r| to_row(ctx, r)).collect())
+}
+
 /// One window, attributed first if its attribution is missing or stale
 /// ([`attribution::ensure`]). `None` for an unknown window.
 pub fn get_window(store: &Store, ctx: &QueryContext<'_>, id: i64) -> Result<Option<WindowDetail>> {
@@ -250,12 +321,137 @@ pub fn get_window(store: &Store, ctx: &QueryContext<'_>, id: i64) -> Result<Opti
     } else {
         readings(store, ctx, &window)?
     };
+    let contrib = contrib(store, ctx, &window, &shares)?;
+    let alerts = alerts(store, &window)?;
     Ok(Some(WindowDetail {
         window,
         shares,
         other,
         points,
+        contrib,
+        alerts,
     }))
+}
+
+/// Each named session's share (or cost) accumulated like its cost, bucket by bucket.
+fn contrib(
+    store: &Store,
+    ctx: &QueryContext<'_>,
+    w: &WindowRow,
+    shares: &[ShareRow],
+) -> Result<Contrib> {
+    const FIVE_MIN: i64 = 300_000;
+    let (from, to) = (w.starts_at.as_millis(), w.resets_at.as_millis());
+    let len = (to - from).max(FIVE_MIN);
+    let step = ((len / CONTRIB_BUCKETS + FIVE_MIN - 1) / FIVE_MIN).max(1) * FIVE_MIN;
+    let end = to.min(ctx.now.as_millis().max(from));
+    let n = usize::try_from((end - from + step - 1) / step).unwrap_or(0);
+    let unit = if shares.iter().any(|s| s.percent.is_some()) {
+        ContribUnit::Percent
+    } else {
+        ContribUnit::Cost
+    };
+    let named: Vec<&ShareRow> = shares.iter().take(CONTRIB_SESSIONS).collect();
+    let slot: HashMap<i64, usize> = named
+        .iter()
+        .enumerate()
+        .map(|(i, s)| (s.session_id.0, i))
+        .collect();
+    let rest = named.len();
+    // Cost per (series, bucket); a scoped limit counts only its family.
+    let mut cost = vec![vec![0i64; n]; rest + 1];
+    let family = crate::calibration::scope_family(w.scope.as_ref());
+    let family_sql = if family.is_some() {
+        " AND u.model_id IN (SELECT id FROM models WHERE family = ?4)"
+    } else {
+        ""
+    };
+    let sql = format!(
+        "SELECT COALESCE(s.root_id, s.id), u.bucket_ts, u.cost_micro_usd
+         FROM usage_5m u JOIN sessions s ON s.id = u.session_id
+         WHERE u.account_id = ?1 AND {col} >= ?2 AND {col} < ?3{family_sql}",
+        col = super::bucket_col(from, end)
+    );
+    store.read(|c| {
+        let mut stmt = c.prepare_cached(&sql)?;
+        let mut args: Vec<Value> = vec![ctx.account.0.into(), from.into(), end.into()];
+        if let Some(f) = family {
+            args.push(f.as_str().to_owned().into());
+        }
+        let mut rows = stmt.query(params_from_iter(args))?;
+        while let Some(r) = rows.next()? {
+            let root: i64 = r.get(0)?;
+            let b = usize::try_from((r.get::<_, i64>(1)? - from) / step).unwrap_or(0);
+            let series = slot.get(&root).copied().unwrap_or(rest);
+            if let Some(cell) = cost[series].get_mut(b) {
+                *cell += r.get::<_, i64>(2)?;
+            }
+        }
+        Ok(())
+    })?;
+    // The final value of each series: its share, or its cost.
+    #[allow(clippy::cast_precision_loss)]
+    let finals: Vec<f64> = (0..=rest)
+        .map(|i| match (unit, named.get(i)) {
+            (ContribUnit::Percent, Some(s)) => s.percent.unwrap_or(0.0),
+            (ContribUnit::Percent, None) => shares
+                .iter()
+                .skip(CONTRIB_SESSIONS)
+                .filter_map(|s| s.percent)
+                .sum(),
+            (ContribUnit::Cost, _) => cost[i].iter().sum::<i64>() as f64,
+        })
+        .collect();
+    let mut series = Vec::with_capacity(rest + 1);
+    for (i, buckets) in cost.iter().enumerate() {
+        let total: i64 = buckets.iter().sum();
+        if i == rest && total == 0 && finals[i] == 0.0 {
+            continue;
+        }
+        let mut run = 0i64;
+        #[allow(clippy::cast_precision_loss)]
+        let values = buckets
+            .iter()
+            .map(|c| {
+                run += c;
+                if total > 0 {
+                    finals[i] * run as f64 / total as f64
+                } else {
+                    0.0
+                }
+            })
+            .collect();
+        series.push(ContribSeries {
+            session_id: named.get(i).map(|s| s.session_id),
+            name: named.get(i).map(|s| s.name.clone()),
+            values,
+        });
+    }
+    let at = (1..=n)
+        .map(|i| Timestamp::from_millis((from + i64::try_from(i).unwrap_or(0) * step).min(end)))
+        .collect();
+    Ok(Contrib { unit, at, series })
+}
+
+fn alerts(store: &Store, w: &WindowRow) -> Result<Vec<AlertRow>> {
+    let kind = w.kind.as_str();
+    let scope = w.scope.as_ref().map(ToString::to_string);
+    Ok(store
+        .notifications_since(w.starts_at)?
+        .into_iter()
+        .filter_map(|(rule, key, at)| crate::notifier::Fired::parse(&rule, &key, at))
+        .filter(|f| {
+            f.kind == kind
+                && f.scope == scope
+                && (f.resets_at.as_millis() - w.resets_at.as_millis()).abs()
+                    <= crate::store::WINDOW_MATCH_TOLERANCE_MS
+        })
+        .map(|f| AlertRow {
+            rule: f.rule.as_str().to_owned(),
+            threshold: f.threshold,
+            at: f.at,
+        })
+        .collect())
 }
 
 pub(crate) fn other_view(stored: &StoredAttribution) -> Option<OtherView> {
