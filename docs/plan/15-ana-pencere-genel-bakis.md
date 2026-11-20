@@ -204,8 +204,9 @@ pnpm dev
 - `measure-memory.ps1 -Scenario main-window` betikte yok (15a'da da not edildi); `-RootPid` ve elle sürülen senaryo kullanıldı.
 - Geniş pencerede token ve model çubukları çok uzuyor; sınır kullanıcının isteğiyle kaldırıldı.
 
-**Açık konular (kullanıcı onayı bekleyen öneriler, ADR-067):**
-- Token satırları, oturum şeridinin biçimi, 10 sn kısma, `overview:data` ölçümü.
+**Karar (oturum sonunda):** ADR-067'nin önerileri (token satırları, oturum şeridinin biçimi, 10 sn kısma, `overview:data` ölçümü) kullanıcı tarafından onaylandı; ADR kabul edildi.
+
+**Açık konular:**
 - 15a'dan devreden: 75 eşik çizgisi açık temada zeytin-turuncu görünüyor (değiştirilmedi); ipucunun imleç yakınındaki çizgiyi örtmesi denenmedi.
 
 **Adım 16'ya notlar:**

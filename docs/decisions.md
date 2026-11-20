@@ -1520,7 +1520,7 @@
 
 ### ADR-067 — Genel Bakış: yukarıdan aşağı yerleşim, haftanın aynı anıyla karşılaştırma, ay ilerlemesiyle plan değeri
 
-**Durum:** Önerildi (2026-11-20, Adım 15b). "(kullanıcı kararı)" işaretli maddeler 2026-11-20'de kullanıcıyla kararlaştırıldı. Diğerleri bu adımın önerisidir ve kullanıcı onayı bekler.
+**Durum:** Kabul edildi (2026-11-20, Adım 15b). "(kullanıcı kararı)" işaretli maddeler adım sırasında kullanıcıyla kararlaştırıldı. Diğer maddeler (token satırları, oturum şeridi, 10 sn kısma, `overview:data` ölçümü ve kalanlar) adım sonunda kullanıcı tarafından onaylandı.
 
 - **Bağlam:**
   - Genel Bakış dört soruyu yanıtlar: şu an neredeyim, bu hafta nasıl gidiyor, limiti ne tüketiyor, ne kadar değer alıyorum. Altı bölüm tek sayfaya sığmalı.
