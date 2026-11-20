@@ -229,7 +229,9 @@ fn cases<'a>(store: &'a Store, ctx: &'a QueryContext<'a>) -> Vec<(&'static str, 
         (
             "get_overview",
             Box::new(move || {
-                black_box(queries::get_overview(store, ctx, Vec::new(), &plan).expect("q"));
+                black_box(
+                    queries::get_overview(store, ctx, Vec::new(), Vec::new(), &plan).expect("q"),
+                );
             }),
         ),
     ]

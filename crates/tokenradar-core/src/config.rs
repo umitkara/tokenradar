@@ -694,6 +694,25 @@ pub fn save_api_consent(
     })
 }
 
+/// Stores the account's monthly plan fee in USD (Step 15b). `None`, or a value that is not a
+/// positive finite number, removes it, so the embedded plan table applies again.
+pub fn save_plan_fee(
+    path: &Path,
+    config_dir: &Path,
+    fee_usd: Option<f64>,
+) -> Result<(), ConfigError> {
+    edit(path, |doc| {
+        let account = account_mut(doc, config_dir);
+        match fee_usd.filter(|v| v.is_finite() && *v > 0.0) {
+            Some(v) => account["plan_fee_usd"] = value(v),
+            None => {
+                account.remove("plan_fee_usd");
+            }
+        }
+        Ok(())
+    })
+}
+
 /// [`save_api_consent`] stamped with the current time (UTC, whole seconds).
 pub fn save_api_consent_now(
     path: &Path,

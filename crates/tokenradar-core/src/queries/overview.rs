@@ -87,6 +87,13 @@ pub struct PlanValue {
     pub fee_source: Option<PlanFeeSource>,
     /// `month_cost / fee`.
     pub ratio: Option<f64>,
+    /// Share of the local calendar month gone, 0–1: early in a month the ratio is low because
+    /// the month has barely started, not because the plan is worth less.
+    pub month_elapsed: f64,
+    /// API-equivalent cost of the whole previous local month; `None` when it had no usage.
+    pub previous_month_cost: Option<MicroUsd>,
+    /// `previous_month_cost / fee`: a finished month's ratio, measured, next to the running one.
+    pub previous_ratio: Option<f64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Type)]
@@ -101,11 +108,21 @@ pub struct OverviewOther {
 pub struct Overview {
     /// The panel's current limits, passed through.
     pub limits: Vec<LimitView>,
+    /// Limits this account does not have (ADR-041), passed through like `limits`.
+    pub absent: Vec<LimitRef>,
     pub week: WeekSpan,
     /// Last 7 days per limit with readings (5-hour and weekly).
     pub series: Vec<TimeSeries>,
     pub cost: MicroUsd,
+    /// The whole previous week.
     pub previous_cost: Option<MicroUsd>,
+    /// The previous week up to the same time into it as now is into this one: what the
+    /// week-over-week change compares with (a running week against a whole one always looks
+    /// lower).
+    pub previous_cost_to_date: Option<MicroUsd>,
+    /// `cost / previous_cost_to_date − 1` (`0.12` is 12 % more); `None` without a previous
+    /// week or when it cost nothing up to this point.
+    pub change: Option<f64>,
     pub tokens: TokenBreakdown,
     pub models: Vec<ModelSlice>,
     pub top_sessions: Vec<TopSession>,
@@ -132,6 +149,7 @@ pub fn get_overview(
     store: &Store,
     ctx: &QueryContext<'_>,
     limits: Vec<LimitView>,
+    absent: Vec<LimitRef>,
     plan: &PlanInput<'_>,
 ) -> Result<Overview> {
     let now = ctx.now;
@@ -183,31 +201,38 @@ pub fn get_overview(
         .unwrap_or(1)
         .clamp(1, 8);
 
-    let (cost, previous_cost, tokens, models, root_cost, daily, projects) = store.read(|c| {
-        let cost = sum_cost(c, ctx, from, to)?;
-        let previous_cost = previous.map(|(a, b)| sum_cost(c, ctx, a, b)).transpose()?;
-        let tokens = token_breakdown(c, ctx, from, to)?;
-        let models = model_slices(
-            c,
-            &format!(
-                "WHERE u.account_id = ?1 AND {b} >= ?2 AND {b} < ?3",
-                b = super::bucket_col(from, to)
-            ),
-            params![ctx.account.0, from, to],
-        )?;
-        let root_cost = super::sessions::root_costs(c, ctx.account, from, to)?;
-        let daily = daily_by_root(c, ctx, first_day, to, days)?;
-        let projects = root_projects(c, &root_cost)?;
-        Ok((
-            cost,
-            previous_cost,
-            tokens,
-            models,
-            root_cost,
-            daily,
-            projects,
-        ))
-    })?;
+    let (cost, (previous_cost, previous_cost_to_date), tokens, models, root_cost, daily, projects) =
+        store.read(|c| {
+            let cost = sum_cost(c, ctx, from, to)?;
+            let previous_cost = match previous {
+                Some((a, b)) => (
+                    Some(sum_cost(c, ctx, a, b)?),
+                    Some(sum_cost(c, ctx, a, b.min(a + (to - from)))?),
+                ),
+                None => (None, None),
+            };
+            let tokens = token_breakdown(c, ctx, from, to)?;
+            let models = model_slices(
+                c,
+                &format!(
+                    "WHERE u.account_id = ?1 AND {b} >= ?2 AND {b} < ?3",
+                    b = super::bucket_col(from, to)
+                ),
+                params![ctx.account.0, from, to],
+            )?;
+            let root_cost = super::sessions::root_costs(c, ctx.account, from, to)?;
+            let daily = daily_by_root(c, ctx, first_day, to, days)?;
+            let projects = root_projects(c, &root_cost)?;
+            Ok((
+                cost,
+                previous_cost,
+                tokens,
+                models,
+                root_cost,
+                daily,
+                projects,
+            ))
+        })?;
 
     // Top sessions: by share when the week is attributed, otherwise by cost.
     let mut ranked: Vec<(i64, Option<f64>, i64)> = match &stored {
@@ -311,16 +336,35 @@ pub fn get_overview(
         .find(|c| c.kind == LimitKind::WeeklyAll && c.scope.is_none())
         .map(|c| c.view(now));
 
-    let month_start = super::local_month_start(ctx.zone, now);
-    let month_cost = store.read(|c| sum_cost(c, ctx, month_start.as_millis(), to))?;
-    let plan = plan_value(month_cost, month_start, plan);
+    let month = MonthSpan::around(ctx.zone, now);
+    let (month_cost, previous_month_cost) = store.read(|c| {
+        Ok((
+            sum_cost(c, ctx, month.start.as_millis(), to)?,
+            sum_cost(c, ctx, month.previous.as_millis(), month.start.as_millis())?,
+        ))
+    })?;
+    let plan = plan_value(
+        month_cost,
+        Some(previous_month_cost).filter(|c| c.0 > 0),
+        &month,
+        now,
+        plan,
+    );
+
+    #[allow(clippy::cast_precision_loss)]
+    let change = previous_cost_to_date
+        .filter(|p| p.0 > 0)
+        .map(|p| cost.0 as f64 / p.0 as f64 - 1.0);
 
     Ok(Overview {
         limits,
+        absent,
         week,
         series,
         cost,
         previous_cost,
+        previous_cost_to_date,
+        change,
         tokens,
         models,
         top_sessions,
@@ -333,7 +377,41 @@ pub fn get_overview(
     })
 }
 
-fn plan_value(month_cost: MicroUsd, month_start: Timestamp, input: &PlanInput<'_>) -> PlanValue {
+/// The local calendar month around `now`, with the previous one's start and the next one's.
+struct MonthSpan {
+    previous: Timestamp,
+    start: Timestamp,
+    next: Timestamp,
+}
+
+impl MonthSpan {
+    fn around(zone: &dyn super::LocalZone, now: Timestamp) -> Self {
+        let start = super::local_month_start(zone, now);
+        Self {
+            previous: super::local_month_start(zone, start.saturating_sub_millis(1)),
+            start,
+            // Any instant 32 days on lies in the next month.
+            next: super::local_month_start(
+                zone,
+                Timestamp::from_millis(start.as_millis() + 32 * DAY_MS),
+            ),
+        }
+    }
+
+    #[allow(clippy::cast_precision_loss)]
+    fn elapsed(&self, now: Timestamp) -> f64 {
+        let span = (self.next.as_millis() - self.start.as_millis()).max(1);
+        ((now.as_millis() - self.start.as_millis()) as f64 / span as f64).clamp(0.0, 1.0)
+    }
+}
+
+fn plan_value(
+    month_cost: MicroUsd,
+    previous_month_cost: Option<MicroUsd>,
+    month: &MonthSpan,
+    now: Timestamp,
+    input: &PlanInput<'_>,
+) -> PlanValue {
     let table = super::plan_fee(input.subscription, input.tier);
     let (fee, source) = match input.user_fee_usd.filter(|v| v.is_finite() && *v > 0.0) {
         Some(v) => (Some(super::plans::usd(v)), Some(PlanFeeSource::User)),
@@ -343,16 +421,17 @@ fn plan_value(month_cost: MicroUsd, month_start: Timestamp, input: &PlanInput<'_
         ),
     };
     #[allow(clippy::cast_precision_loss)]
-    let ratio = fee
-        .filter(|f| f.0 > 0)
-        .map(|f| month_cost.0 as f64 / f.0 as f64);
+    let ratio_of = |cost: MicroUsd| fee.filter(|f| f.0 > 0).map(|f| cost.0 as f64 / f.0 as f64);
     PlanValue {
         month_cost,
-        month_start,
+        month_start: month.start,
         plan: table.map(|t| t.name),
         fee,
         fee_source: source,
-        ratio,
+        ratio: ratio_of(month_cost),
+        month_elapsed: month.elapsed(now),
+        previous_month_cost,
+        previous_ratio: previous_month_cost.and_then(ratio_of),
     }
 }
 

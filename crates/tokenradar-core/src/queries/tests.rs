@@ -650,7 +650,7 @@ fn overview_uses_the_open_week_and_the_plan_fee() {
         tier: Some("default_claude_max_20x"),
         user_fee_usd: None,
     };
-    let o = get_overview(&e.store, &ctx, Vec::new(), &plan).expect("overview");
+    let o = get_overview(&e.store, &ctx, Vec::new(), Vec::new(), &plan).expect("overview");
     assert!(o.week.window_id.is_some());
     assert_eq!(o.week.starts_at, ts(T0));
     assert_eq!(o.cost, MicroUsd(10_000_000), "the old session is last week");
@@ -677,14 +677,54 @@ fn overview_uses_the_open_week_and_the_plan_fee() {
     );
     assert_eq!(o.plan.month_cost, MicroUsd(12_000_000));
     assert!((o.plan.ratio.expect("ratio") - 0.06).abs() < 1e-9);
+    // T0 + 4 days is 2026-11-08 10:00 UTC: 7 days 10 hours of a 30-day month.
+    assert!((o.plan.month_elapsed - (7.0 + 10.0 / 24.0) / 30.0).abs() < 1e-9);
+    assert_eq!(o.plan.previous_month_cost, None, "no usage in October");
+    assert_eq!(o.plan.previous_ratio, None);
+
+    let october = e.session("eeeeeeee-5555", e.proj_b, None);
+    e.use_(october, e.opus, T0 - 10 * DAY, 50.0, 0);
+    let o = get_overview(&e.store, &ctx, Vec::new(), Vec::new(), &plan).expect("overview");
+    assert_eq!(o.plan.previous_month_cost, Some(MicroUsd(50_000_000)));
+    assert!((o.plan.previous_ratio.expect("previous ratio") - 0.25).abs() < 1e-9);
 
     let user = PlanInput {
         user_fee_usd: Some(120.0),
         ..plan
     };
-    let o = get_overview(&e.store, &ctx, Vec::new(), &user).expect("overview");
+    let o = get_overview(&e.store, &ctx, Vec::new(), Vec::new(), &user).expect("overview");
     assert_eq!(o.plan.fee, Some(MicroUsd(120_000_000)));
     assert_eq!(o.plan.fee_source, Some(PlanFeeSource::User));
+}
+
+#[test]
+fn overview_compares_with_the_same_time_into_last_week() {
+    let e = Env::new();
+    week_fixture(&e);
+    // Last week's window, $1 a day.
+    let old = e.session("ffffffff-6666", e.proj_b, None);
+    for d in 0..7 {
+        e.use_(old, e.opus, T0 - WEEK + d * DAY + HOUR, 1.0, 0);
+    }
+    e.reading(T0 - WEEK + HOUR, 1.0, T0);
+    let zone = FixedZone::utc();
+    let ctx = e.ctx(&[], &zone, T0 + 4 * DAY);
+    let o = get_overview(
+        &e.store,
+        &ctx,
+        Vec::new(),
+        Vec::new(),
+        &PlanInput::default(),
+    )
+    .expect("overview");
+    assert_eq!(o.previous_cost, Some(MicroUsd(7_000_000)));
+    assert_eq!(
+        o.previous_cost_to_date,
+        Some(MicroUsd(4_000_000)),
+        "four days into this week: the first four days of last week"
+    );
+    // This week: $10 against $4 → +150 %.
+    assert!((o.change.expect("change") - 1.5).abs() < 1e-9);
 }
 
 #[test]
@@ -695,10 +735,22 @@ fn overview_without_a_weekly_window_uses_the_last_seven_days() {
     e.use_(s, e.opus, T0 - DAY, 1.0, 0);
     let zone = FixedZone::utc();
     let ctx = e.ctx(&[], &zone, T0);
-    let o = get_overview(&e.store, &ctx, Vec::new(), &PlanInput::default()).expect("overview");
+    let o = get_overview(
+        &e.store,
+        &ctx,
+        Vec::new(),
+        Vec::new(),
+        &PlanInput::default(),
+    )
+    .expect("overview");
     assert_eq!(o.week.window_id, None);
     assert_eq!(o.cost, MicroUsd(1_000_000));
     assert_eq!(o.previous_cost, Some(MicroUsd(5_000_000)));
+    assert_eq!(
+        o.previous_cost_to_date,
+        Some(MicroUsd(5_000_000)),
+        "the rolling week is whole: to date is the whole previous week"
+    );
     assert_eq!(o.top_sessions[0].percent, None, "no window, no percentage");
     assert_eq!(o.plan.fee, None);
     assert_eq!(o.series, Vec::new());

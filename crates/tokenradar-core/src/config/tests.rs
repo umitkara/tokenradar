@@ -488,3 +488,20 @@ raw_retention_days = 30
     assert!(!cfg.widget.prefs.enabled);
     assert_eq!(cfg.data.raw_retention_days, 30);
 }
+
+#[test]
+fn the_plan_fee_is_saved_and_cleared() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let path = dir.path().join("config.toml");
+    let claude = Path::new("C:/Users/Ada/.claude");
+    save_plan_fee(&path, claude, Some(120.5)).expect("save");
+    let cfg = AppConfig::load(&path).expect("load");
+    assert_eq!(
+        cfg.account(claude).and_then(|a| a.plan_fee_usd),
+        Some(120.5)
+    );
+    save_plan_fee(&path, claude, Some(-3.0)).expect("save");
+    let cfg = AppConfig::load(&path).expect("load");
+    assert!(cfg.account(claude).is_some(), "the account entry stays");
+    assert_eq!(cfg.account(claude).and_then(|a| a.plan_fee_usd), None);
+}
