@@ -136,6 +136,35 @@ fn the_refresh_interval_is_read_leniently() {
 }
 
 #[test]
+fn the_plan_fee_is_read_leniently() {
+    let read = |v: &str| {
+        let text = format!(
+            "[[accounts]]
+provider = \"claude\"
+config_dir = 'C:/a'
+plan_fee_usd = {v}
+"
+        );
+        let cfg: AppConfig = toml::from_str(&text).expect("toml");
+        cfg.accounts[0].plan_fee_usd
+    };
+    assert_eq!(read("100"), Some(100.0));
+    assert_eq!(read("19.5"), Some(19.5));
+    assert_eq!(read("0"), None);
+    assert_eq!(read("-20"), None);
+    assert_eq!(read("\"cheap\""), None);
+    assert_eq!(read("nan"), None);
+    let cfg: AppConfig = toml::from_str(
+        "[[accounts]]
+provider = \"claude\"
+config_dir = 'C:/a'
+",
+    )
+    .expect("toml");
+    assert_eq!(cfg.accounts[0].plan_fee_usd, None);
+}
+
+#[test]
 fn general_keys_are_saved_without_touching_the_rest() {
     let dir = tempfile::tempdir().expect("tempdir");
     let path = dir.path().join("sub").join("config.toml");

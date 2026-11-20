@@ -37,6 +37,7 @@
 //! provider = "claude"
 //! config_dir = 'C:\Users\Ada\.claude'
 //! label = "Work"
+//! plan_fee_usd = 100     # optional: overrides the embedded plan table (Step 14b)
 //!
 //! [accounts.api_consent]
 //! granted = true
@@ -336,6 +337,27 @@ pub struct AccountConfig {
     /// `None`: this account has no consent entry (schema 1's top-level one may apply).
     pub api_consent: Option<ApiConsent>,
     pub statusline: StatuslineConfig,
+    /// Monthly plan fee in USD for the overview's value ratio; wins over the embedded plan
+    /// table. Read leniently: anything but a positive number is ignored.
+    #[serde(deserialize_with = "lenient_fee")]
+    pub plan_fee_usd: Option<f64>,
+}
+
+fn lenient_fee<'de, D: serde::Deserializer<'de>>(de: D) -> Result<Option<f64>, D::Error> {
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum Raw {
+        Int(i64),
+        Float(f64),
+        Other(serde::de::IgnoredAny),
+    }
+    #[allow(clippy::cast_precision_loss)] // a fee is far below 2^52
+    let fee = match Raw::deserialize(de)? {
+        Raw::Int(n) => Some(n as f64),
+        Raw::Float(f) => Some(f),
+        Raw::Other(_) => None,
+    };
+    Ok(fee.filter(|f| f.is_finite() && *f > 0.0))
 }
 
 /// What `tokenradar statusline install` changed, so `uninstall` can put it back (ADR-009).
