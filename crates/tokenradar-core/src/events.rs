@@ -63,6 +63,9 @@ pub enum CoreEvent {
         account: AccountId,
         calibrations: Vec<CalibrationStatus>,
     },
+    /// A weekly window's "Other" fell more than 10 points below the API's non-Claude-Code
+    /// share: the calibration counts local usage too high (Step 14a, ADR-064). Once per window.
+    CalibrationSuspect { account: AccountId, window_id: i64 },
 }
 
 /// Which parser reported [`CoreEvent::SchemaDrift`].

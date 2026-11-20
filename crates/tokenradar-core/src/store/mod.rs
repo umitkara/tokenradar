@@ -8,6 +8,7 @@
 //! Repository functions take a `&Connection` / `&Transaction`, so tests and the writer thread
 //! share one implementation.
 
+mod attribution;
 mod calibrations;
 mod catalog;
 mod events;
@@ -29,6 +30,7 @@ use std::thread;
 
 use rusqlite::{Connection, OpenFlags};
 
+pub use attribution::{AttributionRun, StoredAttribution};
 pub use events::UpsertStats;
 pub use index::{CompactCounts, IndexBatch, SourceFileState};
 pub use reprice::RepriceStats;
@@ -237,6 +239,35 @@ impl Store {
         self.read(|c| calibrations::latest(c, account))
     }
 
+    /// `usage_5m` cost per session tree, family and bucket with `from <= bucket_ts < to`.
+    pub fn bucket_costs(
+        &self,
+        account: AccountId,
+        from: Timestamp,
+        to: Timestamp,
+    ) -> Result<Vec<crate::attribution::BucketCost>> {
+        self.read(|c| attribution::bucket_costs(c, account, from, to))
+    }
+
+    pub fn earliest_bucket(&self, account: AccountId) -> Result<Option<Timestamp>> {
+        self.read(|c| attribution::earliest_bucket(c, account))
+    }
+
+    /// Non-Claude-Code share of the newest `seven_day_breakdown` of a weekly window.
+    pub fn breakdown_other(&self, account: AccountId, starts_at: Timestamp) -> Result<Option<f64>> {
+        self.read(|c| attribution::breakdown_other(c, account, starts_at))
+    }
+
+    /// Attribution runs of every window of an account.
+    pub fn attribution_runs(&self, account: AccountId) -> Result<Vec<AttributionRun>> {
+        self.read(|c| attribution::runs(c, account))
+    }
+
+    /// A window's stored attribution.
+    pub fn attribution(&self, window_id: i64) -> Result<Option<StoredAttribution>> {
+        self.read(|c| attribution::attribution(c, window_id))
+    }
+
     /// Titles and project names of the given sessions; unknown ids are left out.
     pub fn session_labels(&self, ids: &[SessionId]) -> Result<Vec<SessionLabel>> {
         self.read(|c| windows::session_labels(c, ids))
@@ -412,6 +443,28 @@ impl Writer {
         self.call(move |conn| calibrations::insert(conn, account, &cal))
     }
 
+    /// Adds an estimated window unless one covers `resets_at`; returns whether it was added.
+    pub fn insert_estimated_window(
+        &self,
+        account: AccountId,
+        kind: crate::domain::LimitKind,
+        starts_at: Timestamp,
+        resets_at: Timestamp,
+    ) -> Result<bool> {
+        self.call(move |conn| {
+            attribution::insert_estimated_window(conn, account, &kind, starts_at, resets_at)
+        })
+    }
+
+    /// Replaces a window's attribution.
+    pub fn write_attribution(
+        &self,
+        run: AttributionRun,
+        shares: Vec<crate::attribution::Share>,
+    ) -> Result<()> {
+        self.call(move |conn| attribution::write(conn, &run, &shares))
+    }
+
     pub fn kv_set(&self, key: String, value: String) -> Result<()> {
         self.call(move |conn| kv::set(conn, &key, &value))
     }
@@ -560,6 +613,32 @@ impl ReadOnlyStore {
 
     pub fn table_counts(&self) -> Result<Vec<(String, u64)>> {
         stats::table_counts(&self.conn)
+    }
+
+    pub fn limit_windows(&self, account: AccountId) -> Result<Vec<LimitWindow>> {
+        windows::windows(&self.conn, account)
+    }
+
+    pub fn bucket_costs(
+        &self,
+        account: AccountId,
+        from: Timestamp,
+        to: Timestamp,
+    ) -> Result<Vec<crate::attribution::BucketCost>> {
+        attribution::bucket_costs(&self.conn, account, from, to)
+    }
+
+    pub fn earliest_bucket(&self, account: AccountId) -> Result<Option<Timestamp>> {
+        attribution::earliest_bucket(&self.conn, account)
+    }
+
+    /// Titles and project names of the given sessions; unknown ids are left out.
+    pub fn session_labels(&self, ids: &[SessionId]) -> Result<Vec<SessionLabel>> {
+        windows::session_labels(&self.conn, ids)
+    }
+
+    pub fn breakdown_other(&self, account: AccountId, starts_at: Timestamp) -> Result<Option<f64>> {
+        attribution::breakdown_other(&self.conn, account, starts_at)
     }
 
     pub fn kv_get(&self, key: &str) -> Result<Option<String>> {

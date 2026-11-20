@@ -157,15 +157,23 @@ impl Calibration {
     /// costs whose family weight is known. Usage of a family never seen in an interval makes
     /// the projection uncertain however well the past agrees (Step 13 backtest).
     pub fn confidence_for(&self, costs: &[ModelCost]) -> f64 {
+        self.confidence_for_families(costs.iter().map(|c| (c.family, c.cost)))
+    }
+
+    /// [`Self::confidence_for`] over `(family, cost)` pairs.
+    pub fn confidence_for_families(
+        &self,
+        costs: impl IntoIterator<Item = (ModelFamily, MicroUsd)>,
+    ) -> f64 {
         if self.family().is_some() {
             return self.confidence;
         }
         let (mut all, mut unknown) = (0.0, 0.0);
-        for c in costs {
+        for (family, cost) in costs {
             #[allow(clippy::cast_precision_loss)]
-            let micro = c.cost.0.max(0) as f64;
+            let micro = cost.0.max(0) as f64;
             all += micro;
-            if estimator::needs_own_weight(c.family) && !self.fitted.contains(&c.family) {
+            if estimator::needs_own_weight(family) && !self.fitted.contains(&family) {
                 unknown += micro;
             }
         }
@@ -281,7 +289,7 @@ fn calibrated(kind: &LimitKind, scope: Option<&Scope>) -> bool {
     }
 }
 
-fn scope_family(scope: Option<&Scope>) -> Option<ModelFamily> {
+pub(crate) fn scope_family(scope: Option<&Scope>) -> Option<ModelFamily> {
     match scope? {
         Scope::Model(name) => match name.to_ascii_lowercase().parse::<ModelFamily>() {
             Ok(ModelFamily::Synthetic | ModelFamily::Unknown) | Err(_) => None,

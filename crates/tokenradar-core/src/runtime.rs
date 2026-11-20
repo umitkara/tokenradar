@@ -37,6 +37,7 @@ use specta::Type;
 
 use tokenradar_i18n::Locale;
 
+use crate::attribution;
 use crate::calibration::{self, Calibration, CalibrationStatus};
 use crate::clock::{LocalClock, SystemClock};
 use crate::domain::{AccountId, AccountSpec, LimitObservation, Provider, Timestamp};
@@ -74,6 +75,9 @@ pub const LIVENESS_INTERVAL: Duration = Duration::from_secs(15);
 
 /// The panel snapshot is rebuilt at most this often; statusline calls can arrive every second.
 pub const LIMITS_REBUILD_GAP: Duration = Duration::from_secs(2);
+/// Attribution of the open window is redone at most this often, and only after new data.
+const ATTRIBUTION_GAP: Duration =
+    Duration::from_millis(attribution::LIVE_REFRESH_MS.unsigned_abs());
 /// A repeated statusline payload (live refresh of an idle session, Step 12r) rebuilds the
 /// snapshot at most this often, so "last seen" keeps moving without a rebuild per tick.
 pub const REPEAT_REBUILD_GAP: Duration = Duration::from_mins(1);
@@ -1276,6 +1280,36 @@ impl LimitsCtx {
         next
     }
 
+    /// Brings attributions up to date (Step 14a, ADR-064) with the stored calibrations, whose
+    /// versions the rows carry. `estimate` also adds the estimated weekly windows. Returns
+    /// whether due windows were left for another call.
+    fn refresh_attribution(&mut self, now: Timestamp, new_data: bool, estimate: bool) -> bool {
+        let mut more = false;
+        let accounts: Vec<AccountId> = self.account_dirs.iter().map(|a| a.0).collect();
+        for account in accounts {
+            if estimate && let Err(error) = attribution::fill_estimated(&self.store, account) {
+                tracing::warn!(%error, "could not add estimated windows");
+            }
+            let cals = self
+                .calibration
+                .stored
+                .get(&account)
+                .cloned()
+                .unwrap_or_default();
+            match attribution::refresh(&self.store, account, &cals, now, new_data) {
+                Ok(done) => {
+                    more |= done.more;
+                    for window_id in done.newly_suspect {
+                        self.bus
+                            .publish(CoreEvent::CalibrationSuspect { account, window_id });
+                    }
+                }
+                Err(error) => tracing::warn!(%error, "attribution failed"),
+            }
+        }
+        more
+    }
+
     fn publish_calibration_status(&self, now: Timestamp) {
         let all = self
             .account_dirs
@@ -1454,16 +1488,26 @@ fn limits_loop(mut ctx: LimitsCtx, rx: &mpsc::Receiver<LimitsMsg>, calibration_d
     let mut next_build = Instant::now();
     let mut next_spool = Instant::now();
     let mut next_calibration = Instant::now() + calibration_delay;
+    // Attribution waits for new data and runs at most every `LIVE_REFRESH_MS`: no idle wake-ups.
+    let mut attribution_due = false;
+    let mut next_attribution = Instant::now() + calibration_delay;
     ctx.load_calibrations(Timestamp::now());
     loop {
         let now = Timestamp::now();
         if ctx.spool_dir.is_some() && Instant::now() >= next_spool {
-            dirty |= ctx.import_spool(now);
+            let imported = ctx.import_spool(now);
+            dirty |= imported;
+            attribution_due |= imported;
             next_spool = Instant::now() + spool::IMPORT_INTERVAL;
         }
         if Instant::now() >= next_calibration {
             dirty |= ctx.recalibrate(now);
             next_calibration = Instant::now() + calibration::RECOMPUTE_INTERVAL;
+            attribution_due = ctx.refresh_attribution(now, true, true);
+            next_attribution = Instant::now() + ATTRIBUTION_GAP;
+        } else if attribution_due && Instant::now() >= next_attribution {
+            attribution_due = ctx.refresh_attribution(now, true, false);
+            next_attribution = Instant::now() + ATTRIBUTION_GAP;
         }
         let resets = ctx.engine.tick(now);
         dirty |= ctx.publish_all(resets);
@@ -1496,6 +1540,10 @@ fn limits_loop(mut ctx: LimitsCtx, rx: &mpsc::Receiver<LimitsMsg>, calibration_d
         }
         let until_calibration = next_calibration.saturating_duration_since(Instant::now());
         wait = Some(wait.map_or(until_calibration, |w| w.min(until_calibration)));
+        if attribution_due {
+            let until = next_attribution.saturating_duration_since(Instant::now());
+            wait = Some(wait.map_or(until, |w| w.min(until)));
+        }
         let msg = match wait {
             Some(wait) => match rx.recv_timeout(wait) {
                 Ok(msg) => Some(msg),
@@ -1507,6 +1555,15 @@ fn limits_loop(mut ctx: LimitsCtx, rx: &mpsc::Receiver<LimitsMsg>, calibration_d
                 Err(_) => return,
             },
         };
+        attribution_due |= matches!(
+            msg,
+            Some(
+                LimitsMsg::Observe(_)
+                    | LimitsMsg::Statusline(_)
+                    | LimitsMsg::Poll(_)
+                    | LimitsMsg::Indexed
+            )
+        );
         // A timeout means time itself changed something (freshness, reset).
         match msg {
             None => dirty = true,

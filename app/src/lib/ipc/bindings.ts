@@ -372,6 +372,14 @@ export type CoreEvent =
 { type: "calibration_updated"; data: {
 	account: AccountId,
 	calibrations: CalibrationStatus[],
+} } | 
+/**
+ *  A weekly window's "Other" fell more than 10 points below the API's non-Claude-Code
+ *  share: the calibration counts local usage too high (Step 14a, ADR-064). Once per window.
+ */
+{ type: "calibration_suspect"; data: {
+	account: AccountId,
+	window_id: number,
 } };
 
 /**  A core event, forwarded to the windows that are visible. */
