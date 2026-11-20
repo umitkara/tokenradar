@@ -1386,3 +1386,46 @@
   - Haftalıkta da 60 dakika (ADR-062): uyarı fiilen eşik uyarılarından sonra gelir.
   - Kalan pencere süresinin oranı: pencere sonuna yaklaştıkça ufuk kısalır; kullanıcı sabit bir gün istedi.
   - Haftalık erken uyarıyı Adım 17'nin örüntü verisine bırakmak: o zamana kadar yalnızca mod'un tempo uyarısı (ADR-044) erken uyarır.
+
+### ADR-064 — Atıf 24 saatlik dilimlerde yapılır; "Diğer" yalnızca güvenilir kalibrasyonla, çapraz doğrulama tek yönlü
+
+**Durum:** Önerildi (2026-11-20, Adım 14a). "(kullanıcı kararı)" işaretli maddeler 2026-11-20'de kullanıcıyla kararlaştırıldı. "Uygulama ayrıntıları" kullanıcı onayı bekliyor. Mimari §9.3'teki "aralık bazlı" v0.2 formülünün ve iki yönlü çapraz doğrulamanın yerini alır.
+
+- **Bağlam:**
+  - Plan "Diğer"i her kenar aralığında `yerel = min(Δp, k·ΔC)` ile hesaplıyordu. Gerçek verinin kopyasında aralık başına oranın gürültüsü (yuvarlama, MAD ≈ %4) bu `min` yüzünden tek yönlü olarak "Diğer"e akıyor. `seven_day_breakdown`'a göre dış kullanımın ≈ %0–1 olduğu bir haftada "Diğer" aralık başına %4,3, 24 sa dilimde %0,9 çıkıyor. Fable kapsamlı limitte (API, güven 0,29) aralık başına %13–19 çıkıyor (`examples/attr_probe.rs`).
+  - Hesapta 5 saatlik pencere yok (ADR-041). 5 saatlik pencerenin başlangıç hizalama kuralı veriyle doğrulanamıyor.
+  - `seven_day_breakdown` kullanımı makineye göre değil ürüne göre ayırır: başka bir bilgisayardaki Claude Code orada `claude_code` sayılır (bir yan ajanın notu).
+  - **Yuvarlama ofseti (bu adımın bulgusu):** Her pencerede ilk kenarlar, pencere başından itibaren birikimli `k·Σα·C` ≈ 0,5, 1,5, 2,5 … iken geliyor. Bu hem API serisinde hem `weekly_all`'ın statusline serisinde böyle. İç parçaların oranı ≈ 1,0, baş parçasınınki 1,1–1,2. Kalibrasyon farklarla çalıştığı için bundan etkilenmiyor. Nedeni belirsiz: ya statusline da en yakına yuvarlıyor, ya pencere başında ≈ 0,5 puanlık bir ofset var. ADR-060'ın ikili karşılaştırması (`S1 − S2 ∈ {0, −1}`) aşağı yuvarlamaya uyduğu için iki gözlem ancak bir ofsetle birlikte açıklanabiliyor. ADR-060 bu adımda değişmedi.
+- **Karar:**
+  - **Parçalar 24 saatlik dilimlerden (kullanıcı kararı).** Pencerenin kaynağı, o pencerede keskin kenarı (≤ 45 dk belirsizlik) çok olan kaynaktır; eşitlikte son kenarı yeni olan seçilir. Kenarlar pencere başlangıcına hizalı 24 sa dilimlere gruplanır. Parça, bir dilimin son kenarından kenarı olan sonraki dilimin son kenarına uzanır. Baş parçası pencere başlangıcından (%0) başlar. 5 saatlik pencerede dilim pencerenin kendisidir.
+  - **Kalibre bölüşüm (kullanıcı kararı):** Kalibrasyonun bu penceredeki güveni (`confidence_for`, öğrenilmemiş aile payı kadar düşer) en az orta ise her parçada `yerel = min(Δp, k·Σα·ΔC)` hesaplanır. Yerel pay oturum ağaçlarına (`COALESCE(root_id, id)`) α ağırlıklı maliyetle bölünür, kalan "Diğer"e gider. Yerel maliyeti olmayan parçanın tamamı "Diğer"dir.
+  - **Düşük güvende orantılı (kullanıcı kararı):** Güven ortanın altındaysa ya da kalibrasyon yoksa pencerenin yüzdesi pencere boyunca maliyet oranıyla dağıtılır (v0.1). "Diğer" hesaplanmaz; yalnızca hiç yerel maliyet yoksa yüzdenin tamamı "Diğer" olur. Görünüm `≈` ve silik gösterir.
+  - **Korunum:** Σ oturum payı + Diğer = `peak_percent` (gösterilen birleşik değer, ADR-060). Testte tolerans 0,01 puan; özellik testi ve gerçek verinin kopyasında fark < 10⁻⁴.
+  - **Tahmini geçmiş pencereler yalnızca `weekly_all` (kullanıcı kararı).** Bilinen haftalık pencerelerin reset zamanı 7'şer gün geriye taşınır (kullanım başlangıcına kadar), bilinen pencereler arasındaki boşluklar da doldurulur (`estimated = 1`). Kalibrasyon kullanılabilirse yüzde `k·Σα·C`, `peak_percent` bu tahmindir ve "Diğer" yoktur. Kullanılamazsa yalnızca maliyet gösterilir. Kapsamlı limitin snapshot'tan önce var olup olmadığı bilinmediği için türetilmez. 5 saatlik türetme yapılmaz, kod yolu da yoktur.
+  - **Çapraz doğrulama tek yönlü (kullanıcı kararı):** Yalnızca `weekly_all`'da ve kalibre yöntemle yapılır. Pencerenin son `seven_day_breakdown`'ı alınır (başlangıç ±5 dk). `Diğer/toplam < Σ claude_code dışı − 10 puan` ise `suspect`. Bu, kalibrasyonun yerel kullanımı fazla saydığını gösterir ve makine sayısından bağımsızdır. `Diğer/toplam > Σ claude_code dışı + 10 puan` yalnızca `other_excess` bilgisidir (başka makine ya da kalibrasyon), uyarı üretmez.
+  - **Maliyet kaynağı `usage_5m` (kullanıcı kararı).** Ham olaylar 90 günde silinir, rollup silinmez. Kova, başlangıcı parçanın son kenarından önceyse o parçaya sayılır. Subagent kırılımı için tablo tutulmaz.
+  - **Şema v3 (kullanıcı kararı, `0003_attribution.sql`):** Hiç yazılmamış `attributions` yeniden kuruldu (`est_percent` NULL olabilir, `ON DELETE CASCADE`, "Diğer" = `root_session_id` NULL). Yeni `attribution_runs` tablosu pencere başına kalibrasyon sürümünü (0 = yok), yöntemi, güveni, toplamı, "Diğer"i, kırılım değerini, `suspect`, `other_excess`, `closed` ve `computed_at` alanlarını tutar. v3 veritabanını v2 build'ler açamaz.
+  - **Zamanlama (kullanıcı kararı):** Boşta uyanma eklenmez. Limit thread'i kalibrasyon turunda (açılıştan 30 s sonra, sonra 15 dk'da bir) tahmini pencereleri ekler ve atıfları günceller. Yeni snapshot ya da kullanım (`Observe`, `Statusline`, `Poll`, `Indexed`, spool) geldiğinde en fazla 60 sn'de bir yeniden günceller. Atıfı olmayan pencere hesaplanır. Kapanan pencere bir kez sonlandırılır (`closed = 1`). Açık pencere yalnızca yeni veriyle güncellenir. Kalibrasyon sürümü değişince kapanmış pencereler yalnızca görüntülenince (`attribution::ensure`) yeniden hesaplanır.
+  - **Uygulama ayrıntıları (kullanıcı onayı bekliyor):**
+    - **Kuyruk son parçaya katılır.** Son kenardan sonraki bölüm (`peak − son kenar` ve maliyeti) son parçanın parçasıdır. Tek başına bırakılınca diğer kaynağın yuvarlaması (ADR-060) `min` ile "Diğer"e akıyordu: açık haftada %6,8 → %5,1.
+    - **Baş parçasından 0,5 puan düşülür** (`ROUNDING_OFFSET`, yukarıdaki bulgu). Bu yarım puan kullanım değil yuvarlama sayılır ve oturum paylarına orantılı eklenir; korunum gösterilen değere göre kalır. Gerçek veride "Diğer/toplam" %7,1 / %2,3 / %5,1'den %6,1 / %1,3 / %2,5'e indi; kırılım ≈ %1–4 / %0–1 / %0–3.
+    - Bir `refresh` en fazla 64 pencere hesaplar (`MAX_PER_REFRESH`), en yeni pencereden başlar; kalan varsa 60 sn sonra devam eder. Uzun bir geçmişte ilk çalışma limit thread'ini bekletmez.
+    - `CoreEvent::CalibrationSuspect { account, window_id }` pencere başına bir kez yayınlanır; UI'da gösterimi 14b/15'te.
+    - Tahmini pencerede `hit_limit` sütunu 0 kalır (tablo yeniden kurulmaz); görünüm modeli bunu "bilinmiyor" verecek (14b).
+- **Sonuç** (gerçek verinin salt okunur kopyası; yalnızca yüzde, `docs/perf/2026-11-20-attribution.md`):
+  - Kapanmış 4 ve açık 2 pencerenin hepsinde korunum tam. "Diğer"in kırılımdan farkı ≤ 5,1 puan; uyarı yok.
+  - Sentetik simülatörde (8 tohum × dış pay %0/5/15/30, 5 dk'lık en yakına yuvarlanmış okumalar, %4 gürültü) "Diğer" dış payı ±2 puan içinde yakalıyor.
+  - Pencere başına hesap ≤ 4,4 ms, ilk dolum (12 pencere) 38 ms, değişiklik yokken tur 0,1 ms.
+- **Bedel:**
+  - "Diğer" en fazla bir günlük çözünürlükte bilinir. Bir gün içindeki kısa dış kullanım, aynı günün yerel gürültüsüyle karışır.
+  - Yuvarlama ofseti deneysel bir sabittir. Kaynak ya da Anthropic'in hesaplaması değişirse baş parçası yeniden kayar; `attr_inspect --trace` bunu gösterir.
+  - Orantılı yöntem (kapsamlı limitte bugün geçerli olan) dış kullanımı oturumlara yükler.
+  - Tahmini haftaların yüzdesi bugünkü `k` ile hesaplanır; aylar önceki bir kalibrasyon sapması görünmez.
+  - Kalibrasyon sürümü değişince kapanmış pencerelerin listelerdeki payları, pencereler görüntülenene kadar eski sürümle kalır.
+- **Alternatifler:**
+  - Aralık başına (plan): sistematik +3–4 puan (kapsamlı limitte +10–15).
+  - 6 saatlik dilim: aralığa göre iyi ama 24 saatten belirgin kötü (%1,7 vs %0,9).
+  - Pencere bütünü: en az gürültü, ama "Diğer"in ne zaman oluştuğu kaybolur ve oturum payları düz orantıya iner.
+  - İki yönlü çapraz doğrulama (plan): başka makinede Claude Code kullanan herkeste sahte uyarı.
+  - Ham olay kaynağı: kenar zamanı tam isabetli, ama 90 günden eski pencereler yeniden hesaplanamaz.
+  - Ofseti "Diğer"e bırakmak: her pencerede ≈ 0,5 puan sahte dış kullanım.

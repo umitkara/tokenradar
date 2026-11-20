@@ -136,7 +136,7 @@ Sürümler uygulama anında güncel stable olarak seçilir ve lock dosyalarıyla
 
 **UI'da hesaplama yapılmaz.** Tauri komutları önceden agregasyonu yapılmış görünüm modelleri döner (`get_panel_snapshot`, `get_panel_detail`, `get_overview(range)`, `list_sessions(filter, page)` …). Frontend yalnızca çizer.
 
-## 6. Veri modeli (SQLite şeması v2)
+## 6. Veri modeli (SQLite şeması v3)
 
 Tüm zamanlar **UTC epoch milisaniye** (`INTEGER`) olarak saklanır. Para birimi **mikro-USD** (`INTEGER`) olarak tutulur.
 
@@ -226,9 +226,21 @@ CREATE TABLE calibrations (id INTEGER PRIMARY KEY, account_id INTEGER, limit_kin
   k REAL NOT NULL, alpha_json TEXT, confidence REAL NOT NULL, n_obs INTEGER NOT NULL,
   version INTEGER NOT NULL, computed_at INTEGER NOT NULL);
 
-CREATE TABLE attributions (window_id INTEGER, root_session_id INTEGER,   -- NULL = "Diğer"
-  est_percent REAL NOT NULL, cost_micro_usd INTEGER NOT NULL, calibration_version INTEGER NOT NULL,
-  PRIMARY KEY (window_id, root_session_id));
+CREATE TABLE attributions (                                 -- v3 (0003_attribution.sql, ADR-064)
+  window_id INTEGER NOT NULL REFERENCES limit_windows (id) ON DELETE CASCADE,
+  root_session_id INTEGER REFERENCES sessions (id),         -- NULL = "Diğer"
+  est_percent REAL,                                         -- NULL = yalnızca maliyet
+  cost_micro_usd INTEGER NOT NULL);
+CREATE UNIQUE INDEX ux_attributions ON attributions (window_id, IFNULL(root_session_id, 0));
+
+CREATE TABLE attribution_runs (                             -- v3: pencere başına son atıf
+  window_id INTEGER PRIMARY KEY REFERENCES limit_windows (id) ON DELETE CASCADE,
+  calibration_version INTEGER NOT NULL,                     -- 0 = kalibrasyon yok
+  method TEXT NOT NULL,                                     -- calibrated | proportional | estimated | cost_only
+  confidence REAL, total_percent REAL, other_percent REAL,
+  breakdown_other REAL,                                     -- seven_day_breakdown, claude_code dışı
+  suspect INTEGER NOT NULL DEFAULT 0, other_excess INTEGER NOT NULL DEFAULT 0,
+  closed INTEGER NOT NULL DEFAULT 0, computed_at INTEGER NOT NULL);
 
 CREATE TABLE notification_log (id INTEGER PRIMARY KEY, rule TEXT, dedupe_key TEXT UNIQUE, fired_at INTEGER);
 CREATE TABLE kv (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -295,7 +307,7 @@ struct LimitObservation {
 
 - **5 saatlik pencere:** Kimlik `(account, session, resets_at)` olarak tanımlanır. `starts_at = resets_at − 5h`. Farklı bir `resets_at` değeri taşıyan snapshot yeni bir pencere demektir. `peak_percent` gözlemlenen en yüksek değerdir. `hit_limit` değeri, `percent ≥ 100` gözlemlendiğinde veya API severity bunu gösterdiğinde set edilir.
 - **Haftalık döngü:** `weekly_all` ve `weekly_scoped` için `starts_at = resets_at − 7d` (gözlemde reset zamanı hesap bazında sabit, örneğin Çarşamba 07:59:59 UTC).
-- **Tahmini pencereler** (snapshot kaydının başlamasından önceki geçmiş için): Loglardan türetilir. Pencere, bir önceki pencere bittikten sonraki ilk olayla başlar ve 5 saat sürer. Başlangıç zamanının tam hizalama kuralı (dakikaya yuvarlama vb.) Adım 14'te gerçek snapshot'larla karşılaştırılarak belirlenir. Bu pencereler `estimated = 1` olarak işaretlenir.
+- **Tahmini pencereler (Adım 14a, ADR-064):** Yalnızca `weekly_all` için türetilir. Bilinen haftalık pencerelerin reset zamanı 7'şer gün geriye, kullanımın başladığı haftaya kadar taşınır. Bilinen pencereler arasındaki boşluklar da doldurulur. Bu pencereler `estimated = 1` olarak işaretlenir. `peak_percent` değerleri kalibrasyondan gelen `k·Σα·C` tahminidir ve görünümde `≈` ile gösterilir. `hit_limit` bilinmez. Kapsamlı limit ve 5 saatlik pencere türetilmez: 5 saatlik pencerenin hizalama kuralı veriyle doğrulanamadı (hesapta 5 saatlik pencere yok, ADR-041).
 
 ## 9. Ağırlıklı token, kalibrasyon ve atıf
 
@@ -345,13 +357,13 @@ C = speed_mult(m) × [ p_in(m) × (input + 1.25·cache_w5m + 2.0·cache_w1h + r(
 ### 9.3 Atıf
 
 - **v0.1 (basit, kalibrasyonsuz):** Bir oturumun mevcut penceredeki payı = `p_now × C_oturum / C_pencere_toplam`. Bu, tüm tüketimin yerel olduğu varsayımına dayanan "orantılı dağıtım"dır ve UI'da "≈" işaretiyle gösterilir.
-- **v0.2 (aralık bazlı):** `Δp > 0` olan her aralık için:
-  - `yerel = min(Δp, k·ΔC_yerel)`
-  - Oturum s'nin payı: `yerel × ΔC_s / ΔC_yerel`
-  - Kalan `Δp − yerel` değeri **"Diğer"** kovasına gider.
-  - Pencere ve hafta toplamları bu paylardan oluşur. Subagent maliyeti `root_id` üzerinden ana oturuma eklenir.
-- **Çapraz doğrulama:** Haftalık "Diğer" payı, S2'deki `seven_day_breakdown` içindeki `claude_code` dışı satırlarla karşılaştırılır. Fark > 10 puan ise kalibrasyon şüpheli kabul edilir.
-- Atıflar `calibration_version` ile saklanır. Yeni kalibrasyon sürümü geldiğinde yeniden hesaplama tembel (lazy) yapılır: yalnızca görüntülenen pencereler hesaplanır.
+- **v0.2 (24 saatlik dilimler, Adım 14a, ADR-064):** Kalibrasyonun penceredeki güveni en az orta ise kullanılır, değilse v0.1 geçerlidir ve "Diğer" hesaplanmaz.
+  - Kenarlar, pencerede keskin kenarı çok olan kaynaktan gelir (≤ 45 dk belirsizlik). Pencere başlangıcına hizalı 24 sa dilimlere gruplanırlar. Her parça bir dilimin son kenarında biter. Son kenardan sonraki bölüm son parçaya katılır.
+  - Her parçada `yerel = min(Δp, k·Σα·ΔC_yerel)` hesaplanır. Oturum s'nin payı `yerel × α·ΔC_s / Σα·ΔC_yerel` olur, kalan `Δp − yerel` **"Diğer"** kovasına gider. Aralık başına hesap, yuvarlama gürültüsünün pozitif yarısını "Diğer"e topladığı için kullanılmaz.
+  - Baş parçasından 0,5 puan düşülür (yuvarlama ofseti) ve oturum paylarına orantılı eklenir.
+  - Σ paylar + Diğer = `peak_percent`. Maliyet `usage_5m`'den gelir. Subagent maliyeti `COALESCE(root_id, id)` üzerinden ana oturuma eklenir.
+- **Çapraz doğrulama (tek yönlü):** Yalnızca `weekly_all` ve kalibre yöntemde yapılır. `Diğer/toplam`, pencerenin son `seven_day_breakdown` değerindeki `claude_code` dışı satırların toplamıyla karşılaştırılır. Fark 10 puandan fazla aşağıdaysa `suspect` set edilir ve `CoreEvent::CalibrationSuspect` yayınlanır. 10 puandan fazla yukarıdaysa yalnızca `other_excess` set edilir: başka bir bilgisayardaki Claude Code da `claude_code` sayılır.
+- **Zamanlama:** Limit thread'i kalibrasyon turunda tahmini pencereleri ekler ve eksik ya da kapanmış atıfları yazar. Yeni veri geldiğinde açık pencereyi en fazla 60 sn'de bir günceller; boşta uyanmaz. Atıflar `attribution_runs.calibration_version` ile saklanır. Kalibrasyon sürümü değişince yeniden hesap tembeldir: `attribution::ensure` yalnızca görüntülenen pencereyi hesaplar.
 
 ## 10. Polling politikası
 

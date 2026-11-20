@@ -147,4 +147,60 @@ cargo bench -p tokenradar-core --bench queries
 
 ## Devir notu
 
-_(Oturum sonunda doldurulur: yapılanlar · sapmalar · açık konular · sonraki adıma notlar)_
+### 14a (2026-11-20)
+
+**Yapılanlar**
+- `attribution` modülü (`crates/tokenradar-core/src/attribution/`):
+  - Saf algoritma: `segments`, `attribute`, `cross_check` ve dört yöntem (kalibre, orantılı, tahmini, yalnızca maliyet).
+  - `refresh.rs`: `compute`, `refresh` (en yeni pencereden başlar, turda en fazla 64 pencere), `ensure`, `estimated_weekly_windows`, `fill_estimated`, `window_edges`.
+- Şema v3 (`0003_attribution.sql`): `attributions` yeniden kuruldu, yeni tablo `attribution_runs`. Store okuma ve yazma işlevleri `store/attribution.rs`'te, `ReadOnlyStore`'a da eklendi.
+- Runtime:
+  - `limits_loop` kalibrasyon turunda tahmini pencereleri ekler ve atıfları günceller.
+  - Yeni veri gelince en fazla 60 sn'de bir yeniden günceller; boşta uyanmaz.
+  - Kalan pencere varsa 60 sn sonra devam eder.
+  - `CoreEvent::CalibrationSuspect { account, window_id }` eklendi, bindings yenilendi.
+- `Calibration::confidence_for_families` eklendi, `scope_family` artık `pub(crate)`.
+- Örnekler: `attr_inspect` (gerçek veri incelemesi, `--names` ve `--trace`) ve `attr_probe` (toplama düzeyi karşılaştırması).
+- 16 yeni test:
+  - Korunum özellik testi.
+  - Dış kullanım simülatörü (±2 puan).
+  - Ağırlıklı bölüşüm, güven ve kapsam filtresi.
+  - Çapraz doğrulamanın yönü.
+  - Store yaşam döngüsü (doldurma, sonlandırma, 60 sn kapısı, `ensure` ile sürüm değişimi).
+  - Subagent'ın ana oturuma sayılması.
+- Belgeler: ADR-064, `architecture.md` §6 (şema v3), §8 (tahmini pencereler) ve §9.3, `docs/perf/2026-11-20-attribution.md`.
+
+**Gerçek veri incelemesi** (kopya, yalnızca yüzde):
+- Kapanmış 4 ve açık 2 pencerenin hepsinde korunum tam (< 10⁻⁴ puan).
+- `weekly_all` "Diğer/toplam" %6,1 / %1,3 / %2,5, kırılım %1,0 / %1,0 / %0,0. İşaret yok.
+- Fable kapsamlı limitte güven 0,28, bu yüzden orantılı dağıtım ve `≈` geçerli.
+- 6 tahmini hafta eklendi.
+
+**Sapmalar** (ADR-064):
+- Aralık başına formül yerine 24 sa dilim.
+- Çapraz doğrulama tek yönlü (`other_excess` yalnızca bilgi).
+- Tahmini pencereler yalnızca `weekly_all`.
+- Düşük güvende "Diğer" yok.
+- Doğrulama listesindeki `queries` testleri, `gen_synthetic` ve bench 14b'ye kaldı.
+
+**Kullanıcı onayı bekleyenler** (ADR-064 "Uygulama ayrıntıları"):
+- Kuyruğun son parçaya katılması.
+- Baş parçasından 0,5 puanlık yuvarlama ofseti.
+- Turda 64 pencere sınırı.
+- `CalibrationSuspect` olayı.
+
+**Açık konular**
+- **Yuvarlama ve ADR-060:** İlk kenarlar statusline'da da birikimli ≈ n − 0,5'te geliyor, yani en yakına yuvarlama gibi davranıyor. ADR-060 "statusline aşağı yuvarlar" diyor. İki gözlem ancak pencere başında ≈ 0,5 puanlık bir ofsetle uzlaşıyor. Füzyon kuralının yeniden incelenmesi ayrı bir adım olmalı.
+- Yalnızca 2 kapanmış haftalık pencere var. Birkaç hafta sonra `attr_inspect` yeniden çalıştırılmalı; "Diğer" ile kırılım farkı ve ofset izlenmeli.
+- `α_sonnet` hâlâ öğrenilmedi. Sonnet ağırlıklı bir haftada güven düşer ve dağıtım orantılıya iner.
+- Kalibrasyon sürümü değişince kapanmış pencereler yalnızca `ensure` ile yeniden hesaplanır. 14b'deki liste sorguları bunu hesaba katmalı: listede eski sürüm görünebilir ya da liste de `ensure` çağırmalı.
+
+**14b'ye notlar**
+- Sorgu API'leri `attribution::ensure` üzerinden okumalı.
+- Görünüm modelleri:
+  - `method != calibrated` ise `≈` ve silik gösterim.
+  - Tahmini pencerede `hit_limit` "bilinmiyor".
+  - `suspect` için bir ipucu.
+  - `other_excess` için tooltip bilgisi.
+- `CalibrationSuspect` olayı `core_bridge.rs`'te yalnızca "other" olarak loglanıyor, UI'da gösterimi yok.
+- Sentetik üretici atıf tablolarını doldurmak için `fill_estimated` ve `refresh`'i doğrudan çağırabilir.
