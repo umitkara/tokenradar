@@ -119,7 +119,7 @@ pnpm dev   # Oturumlar → filtre → detay → proje → geri
 
 ## Devir notu
 
-### 16a (2026-11-20, ADR-068 — Önerildi)
+### 16a (2026-11-20, ADR-068)
 
 **Yapılanlar:**
 - **Çekirdek, şema v4** (`0004_session_attrs.sql`):
@@ -173,7 +173,9 @@ pnpm dev   # Oturumlar → filtre → detay → proje → geri
 - Proje seçici aranabilir combobox değil, yerel `<select>` (ilk harflerle arama).
 - Kabul kriterlerinden "filtre yanıtı ≤ 150 ms (gerçek veri)" ve "etki tablosu Adım 14 atıflarıyla tutarlı (5 oturum)" 16b'nin gerçek veri koşusunda denetlenecek. Etki tablosu aynı saklanan atıfı okuyor (`get_session`), ayrı bir hesap yapmıyor.
 
-**Açık konular (kullanıcı onayı bekleyen öneriler, ADR-068):**
+**Karar (oturum sonunda, 2026-11-21):** Aşağıdaki öneriler kullanıcı tarafından onaylandı; ADR-068 kabul edildi.
+
+**Onaylanan öneriler (ADR-068):**
 - Aileye bağlı dört renk ve canvas grafik.
 - Filtrelerin URL biçimi; aramanın geçmişe kayıt eklemeden parçayı değiştirmesi.
 - Yerel proje seçici.

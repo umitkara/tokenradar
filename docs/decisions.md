@@ -1565,7 +1565,7 @@
 
 ### ADR-068 — Oturumlar: şema v4 öznitelikleri, veritabanı beyaz listeli klasör açma, aileye bağlı maliyet renkleri
 
-**Durum:** Önerildi (2026-11-20, Adım 16a). "(kullanıcı kararı)" işaretli maddeler adım başında kullanıcıyla kararlaştırıldı. Diğer maddeler benim önerimdir ve kullanıcı onayını bekler.
+**Durum:** Kabul edildi (2026-11-21, Adım 16a). "(kullanıcı kararı)" işaretli maddeler adım başında kullanıcıyla kararlaştırıldı. Diğer maddeler (aile renkleri ve canvas grafik, filtrelerin URL biçimi, yerel proje seçici, 10 sn canlı yenileme kısması ve kalanlar) adım sonunda kullanıcı tarafından onaylandı.
 
 - **Bağlam:**
   - Plan, oturum ayrıntısında efor, hızlı mod ve farklı `cwd` değerlerini istiyor. Çekirdekte bunların hiçbiri saklanmıyordu.
