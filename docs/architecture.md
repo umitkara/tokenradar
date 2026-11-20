@@ -39,13 +39,13 @@
 | Binary | Alt sistem | Görev |
 |---|---|---|
 | `tokenradar-app.exe` | Windows GUI | Tray, çekirdek, IPC sunucusu ve pencereleri barındırır. Ürün adı ve kısayollar "TokenRadar" olarak görünür. |
-| `tokenradar.exe` | Console | CLI: `statusline`, `status`, `limits`, `sessions`, `doctor`, `statusline install/uninstall`. ~1-2 MB, soğuk başlatma < 15 ms. |
+| `tokenradar.exe` | Console | CLI: `statusline`, `status`, `limits`, `sessions`, `open`, `doctor`, `statusline install/uninstall`. ~1-2 MB, soğuk başlatma < 15 ms. |
 
 > **Neden iki ayrı ad?** Windows dosya sistemi büyük-küçük harfe duyarsız. `TokenRadar.exe` ile `tokenradar.exe` aynı dizinde
 > bulunamaz. Kullanıcının terminale yazacağı kısa ad (`tokenradar`) CLI'a verildi. Installer yalnızca CLI'ı içeren
 > `bin\` dizinini kullanıcı PATH'ine ekler.
 
-**Tek örnek (single instance):** `tauri-plugin-single-instance` kullanılır. İkinci bir başlatma yeni süreç açmak yerine paneli açar.
+**Tek örnek (single instance):** `tauri-plugin-single-instance` kullanılır. İkinci bir başlatma yeni süreç açmak yerine paneli açar. Argümanlarda bir `tokenradar://` bağlantısı varsa onu açar (Adım 15a): `tokenradar://panel` paneli, `tokenradar://main[/<sayfa>]` ana pencereyi. Bağlantı modeli `tokenradar_core::deeplink`'tedir; aynı ayrıştırma ilk başlatmada ve toast tıklamasında da kullanılır.
 
 **Başlangıç sırası:**
 1. Tray ikonu, son bilinen durumla 300 ms içinde görünür (SQLite'tan okunur).
@@ -58,6 +58,13 @@
 - Pencereler gizlendikten sonra `warm_ttl` süresi boyunca sıcak tutulur. Süre panel için 60 s, ana pencere için 30 s, ayarlar için 0 s. Süre dolunca webview **yok edilir**.
 - Sık açılıp kapanan panel bu sayede anında açılır. Belleğin geri verilmesi ise birkaç saniye gecikir.
 - Son webview yok edildiğinde WebView2 tarayıcı süreçlerinin de sonlanması beklenir. **Bu varsayım Adım 02'de ölçülerek doğrulanır.** Doğrulanamazsa ADR-004'te tanımlanan yedek plana (UI'yı ayrı bir sürece bölmek) geçilir.
+
+**Ana pencere (`main`, Adım 15a, `main_window.rs`):**
+- Üç giriş noktası: tray menüsü ("TokenRadar'ı aç"), paneldeki başlık düğmesi ve `tokenradar open [sayfa]`.
+- Gizli oluşturulur; sayfa ilk kez boyandığında `main_ready` komutu pencereyi gösterir. Komut 1,5 sn içinde gelmezse pencere yine gösterilir.
+- Kapatma isteği pencereyi gizler; `warm_ttl` 30 sn dolunca webview yok edilir.
+- Konum ve boyut `kv.main_window_geometry`'de tutulur: dış konum fiziksel, iç boyut mantıksal piksel, büyütülmüşse son normal dikdörtgen saklanır. Başlık şeridi hiçbir ekranın çalışma alanına en az 120×24 px düşmüyorsa kayıtlı konum yok sayılır ve pencere ortalanır.
+- Sayfalar URL parçasıyla (`#sessions/…`) seçilir. Sayfa modülleri tembel `import()` ile gelir. Pencere açıkken gelen bir rota isteği `main-route-requested` olayıyla iletilir.
 
 **Pencereler:** `panel` (tray popover), `main` (analitik, v0.2), `settings`, `onboarding`. Vite **çok sayfalı** derlenir; her pencere yalnızca kendi bundle'ını yükler. `widget` bir WebView penceresi değildir: kendi thread'inde çalışan, `tiny-skia` ve DirectWrite ile çizilen native bir layered window'dur (`app/src-tauri/src/widget/`, ADR-058). Yalnızca kullanıcı açınca vardır.
 
@@ -412,6 +419,7 @@ S2 yalnızca **açık onay** varsa kullanılır.
   - `tokenradar status [--json]`, `limits`, `sessions`: Uygulama çalışmıyorsa SQLite'tan salt-okunur okunur.
   - `status --json` çıktısında, IPC yanıtına ek olarak CLI'ın çözdüğü `locale` alanı (`en`, `tr`) bulunur. Bu alan Claude Code mod'unun dilini belirler (ADR-043).
   - `history [--json]`: Her limitin geçerli penceresindeki saklı okumalarını JSON olarak verir; pencere başına en fazla 168 nokta. Uygulama çalışırken de veritabanından salt-okunur okur ve IPC'ye dokunmaz (ADR-046).
+  - `open [overview|windows|sessions|projects|patterns]`: Ana pencereyi açar (Adım 15a). CLI, kendi klasöründe ya da bir üst klasörde `tokenradar-app.exe`'yi bulur ve onu ayrık süreç olarak `tokenradar://main/<sayfa>` argümanıyla başlatır. Uygulama zaten çalışıyorsa tek örnek eklentisi bağlantıyı çalışan uygulamaya iletir. Pipe'a dokunmaz.
   - `doctor`: Anonim bir tanılama paketi üretir.
   - `statusline install|uninstall`: `settings.json` dosyasını yedekler, değişikliği diff olarak gösterir, atomik olarak yazar ve önceki komutu korur. Yalnızca `statusLine` üyesinin baytları değişir; `install → uninstall` dosyayı bayt düzeyinde geri getirir (ADR-029).
   - `mod install|uninstall`: Claude Code mod'unun klasörünü `env.CLAUDE_CODE_PLUGIN_DIRS` listesine ekler ya da listeden çıkarır. Aynı diff, onay, yedek ve atomik yazma kuralları geçerlidir; yalnızca `env` üyesinin baytları değişir. `uninstall --all` kaldırıcı içindir (ADR-047).

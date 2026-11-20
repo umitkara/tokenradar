@@ -29,6 +29,7 @@ OKLCH ile tanımlanır. Her token CSS `light-dark(açık, koyu)` çiftidir; etki
 | `--signal-crit` | `oklch(0.72 0.18 25)` (mercan kırmızı) | `oklch(0.52 0.19 25)` | Kritik |
 | `--signal-est` | `--text-2` + kesikli çizgi | aynı | Tahmini değerler |
 | `--signal-other` | `oklch(0.74 0.07 300)` (soluk mor) | `oklch(0.50 0.09 300)` | "Diğer" kovası (claude.ai/Desktop) |
+| `--series-2` | `oklch(0.66 0.13 260)` (mavi) | `oklch(0.53 0.18 275)` | Ana pencere grafiklerinde haftalık limitin çizgisi (Adım 15a, ADR-066; **öneri, onay bekliyor**) |
 | `--on-accent` | `oklch(0.20 0.01 250)` | `oklch(1 0 0)` | Vurgu dolgusu üzerindeki metin (birincil düğme, toggle) |
 
 **Kontrast ölçümü:** Kartlar, Mica/Acrylic'in açık ve koyu duvar kağıtlarıyla alabileceği zemin aralığı üzerine bindirilerek ölçüldü (açık: `L` 0.84–1.0, koyu: `L` 0.17–0.38; odak kaybındaki düz renk dahil). `--text-1`/`--text-2` hem kartta hem çıplak zeminde ≥ 4.5:1, `--text-3` kartta ≥ 4.5:1, sinyaller ≥ 3:1. Sinyal renkleri **asla gövde metni olarak kullanılmaz**; yalnızca yay, çubuk ve glif çizer. Başlangıç önerisindeki açık tema `ok`/`warn` değerleri ve koyu `--text-3` bu eşiklerin altında kaldığı için koyulaştırıldı/açıldı.
@@ -99,6 +100,23 @@ Başlığın altında iki eşit düğmeli bir segment kontrolü: `Özet | Ayrın
 - **Şerit:** 12 px yüksekliğinde, 3 px köşeli. Dolgu limitin sinyal rengindedir. Yerel gece yarıları noktalı (`--text-2`), reset'ten itibaren her 24 saat düz 1 px çizgi. Üstte gün adları (gün yeterince genişse), altta 24 saatlik işaretlerde zaman çizgisinin değeri (`--text-3`) ve kalın "▲ şimdi". Bir değer "şimdi" işaretine kelimenin uzandığı tarafta %20'den, öbür tarafta %10'dan fazla yaklaşmaz.
 - **Grafik:** Şeritle aynı genişlikte, 96 px yüksekliğinde satır içi SVG. Kullanım eğrisi 2 px, altı %18 dolgulu; zaman çizgisi `--text-3` kesikli; 75/90 eşikleri sinyal renklerinde, soluk ve noktalı; gün çizgileri `--stroke`; "şimdi" çizgisi `--text-2`. Kenar çizgileri ölçekten bağımsızdır (`vector-effect: non-scaling-stroke`).
 - **Açıklama:** Grafiğin altında: reset zamanı (limit satırlarındaki `Sal 21:52'de yenilenir` kalıbıyla), noktalı/düz çizgilerin anlamı, zaman çizgisi ve kullanım için küçük örnek işaretler.
+
+### Ana pencere kabuğu (Adım 15a)
+
+- Native başlık çubuğu + Mica (kullanıcı kararı). Başlık `Sayfa – TokenRadar` biçimindedir ve `document.title`'ı izler.
+- Solda 200 px navigasyon: 16 px simge + etiket, 36 px satır. Seçili satır `--surface-2` zeminli, yarı kalın, simgesi `--accent` renginde; solda ayarlar penceresindeki gibi 3 px'lik seçim hapı. Ayarlar en altta ayrı bir düğmedir ve ayarlar penceresini açar.
+- İçerik: `--type-heading` (600 20/28) sayfa başlığı, altında kartlar; boşluk `--space-4`.
+- Kısayollar: `Ctrl+1..5` sayfalar, `Ctrl+,` ayarlar.
+
+### Zaman grafiği (ana pencere, uPlot)
+
+- Çizgiler 2 px; düz serinin altı %14 dolgulu, tahmin kesikli (`5 4`) ve dolgusuz.
+- **Renk limite bağlıdır, sıraya değil** (ADR-066, öneri): 5 saatlik `--signal-ok`, haftalık `--series-2`, "Diğer" `--signal-other`. Tek çizgi kaldığında da haftalık mavi kalır.
+- Bantlar: limit pencereleri dönüşümlü olarak `--text-1` %4 ile, limitine ulaşmış pencere `--signal-crit` %14 ile, tahmini pencere `--text-2` %8 ile boyanır.
+- 75/90 eşikleri `--signal-warn` / `--signal-crit` %60, kesikli. Izgara `--stroke`, eksen yazısı `--text-2`, 11 px.
+- İmleç dikey kesikli çizgi (`--text-3`) ve ortak ipucu: başlıkta zaman (`Per 19 Kas 14:05`), her çizgi için 12 px'lik örnek işaret + ad + değer (tahminde `≈`). Sağ kenara yaklaşınca ipucu sola döner.
+- İki ve daha fazla çizgide grafiğin altında açıklama (legend) bulunur; tek çizgide kartın başlığı adı verir.
+- Grafik yalnızca ekrandayken kurulur. Tema ya da dil değişince yeniden kurulur; genişlik değişince yalnızca boyutlanır. Animasyon yoktur.
 
 ### Segment kontrolü (ayarlar)
 

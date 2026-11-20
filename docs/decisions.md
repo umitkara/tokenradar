@@ -1487,3 +1487,33 @@
   - Listelerde `ensure`: bir listede onlarca pencereyi yeniden hesaplamak sayfayı bekletir.
   - Hemen rollup tablosu: ölçüm, bütçeyi şema değişikliği olmadan karşıladı.
   - İşaretleri kullanımdan hesaplamak: yıllık aralıkta 46 ms sürüyor; atıflar zaten pencere başına toplanmış durumda.
+
+### ADR-066 — Ana pencere kabuğu: native başlık, deep link, kv'de geometri, limite bağlı grafik rengi
+
+**Durum:** Önerildi (2026-11-20, Adım 15a). "(kullanıcı kararı)" işaretli maddeler 2026-11-20'de kullanıcıyla kararlaştırıldı. Diğerleri bu adımın önerisidir ve kullanıcı onayı bekler.
+
+- **Bağlam:**
+  - Adım 15 tek oturuma sığmıyordu: kabuk, yaşam döngüsü, grafik sarmalayıcısı ve Genel Bakış'ın altı bölümü.
+  - Ana pencere üç yerden açılır: tray, panel ve CLI. CLI ayrı bir süreçtir ve uygulamaya pipe'tan değil, başlatma argümanıyla ulaşabilir.
+  - Hesapta 5 saatlik pencere yok (ADR-041). 7 günlük grafikte çoğu zaman tek çizgi, haftalık limit kalır.
+- **Karar:**
+  - **Adım 15, 15a + 15b'ye bölünür (kullanıcı kararı).**
+    - 15a: `main.html`, pencere yaşam döngüsü, kabuk ve router, kısayollar, uPlot sarmalayıcısı ve galeri, üç giriş noktası, boş rotalar.
+    - 15b: Genel Bakış'ın bölümleri, boş durumlar, plan ücreti ayarı, performans ölçümü.
+  - **Native başlık çubuğu + Mica (kullanıcı kararı).** Başlık `document.title`'ı izler (`on_document_title_changed`).
+  - **Panelde başlıkta simge düğme (kullanıcı kararı).** Adı ve ipucu "TokenRadar'ı aç"; tray menüsündeki öğe de aynı adı taşır.
+  - **Deep link modeli çekirdekte:** `tokenradar://panel` ve `tokenradar://main[/<sayfa>]` (`tokenradar_core::deeplink`). Tek örnek argümanları, ilk başlatma ve toast aynı ayrıştırmayı kullanır. Sorgu ve fazladan bölüm reddedilir.
+  - **`tokenradar open [sayfa]`:** CLI, uygulamayı kendi klasöründe ya da bir üst klasörde bulur ve ayrık süreç olarak bağlantıyla başlatır. Uygulama çalışıyorsa bağlantıyı tek örnek eklentisi iletir. Pipe protokolü değişmez.
+  - **Geometri `kv`'de:** `tauri-plugin-window-state` yerine `kv.main_window_geometry`. Ek bağımlılık gerekmez, ayar dosyası yazılmaz ve kayıtlı konuma başlık şeridi erişilebilirlik kontrolü uygulanır.
+  - **Gizli oluştur, ilk boyamada göster:** `main_ready` ya da 1,5 sn zaman aşımı. Kapatma pencereyi gizler, 30 sn sonra webview yok edilir (mimari §2).
+  - **Grafik rengi limite bağlıdır, sıraya değil:** 5 saatlik `--signal-ok`, haftalık yeni `--series-2` (mavi), "Diğer" `--signal-other`. Bir filtre ya da 5 saatlik pencerenin yokluğu kalan çizgiyi yeniden boyamaz (dataviz kuralı). `--series-2` iki temada doğrulayıcıdan geçti: camgöbeğine karşı CVD ΔE 19,7 / 14,7, normal görüşte 21,9 / 17,6, Mica zemininde kontrast ≥ 3.
+  - **Bundle:** `main.html` için 180 KB JS bütçesi, giriş + tüm tembel sayfalarla birlikte sayılır (en kötü durum). İlk ölçüm 60,4 KB.
+- **Bedel:**
+  - Hesapta 5 saatlik pencere olmadığı için 7 günlük grafiğin tek çizgisi mavi. Uygulamanın geri kalanında veri mürekkebi camgöbeği olduğundan bu ilk bakışta tutarsız görünebilir.
+  - CLI, uygulamanın kurulum düzenine (aynı ya da üst klasör) bağlıdır; taşınmış bir CLI uygulamayı bulamaz ve bunu söyler.
+  - uPlot imleç için grafik alanının ekran dikdörtgenini önbelleğe alır; grafik her kurulduğunda ve boyutlandığında `syncRect()` çağrılır (Adım 15a'da bulunan hata).
+- **Alternatifler:**
+  - Özel başlık çubuğu: Windows 11'in yakalama düzenleri ve erişilebilirlik için daha fazla iş.
+  - Tek çizgi kalınca camgöbeği: renk sıraya bağlanmış olur, 5 saatlik pencere geri geldiğinde haftalık çizgi renk değiştirir.
+  - CLI'dan pipe ile `open` işlemi: protokol sürümü değişirdi ve uygulama kapalıyken yine başlatma gerekirdi.
+  - `tauri-plugin-window-state`: geometriyi kendi dosyasına yazar, ekran dışı konum kontrolü sınırlıdır.

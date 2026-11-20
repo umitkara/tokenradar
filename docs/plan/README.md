@@ -70,7 +70,7 @@ Doğrulanmış Ultra hesaplarında 5 saatlik pencere kalktı (ADR-041). Bu adım
 |---|---|---|---|
 | 13 | [Kalibrasyon motoru](13-kalibrasyon.md) | 12 (+ ≥ 1 hafta veri) | ✅ (2026-11-19, ADR-061). 24 sa MAE 0,75; açık: `weekly_all` sapması sınıra yakın, `α_sonnet` izlenmeli |
 | 14 | [Atıf motoru ve pencere arşivi](14-atif-ve-pencereler.md) | 13 | ✅ (2026-11-20, ADR-064, ADR-065). 14a: atıf, pencere sonlandırma, tahmini haftalar, çapraz doğrulama · 14b: sorgu API'leri ve komutları, sentetik üretici, her sorgu p95 ≤ 39 ms; açık: ≥ 10 kapanmış pencere incelemesi veri bekliyor |
-| 15 | [Ana pencere kabuğu ve Genel Bakış](15-ana-pencere-genel-bakis.md) | 14 | ⬜ |
+| 15 | [Ana pencere kabuğu ve Genel Bakış](15-ana-pencere-genel-bakis.md) | 14 | 🟨 (ADR-066). 15a ✅ (2026-11-20): kabuk, yaşam döngüsü, deep link ve `tokenradar open`, uPlot sarmalayıcısı, galeri · 15b: Genel Bakış bölümleri, plan ücreti, perf ölçümü |
 | 16 | [Oturumlar ve Projeler](16-oturumlar-ve-projeler.md) | 15 | ⬜ |
 | 17 | [Pencereler, Örüntüler, özet ve v0.2 sürümü](17-pencereler-oruntuler-v0.2.md) | 16 | ⬜ |
 

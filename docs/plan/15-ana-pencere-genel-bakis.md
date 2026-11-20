@@ -100,4 +100,56 @@ pnpm dev
 
 ## Devir notu
 
-_(Oturum sonunda doldurulur: yapılanlar · sapmalar · açık konular · sonraki adıma notlar)_
+### 15a (2026-11-20, ADR-066)
+
+**Yapılanlar:**
+- **Çekirdek:** `tokenradar_core::deeplink`. `MainRoute` (5 sayfa) ve `Link { Panel, Main(Option<MainRoute>) }`; `uri`, `parse`, `find`.
+- **Uygulama (`main_window.rs`):**
+  - Gizli oluşturma; `main_ready` ya da 1,5 sn zaman aşımında gösterme.
+  - Kapatmada gizleme, 30 sn TTL ile yok etme.
+  - Geometri `kv.main_window_geometry`'de; başlık şeridi erişilebilirlik kontrolü.
+  - Başlık `document.title`'ı izler.
+  - Komutlar `open_main(route)` ve `main_ready`, olay `main-route-requested`.
+  - Tek örnek, ilk başlatma ve toast aynı `open_link` yolundan geçer.
+- **Giriş noktaları:**
+  - Tray menüsünde "TokenRadar'ı aç".
+  - Panel başlığında pencere simgeli düğme ("TokenRadar'ı aç").
+  - `tokenradar open [sayfa]`: uygulamayı ayrık süreç olarak bağlantıyla başlatır.
+- **Frontend:**
+  - `main.html`. `Main.svelte` kabuğu: 200 px navigasyon, `aria-current`, `h1` odağı.
+  - Hash router (`router.ts`), `Ctrl+1..5` ve `Ctrl+,` kısayolları, tembel sayfa modülleri, `performance.mark/measure` (`route:*`).
+  - Dört sayfa "geliyor" boş durumunda. Overview, gerçek veriyle son 7 günün grafiğini gösteriyor (15b'de bölümlerle değişecek).
+- **Grafik (`lib/chart/`):**
+  - uPlot 1.6.32 sarmalayıcısı. Model (`align`, `valueAt`, tarih ve tick biçimleri; TR/EN).
+  - Token'lardan kanvas renkleri, bantlar, eşikler, ortak ipucu, ≥ 2 çizgide açıklama.
+  - Yalnızca ekrandayken kurulur; tema ya da dil değişince yeniden kurulur.
+  - `series.ts`, `TimeSeries`'i grafik modeline çevirir.
+- **Galeri:** iki çizgi + kesikli tahmin + limite ulaşmış bant, yalnızca haftalık, boş durum.
+- **Belgeler:** design-language (`--series-2`, kabuk, zaman grafiği), architecture (§2 ana pencere ve deep link, §11 `open`), ADR-066.
+
+**Doğrulama:**
+- Biçim ve testler: `cargo fmt`, `cargo clippy --workspace --all-targets -D warnings` temiz. Core deeplink 4, CLI 29, app 104 test geçti. `pnpm -C app test` 157/157 geçti; `check` ve `lint` temiz.
+- Build: `pnpm -C app build` başarılı. `check-bundle-size`: `main.html` JS 60,4 / 180 KB (giriş + tüm tembel sayfalar, gzip), panel 45,8 / 60 KB.
+- Gerçek veriyle deneme: gerçek veritabanının kopyası portable modda, debug build ile.
+  - Tray ve panel → `open_main` çalıştı. TTL sonrasında CLI `tokenradar open overview` pencereyi yeniden açtı.
+  - Debug soğuk açılış 118 ms (release ölçümü 15b'de).
+  - Açık ve koyu tema ekran görüntüleri incelendi.
+- Bulunan hata: tema değişiminden sonra imleç yanlış zamana eşleniyordu (uPlot'un önbelleğe aldığı dikdörtgen). Her kurulum ve boyutlanmadan sonra `syncRect()` çağrılarak düzeltildi; CDP ile yeniden doğrulandı.
+
+**Sapmalar:**
+- Adım ikiye bölündü (kullanıcı kararı).
+- Doğrulamadaki `measure-memory.ps1 -Scenario main-window` parametresi betikte yok. Betik `-ProcessName`/`-RootPid` ve süre alıyor; senaryo 15b'de elle sürülecek ya da betiğe eklenecek.
+- Bundle bütçesinde CSS sınırı yok (performance-budget.md'de tanımlı değil); yalnızca raporlanıyor.
+
+**Açık konular (kullanıcı onayı bekleyen öneriler, ADR-066):**
+- `--series-2` mavisi ve "renk limite bağlı" kuralı. Hesapta 5 saatlik pencere olmadığı için 7 günlük grafiğin tek çizgisi mavi; alternatif, tek çizgide camgöbeği.
+- Geometrinin `kv`'de tutulması, CLI'ın uygulamayı bağlantıyla başlatması, başlığın `document.title`'ı izlemesi.
+
+**15b'ye notlar:**
+- Overview'daki "geliyor" metni ve geçici grafik, bölümler gelince kaldırılmalı (`main-soon-overview*` anahtarları).
+- Release build ile ölçülecekler: soğuk ve sıcak açılış, rota geçişi (`performance.getEntriesByName('route:*')`), bellek.
+- Kurulu uygulama açıkken debug build ona devreder. Ölçümden önce kullanıcıya sorulmalı.
+- Gerçek DB ile debug çalışması sahte mod olmadan pipe'ı sunar. O sırada gelen statusline okumaları portable kopyaya gider. Bu oturumda ≈ 15 dakikalık okuma gerçek DB'ye girmedi.
+- Gerçek veride 7 günlük aralığın başında pencere bandı soldan kesik başlıyor; `windows`'un aralık dışına taşanları kırpılıyor, bu doğru.
+- Eşik çizgisi 75 açık temada gri-zeytin görünüyor (`--signal-warn` %60 karışım); 15b ekran incelemesinde değerlendirilmeli.
+- İpucu, imleç yakınındaki çizginin üstünü örtebiliyor.
