@@ -1321,3 +1321,42 @@
   - `α`'yı sabitlemek (ör. tüm veriden 2,2): sızıntılı; walk-forward'da iyimser sonuç verir.
   - Kalibre öngörüye orta güven vermek: bildirim ve mod davranışını değiştirirdi; kullanıcı istemedi.
   - Cache okuma ağırlığını yeniden ölçeklemek: Fable farkını açıklamadı.
+
+### ADR-062 — Tam sayı kaynakların hızı adım kenarlarından hesaplanır; öngörü uyarısı güvene ve ufka bağlıdır
+
+**Durum:** Önerildi (2026-11-20, Adım 12t). "(kullanıcı kararı)" işaretli maddeler 2026-11-13 ve 2026-11-20'de kullanıcıyla kararlaştırıldı; kalan uygulama ayrıntıları onay bekliyor.
+
+- **Bağlam:**
+  - `rate.rs` hızı son 30 dakikanın birleşik değerlerinden Theil–Sen eğimiyle hesaplıyordu. Statusline ve API tam sayı veriyor (ADR-060), API ≈ 15 dakikada bir yoklanıyor. 30 dakikada en fazla bir adım görülüyor: adım yoksa öngörü kayboluyor, varsa hız "1 puan / iki okuma arası" çıkıp gerçeğin birkaç katı oluyor.
+  - Claude Code mod'u `will_hit_before_reset`'i güven ve ufuk filtresi olmadan kullanıyordu; bant, adım pencereye girip çıktıkça açılıp kapanıyordu (2026-11-13 bulgusu). Uygulama bildirimi `Low` güveni ve 60 dakikadan uzak ETA'yı zaten yok sayıyordu.
+  - Birleşik değer API'nin yuvarlamasıyla gösteriliyor: `weekly_all`'da statusline `n` eşiğini, API `m − 0,5` eşiğini geçince adım üretiyor. Birleşik serinin kenarları farklı eşiklere karşılık geliyor.
+- **Karar:**
+  - **Kenarlar kaynak başına, ham okumalardan (kullanıcı kararı).** Birikimli maksimumun yükseldiği an kenardır; zamanı eski değeri gösteren son okuma ile yeni değeri gösteren ilk okumanın orta noktasıdır. Daha düşük okuma (boştaki oturumun bayat payload'u) yok sayılır, eşit okuma "son görülme"yi ilerletir. Belirsizliği 45 dakikayı (`MAX_EDGE_UNCERTAINTY_MS`, ADR-061 ile aynı) aşan kenar tutulmaz; komşuları onu daha büyük puan farkıyla kapsar. Pencerenin ilk okuması kenar değildir.
+  - **Hız = (son − ilk kenarın puanı) / aradaki süre, pencerenin son en fazla 4 keskin kenarından (kullanıcı kararı).** Bellek kaynak başına 4 kenar; Theil–Sen'in O(n²) çifti uzun geçmişte kullanılmaz.
+  - **Durma tavanı (kullanıcı kararı):** son kenardan bu yana aynı değer okunuyorsa `hız ≤ 1 puan / (son okuma − son kenar)`. Kullanım durunca öngörü kendiliğinden söner. Tavan `now`'a değil son okumaya bağlıdır: okuma gelmiyorsa (401 bekleyişi) hız uydurulmaz, bayatlık zaten gösterilir.
+  - **Güven (kullanıcı kararı):** 1 aralık `Low`, 2 aralık `Medium`, 3 aralık `High`. İlk ve son kenarın ortalama zaman belirsizliği aralığın %25'ini aşarsa bir düzey düşer. Tek kenardan hız çıkmaz.
+  - **Kaynak seçimi (kullanıcı kararı):** statusline ve API'nin ikisi de kenar verirse kenarı çok olan, eşitlikte son kenarı yeni olan.
+  - **Öncelik (kullanıcı kararı):** ondalıklı okumaların Theil–Sen eğimi > kenar hızı (≥ `Medium`) > kalibre maliyet yedeği (`Low`, ADR-061) > kenar hızı (`Low`) > `k0` önseli. Theil–Sen artık yalnızca ondalıklı okumalarla beslenir (`fusion::interval(...).exact`); tam sayı okumalar yalnızca kenarlara gider.
+  - **Mod uyarısı uygulamanın kuralıyla (kullanıcı kararı):** öngörü bant ve toast'u yalnızca güven `Low` değilse ve ETA 60 dakika (`PROJECTION_HORIZON_MIN`) içindeyse açar. `projection_confidence` yoksa (eski CLI) açmaz. Mod'un kendi sabiti `PROJECTION_HORIZON_MS` uygulamanınkiyle aynı değerdedir.
+  - **Kapsamlı limitin maliyet yedeği bu adımda eklenmez (kullanıcı kararı).**
+  - **Uygulama ayrıntıları (onay bekliyor):**
+    - `RateMethod::Steps` eklendi (bindings'te `"steps"`); arayüz `method`'u göstermediği için görünür bir değişiklik yok.
+    - Mod, kararı `mergeRows` içinde bir kez verip satıra `soon` olarak yazar; `rowLevel` ve `alertsOf` buna bakar.
+    - Mod panelinde ve `/radar` raporunda düşük güvenli öngörü "(kaba)" / "(rough)" ekiyle gösterilir; ayrıntı satırı zaten silik. Uygulamanın Ayrıntı ve ana kartı düşük güveni zaten silik ve `≈` ile gösteriyordu, değişmedi.
+    - `calibration::intervals::Edge` yeniden kullanıldı; `Confidence::lower` eklendi.
+- **Sonuç** (`docs/perf/2026-11-20-step-edge-rate.md`, gerçek verinin salt okunur kopyası, biçim olarak):
+  - Eski yöntem, kullanım olan anlarda sonraki 3 saatin gerçek hızının birkaç katını (≈ 3–6×) okuyordu. Yeni yöntem gerçeğin altında ama aynı mertebede (≈ 0,4–0,6×).
+  - Sonraki 3 saatin mutlak hatası (kullanım olmayan anlar dahil) yeni yöntemde eskisinden düşük ya da eşit.
+  - `will_hit_before_reset` gidip gelmeleri eskisinin ≈ %2–10'una indi.
+  - Sentetik regresyon (5–19 dk aralıklı tam sayı API okumaları): hız gerçeğin %20'si içinde, öngörü bir kez açılıyor ve gidip gelmiyor.
+- **Bedel:**
+  - Kenar hızı geçmişe bakar: bir moladan sonraki ani yükselişi ancak iki-üç kenar sonra görür. Gerçek veride aktif anlarda hızı düşük okuma eğilimi bunun ve durma tavanının sonucudur; uyarı daha geç gelebilir.
+  - Yavaş kullanılan kapsamlı limitte (API, seyrek adım) kenar hızı daha az zaman var; eskiden görünen (ama birkaç kat yüksek) öngörü artık çoğu zaman yok.
+  - Kenar zamanı orta nokta varsayımına dayanır (ADR-061 ile aynı).
+- **Alternatifler:**
+  - Yalnızca `RATE_LOOKBACK_MS`'yi uzatmak: adım sayısı artar ama kenar belirsizliği sürer; hız değişimine geç tepki verir.
+  - Theil–Sen'i API okumalarının aralık orta noktasıyla beslemek: yuvarlama ofsetini düzeltir, adım/pencere oranı sorununu çözmez.
+  - Kenar noktalarına Theil–Sen (kullanıcı ilk–son kenarı seçti): az kenarda aynı sonuç, daha çok kod.
+  - Sabit süreli geriye bakış (ör. 3 sa): yavaş kullanımda kenar bulamaz, hızlı kullanımda eski veri taşır.
+  - Güveni yalnızca kenar sayısıyla vermek: 15 dk belirsizlikli tek aralık 30 dk sürse ±%50 hatayla `Medium` görünürdü.
+  - Mod'da yalnızca metni yumuşatmak, ya da ufku kalan sürenin oranı yapmak: gidip gelme sürer / uygulama bildirimiyle ayrışır.

@@ -62,7 +62,7 @@ Doğrulanmış Ultra hesaplarında 5 saatlik pencere kalktı (ADR-041). Bu adım
 | 12q | [Statusline payload alanları: efor, prompt cache, harcama limiti, PR ve depo](12q-statusline-payload-alanlari.md) | 12p | ✅ (2026-11-11, ADR-059). Açık: yeni glifler gerçek terminalde görülmedi; `pr.*` gözlenmedi |
 | 12r | [Statusline canlı yenileme ve git durumu](12r-canli-yenileme-ve-git-durumu.md) | 12q | ✅ (2026-11-12, ADR-059). Açık: kullanıcının gerçek boşta koşusu; uygulama kapalıyken p95 aykırılığı |
 | 12s | [Limit yüzdelerinin yuvarlama farkını füzyonda gidermek](12s-limit-yuvarlama-fuzyonu.md) | 12r | ✅ (2026-11-12, ADR-060). Açık: `/usage` ile yan yana karşılaştırma yeni sürümde; mod'un değeri |
-| 12t | [Tam sayı okumalarda hız tahmini ve güvene bağlı uyarı](12t-tam-sayi-hiz-tahmini.md) | 12s | ⬜ |
+| 12t | [Tam sayı okumalarda hız tahmini ve güvene bağlı uyarı](12t-tam-sayi-hiz-tahmini.md) | 12s | ✅ (2026-11-20, ADR-062). Açık: gerçek veride hız gerçeğin altında (≈ 0,5×), izlenmeli; statusline `eta` segmenti güvene bağlı değil; yeni sürüm gerekli |
 
 ### v0.2 — Analitik ve Atıf
 

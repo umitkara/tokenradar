@@ -272,7 +272,7 @@ struct LimitObservation {
 ```
 
 - **Füzyon kuralı:** Her `(account, kind, scope)` için öndeki okuma en yeni gözlemdir. 30 saniye içindeki çakışmalarda öncelik `Statusline > Api > Estimate` sırasıyla belirlenir. Öndeki okuma kaynağı, pencereyi ve zamanı verir. Tüm gözlemler (tahminler hariç) `limit_snapshots` tablosuna yazılır. Tahminler yalnızca bellekte tutulur.
-- **Tam sayıların birleşimi (ADR-060):** Statusline aşağı, API en yakın tam sayıya yuvarlıyor. Gösterilen yüzde, aynı penceredeki gerçek okumaların alt sınırlarının en büyüğüdür (`limits/fusion.rs`): statusline `n` → `[n, n+1)`, API `m` → `[m−0,5, m+0,5)`, ondalıklı değer → tam. Kullanım pencere içinde azalmadığı için alt sınır pencere boyunca geçerli kalır. Değer API'nin yuvarlamasıyla gösterilir; pratikte `max(statusline, API)` olur. Bilinen en yeni okumadan daha yeni bir okumanın üst sınırı alt sınırın altında kalırsa sınır o okumadan yeniden başlar. Eşikler, hız geçmişi, Ayrıntı grafiği ve `history --json` birleşik değeri kullanır. `LimitView.combined_with` değeri yükselten ikinci kaynağı söyler. Birleşik değer saklanmaz; açılışta pencerenin snapshot'larından yeniden kurulur.
+- **Tam sayıların birleşimi (ADR-060):** Statusline aşağı, API en yakın tam sayıya yuvarlıyor. Gösterilen yüzde, aynı penceredeki gerçek okumaların alt sınırlarının en büyüğüdür (`limits/fusion.rs`): statusline `n` → `[n, n+1)`, API `m` → `[m−0,5, m+0,5)`, ondalıklı değer → tam. Kullanım pencere içinde azalmadığı için alt sınır pencere boyunca geçerli kalır. Değer API'nin yuvarlamasıyla gösterilir; pratikte `max(statusline, API)` olur. Bilinen en yeni okumadan daha yeni bir okumanın üst sınırı alt sınırın altında kalırsa sınır o okumadan yeniden başlar. Eşikler, ondalıklı kaynakların hız geçmişi, Ayrıntı grafiği ve `history --json` birleşik değeri kullanır. Tam sayı kaynakların hızı birleşik değerden değil, her kaynağın kendi okumalarından hesaplanır (aşağıda, ADR-062). `LimitView.combined_with` değeri yükselten ikinci kaynağı söyler. Birleşik değer saklanmaz; açılışta pencerenin snapshot'larından yeniden kurulur.
 - **Bayatlık:** Gözlem yaşı > 10 dk ise UI "son güncelleme X dk önce" gösterir. Yaş > 30 dk ise ve tahmin mümkünse tahmin katmanı devreye girer (kesikli çizgi ve "tahmini" etiketi ile).
 - **Reset algılama:** `resets_at` değeri geçtiyse ve yeni gözlem yoksa, limit yerel olarak %0'a çekilir (kaynak: `Estimate`, neden: `reset`) ve reset bildirimi tetiklenir.
 - **Opsiyonel pencereler (ADR-041):** Her `(account, kind, scope)` için pencere durumu `WindowPresence` ile üç değerlidir: `Present`, `Unknown`, `Absent` (`limits/presence.rs`).
@@ -282,7 +282,14 @@ struct LimitObservation {
   - Yok sayılan limitin track'i silinir: tahmin, reset, projeksiyon ve bildirim üretilmez. Geçmiş `limit_snapshots` tablosunda kalır.
   - Karar `kv` tablosunda `limits.absent.<account_id>` anahtarıyla JSON dizisi olarak saklanır. Yeniden başlatma ve uygulama kapalıyken CLI aynı kararı görür. Kaçırma sayaçları saklanmaz.
   - `PanelSnapshot.absent` ve IPC yanıtlarındaki `absent` alanı yok sayılan limitleri taşır.
-- **Burn rate:** Son 15-30 dakikanın gözlemlerinden robust bir eğim hesaplanır (Theil–Sen). Gözlem azsa `k × (son 15 dk maliyet hızı)` kullanılır. **Projeksiyon:** `eta_100 = (100 − p) / rate`. `eta_100 < resets_at − now` ise "reset'ten önce dolacak" uyarısı verilir.
+- **Burn rate (`limits/rate.rs`, ADR-062):** Sırayla ilk uygun olan kullanılır:
+  1. **Ondalıklı okumalar:** son 30 dakikanın birleşik değerlerinden Theil–Sen eğimi (en az 3 nokta; 5+ nokta `High`, yoksa `Medium`).
+  2. **Tam sayı okumalar, adım kenarları (`Steps`):** Kaynak başına birikimli maksimumun yükseldiği anlar kenardır. Kenar zamanı, eski değeri gösteren son okuma ile yeni değeri gösteren ilk okumanın orta noktasıdır. Belirsizliği 45 dakikadan büyük kenar tutulmaz. Pencere başına kaynak başına en fazla 4 kenar saklanır. Hız = (son − ilk kenarın puanı) / aradaki süre. **Durma tavanı:** son kenardan bu yana aynı değer okunuyorsa `hız ≤ 1 puan / (son okuma − son kenar)`. **Güven:** 1 aralık `Low`, 2 aralık `Medium`, 3 aralık `High`; ilk ve son kenarın ortalama belirsizliği aralığın %25'ini aşarsa bir düzey düşer. Statusline ile API'nin ikisi de kenar verdiğinde kenarı çok olan, eşitlikte son kenarı yeni olan kaynak seçilir. Bu yöntem `≥ Medium` iken kullanılır.
+  3. **Kalibre maliyet yedeği** (Adım 13, ADR-061): `session` ve `weekly_all` için, `Low`.
+  4. **`Low` güvenli kenar hızı.**
+  5. **`k0` önseli:** `p_now / C_pencere × son 15 dk maliyet hızı`, `Low`.
+
+  **Projeksiyon:** `eta_100 = (100 − p) / rate`. `eta_100 < resets_at − now` ise "reset'ten önce dolacak" denir. Uygulama bildirimi ve Claude Code mod'unun bandı/toast'u aynı kuralla uyarır: güven `Low` değil ve ETA 60 dakika (`PROJECTION_HORIZON_MIN`) içinde. Düşük güvenli öngörü gösterilir ama silik ve "kaba" işaretlidir, uyarı üretmez.
 
 ## 8. Pencere modeli
 

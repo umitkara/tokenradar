@@ -2,7 +2,7 @@
 
 | Sürüm | Bağımlılık | Tahmini süre | Durum |
 |---|---|---|---|
-| v0.1.x | 12s | 1 oturum | ⬜ |
+| v0.1.x | 12s | 1 oturum | ✅ |
 
 ## Amaç
 
@@ -37,6 +37,13 @@
 - Kapsamda iki öneri var: **(1)** hızı adım kenarlarından hesaplamak, **(3)** mod bandını ve uyarılarını güvene bağlamak.
 - **(2)** "geriye bakışı pencere uzunluğuna göre ölçeklemek" tek başına seçilmedi. (1)'in tasarımı içinde gerekirse kullanılabilir.
 - Öngörü mantığı değiştiği için yeni bir ADR yazılır.
+
+## Kullanıcıyla kararlaştırılanlar (2026-11-20)
+
+- **Kenar hızı:** Kenarlar her kaynağın kendi ham okumalarından çıkarılır (birikimli maksimum, Adım 13'teki `intervals` mantığı). Belirsizliği 45 dakikadan büyük kenar atılır. Pencere içindeki son en fazla 4 keskin kenar kullanılır: hız = (son − ilk kenarın puanı) / aradaki süre. Kaynak başına hesaplanır, keskin kenarı çok olan kaynak seçilir. Durma tavanı: hız ≤ 1 puan / (aynı değeri gösteren son okuma − son kenar).
+- **Güven:** 1 aralık (2 kenar) `Low`, 2 aralık `Medium`, 3 ve daha fazlası `High`. İlk ve son kenarın ortalama zaman belirsizliği aralığın %25'inden büyükse bir düzey düşer. Tek kenardan hız çıkmaz.
+- **Öncelik:** kenar hızı (≥ `Medium`) > kalibre yedek (`Low`) > kenar hızı (`Low`) > `k0` önseli. Kapsamlı limitin maliyet yedeği bu adıma girmez (devir notuna).
+- **Mod ufku:** Uygulamayla aynı kural: güven `Low` değilse ve ETA 60 dakika (`PROJECTION_HORIZON_MIN`) içindeyse. `projection_confidence` yoksa bant açılmaz. Mod panelinde düşük güvenli öngörü silik.
 
 ## Öneriler (adım başında kullanıcıya sorulacak)
 
@@ -90,14 +97,14 @@ Aşağıdakiler ajanın önerileridir, kullanıcı onaylamadan karar sayılmaz.
 
 ## Görevler
 
-- [ ] Öneriler 1–6 kullanıcıyla kararlaştırılır.
-- [ ] Core: kenar hızı fonksiyonu; testler (sabit hız, tek kenar, hiç kenar yok, durmuş kullanım, hız değişimi, pencere değişimi, karışık kaynak, tam sayı olmayan kaynakta Theil–Sen).
-- [ ] Core: `Track` geçmişinin uzunluğu ve bellek üst sınırı; test.
-- [ ] Bulgudaki senaryo (adım arası 15 dakikalık yoklamalar) için regresyon testi: öngörü gerçek hızın yakınında, `will_hit_before_reset` gidip gelmiyor.
-- [ ] Notifier: güven kuralı gözden geçirilir; gerekirse test.
-- [ ] Mod: `projection_confidence` okunur; bant ve toast güvene ve ufka bağlanır; testler.
-- [ ] Görünüm: Ayrıntı ve mod panelinde düşük güven silik; bindings ve Fluent gerekirse güncellenir.
-- [ ] `docs/architecture.md` §7 güncellenir; yeni ADR; devir notu.
+- [x] Öneriler 1–6 kullanıcıyla kararlaştırılır.
+- [x] Core: kenar hızı fonksiyonu; testler (sabit hız, tek kenar, hiç kenar yok, durmuş kullanım, hız değişimi, pencere değişimi, karışık kaynak, tam sayı olmayan kaynakta Theil–Sen).
+- [x] Core: `Track` geçmişinin uzunluğu ve bellek üst sınırı; test.
+- [x] Bulgudaki senaryo (adım arası 15 dakikalık yoklamalar) için regresyon testi: öngörü gerçek hızın yakınında, `will_hit_before_reset` gidip gelmiyor.
+- [x] Notifier: güven kuralı gözden geçirilir; gerekirse test.
+- [x] Mod: `projection_confidence` okunur; bant ve toast güvene ve ufka bağlanır; testler.
+- [x] Görünüm: Ayrıntı ve mod panelinde düşük güven silik; bindings ve Fluent gerekirse güncellenir.
+- [x] `docs/architecture.md` §7 güncellenir; yeni ADR; devir notu.
 
 ## Teknik notlar ve tuzaklar
 
@@ -124,4 +131,33 @@ Aşağıdakiler ajanın önerileridir, kullanıcı onaylamadan karar sayılmaz.
 
 ## Devir notu
 
-_(Oturum sonunda doldurulur: yapılanlar · sapmalar · açık konular · sonraki adıma notlar)_
+**Tarih:** 2026-11-20 · **Karar:** ADR-062 (Önerildi; kullanıcı kararları işaretli, uygulama ayrıntıları onay bekliyor) · **Ölçüm:** `docs/perf/2026-11-20-step-edge-rate.md`
+
+**Kullanıcıyla kararlaştırılanlar:** yukarıdaki "Kullanıcıyla kararlaştırılanlar (2026-11-20)" bölümü (öneriler 1–5'in hepsi önerilen biçimiyle).
+
+**Yapılanlar:**
+- **`rate.rs`:** `Steps` (kaynak başına birikimli maksimum, en fazla 4 keskin kenar, 45 dk belirsizlik sınırı; `calibration::intervals::Edge` yeniden kullanıldı), `Steps::rate` (ilk–son kenar, durma tavanı, güven ve bulanıklık düşürmesi), `StepRate`, `best_step_rate`, `Confidence::lower`, `RateMethod::Steps`. `projection` artık `steps` alır ve önceliği uygular: Theil–Sen (ondalıklı) > kenar (≥ orta) > kalibre > kenar (düşük) > `k0`.
+- **Motor:** `Track.steps` (kaynak başına). Tam sayı okumalar (`fusion::interval(...).exact == false`) yalnızca kenarlara, ondalıklı okumalar 30 dakikalık Theil–Sen geçmişine gider. Aynı pencerede track değişince geçmiş, kenarlar ve `will_hit` birlikte taşınır (`Track::carry_rate`); reset kenarları temizler. Açılışta pencerenin saklı okumaları kenarları yeniden kurar (heartbeat 5 dk, kenarlar keskin kalır).
+- **Notifier:** değişmedi; `projection_rule` `Low` güveni ve 60 dakikadan uzak ETA'yı zaten yok sayıyor ve bu testle sabit.
+- **Mod:** `parseStatus` `projection_confidence`'ı okur (`RadarLimit.confidence`). `mergeRows` her satır için `soon` hesaplar (`warnsSoon`: `willHit`, güven orta/yüksek, `0 < ETA − now ≤ PROJECTION_HORIZON_MS` = 60 dk). `rowLevel` ve `alertsOf` `willHit` yerine `soon`'a bakar. Kart ve `/radar` raporu düşük güvenli öngörüye "(kaba)" / "(rough)" ekler (`fullIn`).
+- **Görünüm:** bindings yeniden üretildi (`"steps"`). Uygulamanın Ayrıntı ve ana kartı düşük güveni zaten silik ve `≈` ile gösteriyordu; değişmedi.
+- **Örnek:** `examples/rate_compare.rs` (salt okunur; yalnızca oran ve pay basar).
+- **Testler:** çekirdek 537 (+15: rate 12, motor 4, bir motor testi güncellendi), CLI 28, uygulama 101, frontend 136, mod 42 (+1).
+
+**Sapmalar:**
+- Planda `history`'nin birleşik değeri kenar için kullanılabileceği düşünülmüştü. Birleşik değer `weekly_all`'da kaynağa göre farklı eşiklerde adım ürettiği için kenarlar ham okumalardan, kaynak başına çıkarıldı (kullanıcıya adım başında bildirildi).
+- Theil–Sen artık tam sayı okumalarla hiç beslenmiyor (plan öneri 2'nin doğrudan sonucu). Mevcut motor testinde (dakikada bir okuma) güven `High`'dan `Medium`'a indi: 1 dk kenar belirsizliği 3 dk aralığın %33'ü.
+- Mod'da `rowLevel`'e `now` vermek yerine karar `mergeRows`'ta `Row.soon` olarak verildi.
+
+**Açık konular:**
+- **ADR-062'nin uygulama ayrıntıları** (`RateMethod::Steps`, `Row.soon`, "(kaba)" eki) kullanıcı onayı bekliyor.
+- **Gerçek veride yeni hız gerçeğin altında (≈ 0,4–0,6×, kullanım olan anlarda).** Kenar hızı geçmişe bakıyor ve durma tavanı moladan sonra hızı düşürüyor; uyarı geç gelebilir. Mutlak hata ve gidip gelme ise belirgin azaldı. İzlenmeli; gerekirse tavan ya da kenar sayısı ayarlanır.
+- **Statusline `eta` segmenti** (`statusline/line.rs` `eta`) öngörüyü güvenden bağımsız gösteriyor. Bu adımın kapsamında değildi; düşük güvende gizlenmesi ya da işaretlenmesi düşünülebilir.
+- Yeni davranış gerçek Claude Code mod'unda ve kurulu uygulamada gözlenmedi (yeni sürüm gerekli).
+- Kapsamlı limitin kalibre maliyet yedeği yapılmadı (kullanıcı kararı); seyrek API adımlarında kapsamlı limitte öngörü eskisine göre daha az zaman var.
+
+**Sonraki adıma notlar:**
+- **Kapsam dışı kalan:** günlük kullanım örüntüsü (uyku, mola) öngörüye katılmadı; haftalık pencerede 7/24 varsayımı sürüyor. Adım 17'nin örüntü verisi bunun için uygun.
+- **Adım 14 (atıf):** atıf hızı değil maliyeti kullanıyor; bu adımın değişikliği atıfı etkilemez.
+- `rate::projection` çağıran her yer `steps` argümanını vermeli; kenar takibi `Track` içinde, dışarıdan yalnızca `Steps` ve `best_step_rate` kullanılabilir.
+- Karşılaştırmayı yeniden çalıştırmak için: `cargo run --release -p tokenradar-core --example rate_compare -- --db <kopya>`. Gerçek DB'ye değil, `.backup` kopyasına karşı.
