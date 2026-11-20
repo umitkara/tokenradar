@@ -1324,7 +1324,7 @@
 
 ### ADR-062 — Tam sayı kaynakların hızı adım kenarlarından hesaplanır; öngörü uyarısı güvene ve ufka bağlıdır
 
-**Durum:** Önerildi (2026-11-20, Adım 12t). "(kullanıcı kararı)" işaretli maddeler 2026-11-13 ve 2026-11-20'de kullanıcıyla kararlaştırıldı; kalan uygulama ayrıntıları onay bekliyor.
+**Durum:** Kabul edildi (2026-11-20, Adım 12t). "(kullanıcı kararı)" işaretli maddeler 2026-11-13 ve 2026-11-20'de kullanıcıyla kararlaştırıldı; kalan uygulama ayrıntılarını kullanıcı 2026-11-20'de onayladı.
 
 - **Bağlam:**
   - `rate.rs` hızı son 30 dakikanın birleşik değerlerinden Theil–Sen eğimiyle hesaplıyordu. Statusline ve API tam sayı veriyor (ADR-060), API ≈ 15 dakikada bir yoklanıyor. 30 dakikada en fazla bir adım görülüyor: adım yoksa öngörü kayboluyor, varsa hız "1 puan / iki okuma arası" çıkıp gerçeğin birkaç katı oluyor.
@@ -1340,7 +1340,7 @@
   - **Mod uyarısı uygulamanın kuralıyla (kullanıcı kararı):** öngörü bant ve toast'u yalnızca güven `Low` değilse ve ETA 60 dakika (`PROJECTION_HORIZON_MIN`) içindeyse açar. `projection_confidence` yoksa (eski CLI) açmaz. Mod'un kendi sabiti `PROJECTION_HORIZON_MS` uygulamanınkiyle aynı değerdedir.
   - **Kapsamlı limitin maliyet yedeği bu adımda eklenmez (kullanıcı kararı).**
   - **Statusline'ın dolma süresi öğesi gösterge olarak kalır (kullanıcı kararı, 2026-11-20).** Ufuk uygulanmaz, uzak ETA da görünür. Her zaman `≈` ile yazılır (`▲≈38m`; önceden işaretsizdi). Güven `Low` ya da bilinmiyorsa uyarı rengi yerine silik çizilir (`statusline::line::Eta.rough`).
-  - **Uygulama ayrıntıları (onay bekliyor):**
+  - **Uygulama ayrıntıları (kullanıcı 2026-11-20'de onayladı):**
     - `RateMethod::Steps` eklendi (bindings'te `"steps"`); arayüz `method`'u göstermediği için görünür bir değişiklik yok.
     - Mod, kararı `mergeRows` içinde bir kez verip satıra `soon` olarak yazar; `rowLevel` ve `alertsOf` buna bakar.
     - Mod panelinde ve `/radar` raporunda düşük güvenli öngörü "(kaba)" / "(rough)" ekiyle gösterilir; ayrıntı satırı zaten silik. Uygulamanın Ayrıntı ve ana kartı düşük güveni zaten silik ve `≈` ile gösteriyordu, değişmedi.

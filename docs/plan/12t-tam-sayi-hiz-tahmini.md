@@ -131,7 +131,7 @@ Aşağıdakiler ajanın önerileridir, kullanıcı onaylamadan karar sayılmaz.
 
 ## Devir notu
 
-**Tarih:** 2026-11-20 · **Karar:** ADR-062 (Önerildi; kullanıcı kararları işaretli, uygulama ayrıntıları onay bekliyor) · **Ölçüm:** `docs/perf/2026-11-20-step-edge-rate.md`
+**Tarih:** 2026-11-20 · **Karar:** ADR-062 (Kabul edildi, 2026-11-20) · **Ölçüm:** `docs/perf/2026-11-20-step-edge-rate.md`
 
 **Kullanıcıyla kararlaştırılanlar:** yukarıdaki "Kullanıcıyla kararlaştırılanlar (2026-11-20)" bölümü (öneriler 1–5'in hepsi önerilen biçimiyle).
 
@@ -151,7 +151,7 @@ Aşağıdakiler ajanın önerileridir, kullanıcı onaylamadan karar sayılmaz.
 - Mod'da `rowLevel`'e `now` vermek yerine karar `mergeRows`'ta `Row.soon` olarak verildi.
 
 **Açık konular:**
-- **ADR-062'nin uygulama ayrıntıları** (`RateMethod::Steps`, `Row.soon`, "(kaba)" eki) kullanıcı onayı bekliyor.
+- **ADR-062 onaylandı (2026-11-20):** uygulama ayrıntıları (`RateMethod::Steps`, `Row.soon`, "(kaba)" eki) kullanıcı onayıyla kabul edildi.
 - **Gerçek veride yeni hız gerçeğin altında (≈ 0,4–0,6×, kullanım olan anlarda).** Kenar hızı geçmişe bakıyor ve durma tavanı moladan sonra hızı düşürüyor; uyarı geç gelebilir. Mutlak hata ve gidip gelme ise belirgin azaldı. İzlenmeli; gerekirse tavan ya da kenar sayısı ayarlanır.
 - Yeni davranış gerçek Claude Code mod'unda ve kurulu uygulamada gözlenmedi (yeni sürüm gerekli).
 - Kapsamlı limitin kalibre maliyet yedeği yapılmadı (kullanıcı kararı); seyrek API adımlarında kapsamlı limitte öngörü eskisine göre daha az zaman var.
