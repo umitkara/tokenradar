@@ -1562,3 +1562,56 @@
   - "≈ X gün sonra kalibre olur": dürüst hesaplanamaz.
   - Token türleri için halka grafik: büyüklük karşılaştırmasında açılar zor okunur (dataviz).
   - Her olayda yeniden yükleme: indeksleme sırasında saniyede birkaç sorgu.
+
+### ADR-068 — Oturumlar: şema v4 öznitelikleri, veritabanı beyaz listeli klasör açma, aileye bağlı maliyet renkleri
+
+**Durum:** Önerildi (2026-11-20, Adım 16a). "(kullanıcı kararı)" işaretli maddeler adım başında kullanıcıyla kararlaştırıldı. Diğer maddeler benim önerimdir ve kullanıcı onayını bekler.
+
+- **Bağlam:**
+  - Plan, oturum ayrıntısında efor, hızlı mod ve farklı `cwd` değerlerini istiyor. Çekirdekte bunların hiçbiri saklanmıyordu.
+  - Ön keşif (yalnızca meta veri anahtarları sayıldı):
+    - Asistan kayıtları `effort` taşıyor.
+    - Son 400 transcript'in 303'ünde birden fazla farklı `cwd` vardı.
+    - `speed:"fast"` hiç görülmedi.
+  - Ham olaylar 90 gün saklanır. Claude Code ise transcript'leri varsayılan olarak 30 gün sonra siler.
+  - "Klasörü aç" düğmesi, pencereye dosya sistemi açma izni vermeden çalışmalı.
+  - Maliyet grafiği model başına yığılmalı. Mevcut iki seri rengi (`--signal-ok`, `--series-2`) buna yetmiyor.
+- **Karar:**
+  - **Adım ikiye bölünür (kullanıcı kararı).**
+    - 16a: sanal liste, Oturumlar listesi ve ayrıntısı, şema v4, rozetler, klasör açma.
+    - 16b: Projeler, geçici dizin filtresi ve ayarlardaki desen düzenleyicisi, klasör ağacı, Genel Bakış bağlantıları, gerçek veriyle performans ölçümü.
+  - **Öznitelikler şema v4 ile saklanır (kullanıcı kararı).**
+    - `session_attrs(session_id, kind, value, first_ts, last_ts)` tablosu her oturum için `cwd`, `effort` ve `speed` (yalnızca `fast`) değerlerini, ilk ve son görüldükleri anla tutar.
+    - Saklama işi bu tabloyu silmez. Böylece hızlı mod ve klasörler ham olaylardan uzun yaşar.
+    - Göç canlı dosyaların okuma konumunu sıfırlar (v2'deki gibi). Yeniden okunan olaylar tekilleşmede düşer.
+  - **`effort` esnek okunur.** Metin olarak gelirse alınır. Nesne, sayı ya da başka bir tür gelirse yok sayılır (`LooseStr`). Gerçek verideki 3.346 satırda `effort` bir nesneydi.
+  - **"Transcript silindi" `source_files`'tan hesaplanır.** Oturumun indekslenmiş dosyası varsa ve hepsi silinmişse rozet gösterilir. Bunun için yeni bir indeks eklendi: `ix_source_session`.
+  - **Klasör arka uçtan açılır (kullanıcı kararı).**
+    - `open_session_dir(id, path)` yalnızca veritabanının o oturum ağacı için bildiği yolları açar: `session_attrs` içindeki `cwd` değerleri ve çözülmüş proje yolu.
+    - Listede olmayan bir yol reddedilir ve uyarı günlüğe yazılır. Dizin değilse `"missing"` döner.
+    - Pencereye opener izni verilmez.
+  - **Maliyet grafiği model ailesine göre yığılır.**
+    - Renkler sabittir ve rengi sıra değil aile belirler: Opus `--series-2`, Fable `--series-3`, Sonnet `--series-4`, Haiku `--series-5`, kalanlar `--text-3`.
+    - Üç yeni token dataviz doğrulayıcısından tüm çiftlerle ve iki temada geçti. `TimelineBucket` artık `family` alanını taşır.
+    - Çizim canvas üzerindedir. uPlot'ta yığılmış çubuk için ayrı bir eklenti gerekirdi.
+  - **Filtreler URL parçasındadır.**
+    - Biçim: `#sessions?range=7d&project=12&model=opus&live=1&q=…&sort=cost`.
+    - Yalnızca varsayılan dışı değerler sabit sırayla yazılır. Okunamayan değer varsayılana düşer.
+    - Her filtre değişikliği geçmişe bir kayıt ekler. Arama ise 200 ms debounce ile parçayı yerinde değiştirir.
+  - **Sanal liste sona yaklaşınca sayfa ister.** Çizilen dilim sona 6 satırdan fazla yaklaşınca bir sonraki sayfa istenir. Planda `IntersectionObserver` yazıyordu; dilim zaten bilindiği için gözlemciye gerek kalmadı.
+  - **Proje seçici yerel `<select>`'tir.** İlk harflerle arama yapılabilir. Aranabilir bir combobox, proje sayısı büyüyünce 16b'de yeniden değerlendirilir.
+  - **Canlı yenileme kısılır.** Liste `live_sessions_changed` ve `usage_appended` olaylarında en fazla 10 saniyede bir yenilenir. Yüklenmiş satırlar korunur. Ayrıntı sayfası yalnızca oturum çalışıyorsa yenilenir.
+- **Sonuç** (`docs/perf/2026-11-20-sessions.md`):
+  - 10.000 satırlık listede kaydırma adımı başına iş: p95 1,7 ms, en kötü 6,4 ms (< 16 ms). Bu ölçüm stil, yerleşim ve Svelte güncellemesini kapsar; boyama dahil değildir.
+  - `main.html` JS, tüm tembel sayfalarla 95,3 KB (≤ 180 KB). Oturumlar parçası 12,2 KB.
+  - Tam indeksleme (yükseltmeden sonraki ilk açılış): 7,66 GiB'ta 20,1 s; `main` 17,1 s (≤ 60 s). Aynı veriyi okuyan koşularda parmak izi aynı.
+- **Bedel:**
+  - Efor ve klasörler yalnızca bu sürüm ilk okuduğunda transcript'i hâlâ diskte olan oturumlar için bilinir. Yaklaşık 30 günden eski oturumlarda alan boş kalır ve ayrıntı sayfası nedenini söyler (yan ajan notu, kullanıcı iletti).
+  - Yükseltmeden sonraki ilk açılış bir tam indeksleme kadar sürer: bugün diskteki 7,66 GiB transcript yeniden okunur (yaklaşık 20 s).
+  - Şema v4'e yükseltilmiş bir veritabanını eski sürümler açamaz (ADR-054'teki gibi).
+  - Aile renkleri dört aileyle sınırlıdır. Yeni bir aile, token eklenene kadar "Diğer modeller"e düşer.
+- **Alternatifler:**
+  - Öznitelikleri sorgu anında transcript'ten okumak: konuşma içeriğinin bulunduğu dosyayı yeniden açmak gerekir ve silinmiş dosyalarda çalışmaz.
+  - Yalnızca ilk `cwd`: oturumların çoğu dizin değiştiriyor.
+  - Pencereye opener kapsamı vermek: web içeriği herhangi bir yolu açabilirdi.
+  - Model başına renk: model sayısı sınırsız ve renk oturumdan oturuma değişirdi.

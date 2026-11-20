@@ -29,7 +29,10 @@ OKLCH ile tanımlanır. Her token CSS `light-dark(açık, koyu)` çiftidir; etki
 | `--signal-crit` | `oklch(0.72 0.18 25)` (mercan kırmızı) | `oklch(0.52 0.19 25)` | Kritik |
 | `--signal-est` | `--text-2` + kesikli çizgi | aynı | Tahmini değerler |
 | `--signal-other` | `oklch(0.74 0.07 300)` (soluk mor) | `oklch(0.50 0.09 300)` | "Diğer" kovası (claude.ai/Desktop) |
-| `--series-2` | `oklch(0.66 0.13 260)` (mavi) | `oklch(0.53 0.18 275)` | Ana pencere grafiklerinde haftalık limitin çizgisi (Adım 15a, ADR-066) |
+| `--series-2` | `oklch(0.66 0.13 260)` (mavi) | `oklch(0.53 0.18 275)` | Ana pencere grafiklerinde haftalık limitin çizgisi (Adım 15a, ADR-066); oturum maliyet grafiğinde Opus |
+| `--series-3` | `oklch(0.66 0.13 170)` (camgöbeği) | `oklch(0.60 0.12 170)` | Oturum maliyet grafiğinde Fable (Adım 16a, ADR-068) |
+| `--series-4` | `oklch(0.61 0.20 340)` (macenta) | `oklch(0.45 0.17 340)` | Oturum maliyet grafiğinde Sonnet |
+| `--series-5` | `oklch(0.67 0.15 60)` (turuncu) | `oklch(0.58 0.16 45)` | Oturum maliyet grafiğinde Haiku; diğer aileler `--text-3` |
 | `--on-accent` | `oklch(0.20 0.01 250)` | `oklch(1 0 0)` | Vurgu dolgusu üzerindeki metin (birincil düğme, toggle) |
 
 **Kontrast ölçümü:** Kartlar, Mica/Acrylic'in açık ve koyu duvar kağıtlarıyla alabileceği zemin aralığı üzerine bindirilerek ölçüldü (açık: `L` 0.84–1.0, koyu: `L` 0.17–0.38; odak kaybındaki düz renk dahil). `--text-1`/`--text-2` hem kartta hem çıplak zeminde ≥ 4.5:1, `--text-3` kartta ≥ 4.5:1, sinyaller ≥ 3:1. Sinyal renkleri **asla gövde metni olarak kullanılmaz**; yalnızca yay, çubuk ve glif çizer. Başlangıç önerisindeki açık tema `ok`/`warn` değerleri ve koyu `--text-3` bu eşiklerin altında kaldığı için koyulaştırıldı/açıldı.
@@ -117,6 +120,23 @@ Başlığın altında iki eşit düğmeli bir segment kontrolü: `Özet | Ayrın
 - İmleç dikey kesikli çizgi (`--text-3`) ve ortak ipucu: başlıkta zaman (`Per 19 Kas 14:05`), her çizgi için 12 px'lik örnek işaret + ad + değer (tahminde `≈`). Sağ kenara yaklaşınca ipucu sola döner.
 - İki ve daha fazla çizgide grafiğin altında açıklama (legend) bulunur; tek çizgide kartın başlığı adı verir.
 - Grafik yalnızca ekrandayken kurulur. Tema ya da dil değişince yeniden kurulur; genişlik değişince yalnızca boyutlanır. Animasyon yoktur.
+
+### Oturum maliyet grafiği (Adım 16a)
+
+- 5 dakikalık kovalarda maliyet, model **ailesine** göre yığılmış çubuk. Kova sayısı 1.500'ü geçerse çekirdek kovaları genişletir; altta "Bir çubuk 5 dk" yazar.
+- **Renk aileye bağlıdır, sıraya değil:** Opus `--series-2`, Fable `--series-3`, Sonnet `--series-4`, Haiku `--series-5`, geri kalanlar `--text-3` ("Diğer modeller"). Yığın sırası alttan bu sıradır. Dört renk dataviz doğrulayıcısından tüm çiftlerle, iki temada, en zor kart zemininde (açık `#eeeff1`, koyu `#282d33`) geçti: CVD ΔE ≥ 8, normal görüş ≥ 18, kontrast ≥ 3:1.
+- Komşu çubuklar ve yığın parçaları arasında, çubuk 4 px'ten genişse 1 px zemin boşluğu bırakılır.
+- Arka planda oturumun dokunduğu 5 saatlik pencereler (yoksa haftalık) zaman grafiğindeki bantlarla aynı renklerle boyanır.
+- İpucu: kovanın zamanı ve aile başına maliyet. Grafiğin altındaki açıklama aileleri toplam maliyetleriyle adlandırır; aile içindeki modeller açıklamanın ipucundadır.
+- uPlot değil canvas: yığılmış çubuk için ayrı bir eklenti gerekirdi.
+
+### Oturum listesi (Adım 16a)
+
+- Sabit 44 px satır, yalnızca görünen satırlar ve her yanda 6 satır tampon çizilir. Kart içinde kendi kaydırma alanı; başlık satırı sabittir.
+- Sütunlar: durum noktası · ad (ortadan kısaltılır, tam ad ipucunda) + proje + "Transcript silindi" rozeti · başlangıç (göreli, mutlak zaman ipucunda) · süre · ilk iki model rozeti (+N) · maliyet · token · etki · alt ajan sayısı.
+- Etki: haftalık pay her zaman `≈`; haftalık yoksa 5 saatlik payların toplamı. Düşük güven soluk.
+- Klavye: ızgara tek odak noktasıdır, etkin satırı `aria-activedescendant` gösterir. ↑↓, Page Up/Down, Home/End, Enter. Etkin satır `--surface-2` zemin ve solda 2 px vurgu.
+- Rozetler: 1 px `--stroke` çerçeve, `--text-2` metin; proje rozeti vurgu çerçeveli, silinmiş transcript kesik çerçeveli ve `--text-3`.
 
 ### Oturum şeridi (zaman grafiği, Adım 15b)
 
@@ -288,6 +308,10 @@ Native çizilir (`tiny-skia` + layered window, ADR-058). Üst çubuk haftalık, 
 | Model mix | Model karışımı | Fazlası "Diğer modeller" |
 | Input / Output / Cache read / Cache write | Girdi / Çıktı / Cache okuma / Cache yazma | Token türleri; büyük sayılar `12,4 bin`, `3,1 Mn`, `1,2 Mr` |
 | Sessions (chart lane) | Oturumlar | Grafiğin altındaki oturum şeridi |
+| Transcript deleted | Transcript silindi | Claude Code dosyayı sildi; toplamlar durur |
+| Effort / Fast mode | Efor / Hızlı mod | `/effort` düzeyleri: düşük, orta, yüksek, çok yüksek |
+| Open folder | Klasörü aç | Yalnızca veritabanının bu oturum için bildiği klasörler |
+| Hit the limit | Limite takıldı mı | Tahmini pencerede "Bilinmiyor" |
 | Plan value / Plan fee | Plan değeri / Plan ücreti | "×3,1" ücretin katı; "Ayın %64'ü geçti"; her zaman "bilgi amaçlı, fatura değil" notuyla |
 | Context window | Bağlam penceresi | Statusline'da kısa form her dilde "ctx" |
 | Time mark (statusline) | Zaman işareti | Bar üstünde `│`, metinde `⏱ 43%` / `⏱ %43`; geçen zaman bir ölçümdür, `≈` almaz |

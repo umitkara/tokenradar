@@ -119,4 +119,81 @@ pnpm dev   # Oturumlar → filtre → detay → proje → geri
 
 ## Devir notu
 
+### 16a (2026-11-20, ADR-068 — Önerildi)
+
+**Yapılanlar:**
+- **Çekirdek, şema v4** (`0004_session_attrs.sql`):
+  - `session_attrs` tablosu: oturum başına farklı `cwd`, `effort` ve hızlı mod değerleri, ilk ve son görüldükleri anla.
+  - `ix_source_session` indeksi.
+  - Okuma konumları sıfırlanır; ilk açılış bir tam indeksleme kadar sürer.
+- **Çekirdek, okuma ve sorgular:**
+  - Kayıt ayrıştırıcı `effort`'u esnek okur (`LooseStr`; nesne ya da sayı gelirse yok sayılır).
+  - İndeksleyici öznitelikleri parça başına toplar, coordinator tek transaction'da yazar.
+  - `SessionRow.transcript_deleted`.
+  - `SessionDetail` yeni alanlar: `cwds`, `efforts`, `fast`.
+  - `TimelineBucket.family`.
+  - `session_dirs(id)`: ağacın `cwd`'leri ve çözülmüş proje yolu.
+- **Uygulama:** `open_session_dir(id, path)`. Yalnızca `session_dirs`'teki yolları açar; olmayan dizin için `"missing"` döner. Pencereye opener izni verilmedi.
+- **Frontend:**
+  - `lib/virtual.ts` ve `VirtualList.svelte`: sabit satır yüksekliği, ARIA grid, klavye, sona yaklaşınca sayfa isteme.
+  - Router `?query` taşır; sayfalar `{param, query}` alır.
+  - `sessions/filter.ts`: filtrelerin URL parçasına yazılıp okunması.
+  - `sessions/view.ts`: ortadan kısaltma, model etiketi, etki seçimi, aile yığınları, bantlar, eksen.
+  - `SessionList`, `SessionDetail`, `CostBars`, `Badge`.
+  - `routes/Sessions.svelte`: liste ve `#sessions/<id>` ayrıntısı.
+- **Tasarım:** üç yeni seri token'ı (`--series-3/4/5`). dataviz doğrulayıcısıyla tüm çiftler, iki tema ve en zor kart zemini denetlendi; `tokens.test.ts` kontrast denetimine eklendi.
+- **Galeri:** sentetik oturum listesi ve ayrıntısı (`gallery/sessions.ts`). `?rows=N` liste boyunu ayarlar.
+- **Belgeler:**
+  - architecture §6: şema v4.
+  - design-language: token tablosu, oturum maliyet grafiği, oturum listesi, sözlük.
+  - ADR-068.
+  - `docs/perf/2026-11-20-sessions.md`.
+
+**Doğrulama:**
+- Rust: `cargo fmt --check` ve `cargo clippy --workspace --all-targets -D warnings` temiz. Core 586, app 104, CLI 29 test geçti.
+- Frontend: `pnpm -C app test` 205/205 geçti; `check` ve `lint` temiz.
+- Build: `pnpm -C app build` başarılı. `check-bundle-size`: `main.html` JS 95,3 / 180 KB (giriş ve tüm tembel sayfalar, gzip); Oturumlar parçası 12,2 KB.
+- 10.000 satır: kaydırma adımı başına iş p95 1,7 ms, en kötü 6,4 ms (headless Edge, galeri).
+- Tam indeksleme (gerçek dizin, geçici DB, A/B): şema v4 20,1 s, `main` 17,1 s (2. tur; CPU ikisinde de 6,5 s civarı; ≤ 60 s). Aynı veriyi okuyan koşuların parmak izi aynı: kullanım toplamları değişmedi.
+- Görsel inceleme: galeri headless Edge'de açık/EN ve koyu/TR çekildi.
+  - Bulunup düzeltilenler:
+    - Grafik saat etiketleri son yığının renginde çiziliyordu.
+    - TR'de süre sütunu iki satıra bölünüyordu.
+    - Efor düzeyleri çevrilmemişti.
+    - Sütun ve cache terimleri sözlükle uyuşmuyordu ("Pay" → "Etki", "Önbellek" → "Cache").
+  - Sentetik ayrıntıda limite ulaşmış 5 saatlik pencere oturumun tamamını kapladığı için grafik zemini baştan sona kırmızımsı görünüyor. Veri böyle olduğu için beklenen davranış.
+- **Yapılmayan:** `pnpm dev` ile gerçek uygulamada gezinti.
+  - Bu derleme gerçek veritabanını v4'e yükseltir; kurulu sürüm sonra o veritabanını açamaz (ADR-054'teki gibi).
+  - Gezinti, 15a'daki gibi gerçek veritabanının portable bir kopyasıyla ve kurulu uygulama kullanıcı onayıyla kapatılarak 16b'nin gerçek veri ölçümüyle birlikte yapılacak. Doğrulamadaki "proje → geri" adımı zaten 16b'nin kapsamında.
+
+**Sapmalar:**
+- Adım ikiye bölündü; öznitelikler şema v4 ile saklanıyor; klasör arka uçtan açılıyor (kullanıcı kararları).
+- Maliyet grafiği uPlot değil canvas, yığınlar model değil aile (ADR-068).
+- Sanal liste sayfayı `IntersectionObserver` yerine çizilen dilimin sona yakınlığıyla istiyor.
+- Proje seçici aranabilir combobox değil, yerel `<select>` (ilk harflerle arama).
+- Kabul kriterlerinden "filtre yanıtı ≤ 150 ms (gerçek veri)" ve "etki tablosu Adım 14 atıflarıyla tutarlı (5 oturum)" 16b'nin gerçek veri koşusunda denetlenecek. Etki tablosu aynı saklanan atıfı okuyor (`get_session`), ayrı bir hesap yapmıyor.
+
+**Açık konular (kullanıcı onayı bekleyen öneriler, ADR-068):**
+- Aileye bağlı dört renk ve canvas grafik.
+- Filtrelerin URL biçimi; aramanın geçmişe kayıt eklemeden parçayı değiştirmesi.
+- Yerel proje seçici.
+- Liste ve ayrıntıda 10 sn'lik canlı yenileme kısması.
+
+**Bilinen sınırlar:**
+- Efor ve klasörler yalnızca bu sürüm ilk okuduğunda transcript'i hâlâ diskte olan oturumlar için bilinir. Daha eski oturumlarda ayrıntı sayfası "Kayıtlı klasör yok" der ve nedenini açıklar (yan ajan notu, kullanıcı iletti).
+- Yükseltmeden sonraki ilk açılış bir tam indeksleme kadar sürer.
+
+**16b'ye notlar:**
+- `SessionList` bir proje kilidi almıyor; proje ayrıntısı için `toFilter(q, now, locked)` hazır. Bileşene `locked` prop'u eklenmeli ve proje seçici gizlenmeli.
+- Genel Bakış'taki "en çok tüketenler" bağlantıları: `hrefFor("sessions", String(id))`.
+- `listMemory.query`, ayrıntıdan "Oturumlara dön" ile aynı filtrelere döner. Projeler için benzeri gerekebilir.
+- Gerçek veri koşusu (portable kopya):
+  - 10.000+ satırda boyama dahil kare süresi.
+  - Filtre yanıtı.
+  - 5 oturumda etki tablosunun atıflarla karşılaştırılması.
+  - Klasör açma ve `"missing"` durumu.
+- `main-soon-projects*` anahtarları Projeler sayfası gelince kaldırılmalı.
+
+### 16b
+
 _(Oturum sonunda doldurulur: yapılanlar · sapmalar · açık konular · sonraki adıma notlar)_

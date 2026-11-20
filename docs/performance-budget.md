@@ -41,7 +41,7 @@
 
 | İşlem | Bütçe |
 |---|---|
-| İlk indeksleme — referans veri seti, soğuk disk önbelleği | ≤ 60 s. Adım 04 (parse + SQLite, hibrit öncelik): **sıcak önbellekte 3,7-6,5 s**. Soğuk ölçülemedi; Adım 02'nin önbelleksiz okuma hızlarından tahmin **≈ 10 s** (`docs/perf/2026-10-27-indexer.md`). Adım 12n: veri seti büyüdü (11,58 GiB), sıcak önbellekte 14,5-15,2 s, main ile aynı. Şema 1 → 2 yükseltmesi her dosyayı bir kez yeniden okur: 14,5 s (`docs/perf/2026-11-08-statusline-compact.md`). |
+| İlk indeksleme — referans veri seti, soğuk disk önbelleği | ≤ 60 s. Adım 04 (parse + SQLite, hibrit öncelik): **sıcak önbellekte 3,7-6,5 s**. Soğuk ölçülemedi; Adım 02'nin önbelleksiz okuma hızlarından tahmin **≈ 10 s** (`docs/perf/2026-10-27-indexer.md`). Adım 12n: veri seti büyüdü (11,58 GiB), sıcak önbellekte 14,5-15,2 s, main ile aynı. Şema 1 → 2 yükseltmesi her dosyayı bir kez yeniden okur: 14,5 s (`docs/perf/2026-11-08-statusline-compact.md`). Şema 3 → 4 (Adım 16a) de öyle: 7,66 GiB'ta 20,1 s, main 17,1 s (`docs/perf/2026-11-20-sessions.md`). |
 | İlk indeksleme — kullanılabilir ilk görünüm (mevcut pencere + bu hafta) | ≤ 5 s (en yeni dosyalardan başlanır). Adım 04: **sıcak önbellekte 1,1-2,4 s**, soğuk tahmini **≈ 2-3 s**. Yeniden başlatma sonrası soğuk ölçüm açık iş. |
 | Yeniden başlatma sonrası artımlı tarama (değişmemiş 5.200 dosya) | ≤ 500 ms (yalnızca metadata/stat). Adım 02: dizin yürüyüşü + `DirEntry::metadata` 177 ms. Adım 04 (envanter + `source_files` karşılaştırması): 107-123 ms, sıcak metadata önbelleği. |
 

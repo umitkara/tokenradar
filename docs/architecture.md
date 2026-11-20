@@ -144,7 +144,7 @@ Sürümler uygulama anında güncel stable olarak seçilir ve lock dosyalarıyla
 
 **UI'da hesaplama yapılmaz.** Tauri komutları önceden agregasyonu yapılmış görünüm modelleri döner (`get_panel_snapshot`, `get_panel_detail`, `get_overview(range)`, `list_sessions(filter, page)` …). Frontend yalnızca çizer.
 
-## 6. Veri modeli (SQLite şeması v3)
+## 6. Veri modeli (SQLite şeması v4)
 
 Tüm zamanlar **UTC epoch milisaniye** (`INTEGER`) olarak saklanır. Para birimi **mikro-USD** (`INTEGER`) olarak tutulur.
 
@@ -260,7 +260,17 @@ CREATE TABLE compact_events (                               -- v2: compact sın�
   pre_tokens INTEGER) WITHOUT ROWID;
 CREATE INDEX ix_compact_session ON compact_events (session_uuid);
 CREATE INDEX ix_sessions_uuid ON sessions (uuid);
+
+CREATE TABLE session_attrs (                                -- v4 (0004_session_attrs.sql, ADR-068)
+  session_id INTEGER NOT NULL REFERENCES sessions (id),
+  kind TEXT NOT NULL,                                       -- 'cwd' | 'effort' | 'speed' (yalnızca 'fast')
+  value TEXT NOT NULL,
+  first_ts INTEGER NOT NULL, last_ts INTEGER NOT NULL,      -- değerin görüldüğü ilk ve son an
+  PRIMARY KEY (session_id, kind, value)) WITHOUT ROWID;     -- saklama işi silmez
+CREATE INDEX ix_source_session ON source_files (session_id); -- "transcript silindi" rozeti
 ```
+
+> **Şema v4 (Adım 16a, ADR-068):** `session_attrs`, oturum başına farklı `cwd` değerlerini, `/effort` düzeylerini ve hızlı modu, ilk ve son görüldükleri anla tutar. İndeksleyici bunları yalnızca kullanım kayıtlarından okur (`cwd`, `effort`, `usage.speed`). Göç, canlı dosyaların okuma konumunu sıfırlar (v2'deki gibi): ilk açılış bir tam indeksleme kadar sürer, yeniden okunan olaylar tekilleşmede düşer. Claude Code'un önceden sildiği transcript'lerin öznitelikleri geri gelmez; bu oturumlarda liste boştur.
 
 **Tekilleştirme UPSERT kuralı:**
 ```sql
