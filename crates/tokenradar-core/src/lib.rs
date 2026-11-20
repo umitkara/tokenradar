@@ -19,6 +19,7 @@ pub mod notifier;
 pub mod paths;
 pub mod pricing;
 pub mod providers;
+pub mod queries;
 pub mod runtime;
 pub mod secret;
 pub mod statusline;

@@ -1,0 +1,28 @@
+# Monthly subscription fees, for the "plan value" card (Step 14b). Informational only.
+#
+# Source: https://claude.com/pricing, read 2026-11-20. Monthly billing in USD; annual billing
+# (Pro: $17/month) is not modelled. A fee the user sets in `config.toml`
+# (`[[accounts]] plan_fee_usd`) wins over this table.
+#
+# Matching: `subscription` is `.credentials.json` `subscriptionType`; `tier`, when present,
+# must be contained in `rateLimitTier`. The first matching row wins, so specific rows come
+# first. Team and Enterprise are priced per seat and are left out: the seat type is unknown.
+
+schema = 1
+verified = "2026-11-20"
+
+[[plan]]
+name = "Ultra"
+subscription = "max"
+tier = "max_20x"
+monthly_usd = 200.0
+
+[[plan]]
+name = "Max"
+subscription = "max"
+monthly_usd = 100.0
+
+[[plan]]
+name = "Pro"
+subscription = "pro"
+monthly_usd = 20.0
