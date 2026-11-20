@@ -64,6 +64,14 @@ Ajanın önerdiği 1–7 numaralı maddeleri kullanıcı yazıldığı gibi onay
    - UI'da gösterimi 14b/15'e kalır.
 7. **Kabul kriteri (değişiklik):** "En az 10 kapanmış pencere" yerine mevcut bütün kapanmış pencereler (bugün 4) ve açık pencere elle incelenir. Her haftalık pencerenin "Diğer" payı `seven_day_breakdown` ile karşılaştırılır. Özet devir notuna yalnızca yüzde olarak yazılır. Doğrulama yeni pencereler kapandıkça 14b'de genişletilir.
 
+## Kullanıcıyla kararlaştırılanlar: 14b (2026-11-20)
+
+- **ADR-064'ün "Uygulama ayrıntıları" onaylandı.** Kuyruk son parçaya katılır. Baş parçasından 0,5 puan düşülür; bu ofset deneysel bir sabit olarak kalır ve `attr_inspect --trace` ile izlenir. ADR-060 ile çelişkisi birkaç hafta veri birikince ayrı bir adımda çözülür. Turda en fazla 64 pencere hesaplanır. `CalibrationSuspect` olayı kalır ve bildirim üretmez.
+- **Eskimiş atıflar arka planda yakalanır.** Kalibrasyon turu (15 dk), kalibrasyon sürümü eskimiş kapanmış pencereleri de yeniden hesaplar: en yeniden başlar, turda en fazla 64 pencere. Liste sorguları saklanan değeri okur ve satırda `stale` bayrağı taşır. Bu, 14a'nın "yalnızca görüntülenince" kuralının yerini alır; `ensure` pencere detayında kalır.
+- **"Bu hafta", açık `weekly_all` penceresidir.** "Geçen hafta" bir önceki penceredir. Haftalık penceresi olmayan hesapta son 7 gün kullanılır.
+- **Plan ücreti gömülü tablodan gelir, kullanıcı değeri önce gelir.** `pricing/plans.toml`, resmî sayfadan doğrulanmış aylık ücretleri `subscriptionType` ve `rateLimitTier` ile eşler. Config'teki kullanıcı değeri tablonun önüne geçer. Tabloda olmayan planda ücret yoktur.
+- **Bütün sorgular 14b'de Tauri komutu olarak kaydedilir** ve bindings yenilenir (planın "kullanan adımda" önerisi yerine kullanıcı kararı).
+
 ## Kapsam
 
 - `attribution/`: aralık bazlı dağıtım, korunum garantisi, "Diğer" kovası, subagent'ları ana oturumda toplama, `attributions` tablosu, sürüm bazlı tembel yeniden hesaplama.
@@ -204,3 +212,40 @@ cargo bench -p tokenradar-core --bench queries
   - `other_excess` için tooltip bilgisi.
 - `CalibrationSuspect` olayı `core_bridge.rs`'te yalnızca "other" olarak loglanıyor, UI'da gösterimi yok.
 - Sentetik üretici atıf tablolarını doldurmak için `fill_estimated` ve `refresh`'i doğrudan çağırabilir.
+
+### 14b (2026-11-20)
+
+**Yapılanlar**
+- `queries` modülü (`crates/tokenradar-core/src/queries/`), ADR-065:
+  - `list_windows`, `get_window`, `list_sessions`, `get_session`, `get_session_impact`, `list_projects`, `get_project`, `get_timeseries`, `get_heatmap`, `get_overview`. Görünüm modelleri specta tipli.
+  - Keyset sayfalama (imleç `"{anahtar}:{id}"`, OFFSET yok).
+  - `Basis` her yüzdede yöntem, güven, `≈`, silik ve `stale` taşır. Tahmini pencerede `hit_limit` "bilinmiyor".
+  - `lttb.rs` (en fazla 1.500 nokta), `zone.rs` (`LocalZone`: Windows'ta sistem saat dilimi, yaz saati ve yarım saatlik dilim testli), `plans.rs` + `pricing/plans.toml`.
+- Atıf: `refresh(…, catch_up)`. Kalibrasyon turu eskimiş kapanmış pencereleri de yakalar (kullanıcı kararı).
+- Config: `[[accounts]] plan_fee_usd` (yalnızca pozitif sayı kabul edilir, tablonun önüne geçer).
+- Uygulama: `history.rs` sorgu bağlamını çalışan çekirdekten kurar. On komut `ipc.rs`'e kaydedildi, bindings yenilendi.
+- Sentetik üretici: `examples/gen_synthetic.rs` + `examples/synthetic/mod.rs` (deterministik, atıflar dahil).
+- Benchmark: `benches/queries.rs`. 15 durum; p95 geçişi 50 ms'yi aşarsa başarısız olur, ardından criterion grubu çalışır.
+- 13 yeni sorgu testi (sayfalama kararlılığı, filtreler, "Diğer" payı, arka planda yakalama ve `stale`, proje ağacı, ısı haritası ve yaz saati, işaretler, Genel Bakış ve 7 gün yedeği, plan ücreti, `Basis`, imleç) ve bir config testi.
+- Belgeler: ADR-064 kabul edildi, ADR-065 (Önerildi), `architecture.md` §5 ve §9.3, `docs/perf/2026-11-20-queries.md`.
+
+**Ölçüm** (`docs/perf/2026-11-20-queries.md`):
+- Sentetik yılda her sorgunun p95'i ≤ 39 ms. En yavaşlar `list_sessions` ve `list_projects` (tüm yıl, 34–39 ms).
+- Gerçek verinin kopyasında her sorgu ≤ 18,4 ms.
+
+**Sapmalar ve notlar**
+- **Doğrulama komutu geçersiz:** `cargo test -p tokenradar-core attribution windows queries` hata veriyor (cargo tek filtre alır). Doğrusu `cargo test -p tokenradar-core -- attribution windows queries` (41 test geçti).
+- Plandaki jiff `TimeZone::system()` yerine `LocalZone` kullanıldı (Windows'ta gömülü tzdb gerekmesin diye). macOS ve Linux'ta Adım 21'e kadar saat kovaları UTC.
+- Subagent'ın kendi `project_id`'si yok. Proje maliyeti ana oturumun projesi üzerinden toplanır; ilk sürüm subagent maliyetini kaçırıyordu, test bunu yakalıyor.
+- `usage_5m`'de geniş aralıkta SQLite zaman indeksini seçip satır başına PK'ye bakıyordu (oturum listesi 2,1 s). `+u.bucket_ts` kuralı ve iki aşamalı toplama ADR-065'te.
+- Bench, `TR_SYNTH_DB` yolunda dosya yoksa sentetik veritabanını orada üretir. Gerçek veriyle ölçerken yolun doğru yazıldığından emin olun.
+- Oturum işaretleri atıflardan gelir; atıfı henüz yazılmamış pencerede işaret yoktur.
+
+**Kullanıcı onayı bekleyenler** (ADR-065, kullanıcı kararı olmayan maddeler):
+- `LocalZone`, imleç biçimi, `Basis` kuralları, ısı haritası yüzde metriği, 200 işaret sınırı, indeks kuralı, `plan_fee_usd` doğrulaması.
+
+**Kapsam dışı / sonraki adımlar**
+- UI (Adım 15–17): `CalibrationSuspect` ve `other_excess` gösterimi, `stale` ve `≈` görselleri.
+- Oturum × gün rollup tablosu: bugün gerekmiyor. `usage_5m` büyüyüp tüm yıl sorguları bütçeye yaklaşırsa yeni migration ve ADR ile.
+- Yalnızca 2 kapanmış haftalık pencere var. Birkaç hafta sonra `attr_inspect --trace` ile "Diğer" ve 0,5 puanlık ofset yeniden incelenmeli (14a açık konusu). "En az 10 kapanmış pencere" kabul kriteri hâlâ veri bekliyor.
+- macOS ve Linux yerel saat dilimi (Adım 21).

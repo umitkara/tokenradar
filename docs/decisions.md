@@ -1389,7 +1389,7 @@
 
 ### ADR-064 — Atıf 24 saatlik dilimlerde yapılır; "Diğer" yalnızca güvenilir kalibrasyonla, çapraz doğrulama tek yönlü
 
-**Durum:** Önerildi (2026-11-20, Adım 14a). "(kullanıcı kararı)" işaretli maddeler 2026-11-20'de kullanıcıyla kararlaştırıldı. "Uygulama ayrıntıları" kullanıcı onayı bekliyor. Mimari §9.3'teki "aralık bazlı" v0.2 formülünün ve iki yönlü çapraz doğrulamanın yerini alır.
+**Durum:** Kabul edildi (2026-11-20). "(kullanıcı kararı)" işaretli maddeler Adım 14a'da, "Uygulama ayrıntıları" Adım 14b'nin başında kullanıcıyla kararlaştırıldı. Mimari §9.3'teki "aralık bazlı" v0.2 formülünün ve iki yönlü çapraz doğrulamanın yerini alır. "Zamanlama" maddesindeki "kapanmış pencereler yalnızca görüntülenince yeniden hesaplanır" kuralının yerini ADR-065 alır (arka planda yakalama).
 
 - **Bağlam:**
   - Plan "Diğer"i her kenar aralığında `yerel = min(Δp, k·ΔC)` ile hesaplıyordu. Gerçek verinin kopyasında aralık başına oranın gürültüsü (yuvarlama, MAD ≈ %4) bu `min` yüzünden tek yönlü olarak "Diğer"e akıyor. `seven_day_breakdown`'a göre dış kullanımın ≈ %0–1 olduğu bir haftada "Diğer" aralık başına %4,3, 24 sa dilimde %0,9 çıkıyor. Fable kapsamlı limitte (API, güven 0,29) aralık başına %13–19 çıkıyor (`examples/attr_probe.rs`).
@@ -1406,7 +1406,7 @@
   - **Maliyet kaynağı `usage_5m` (kullanıcı kararı).** Ham olaylar 90 günde silinir, rollup silinmez. Kova, başlangıcı parçanın son kenarından önceyse o parçaya sayılır. Subagent kırılımı için tablo tutulmaz.
   - **Şema v3 (kullanıcı kararı, `0003_attribution.sql`):** Hiç yazılmamış `attributions` yeniden kuruldu (`est_percent` NULL olabilir, `ON DELETE CASCADE`, "Diğer" = `root_session_id` NULL). Yeni `attribution_runs` tablosu pencere başına kalibrasyon sürümünü (0 = yok), yöntemi, güveni, toplamı, "Diğer"i, kırılım değerini, `suspect`, `other_excess`, `closed` ve `computed_at` alanlarını tutar. v3 veritabanını v2 build'ler açamaz.
   - **Zamanlama (kullanıcı kararı):** Boşta uyanma eklenmez. Limit thread'i kalibrasyon turunda (açılıştan 30 s sonra, sonra 15 dk'da bir) tahmini pencereleri ekler ve atıfları günceller. Yeni snapshot ya da kullanım (`Observe`, `Statusline`, `Poll`, `Indexed`, spool) geldiğinde en fazla 60 sn'de bir yeniden günceller. Atıfı olmayan pencere hesaplanır. Kapanan pencere bir kez sonlandırılır (`closed = 1`). Açık pencere yalnızca yeni veriyle güncellenir. Kalibrasyon sürümü değişince kapanmış pencereler yalnızca görüntülenince (`attribution::ensure`) yeniden hesaplanır.
-  - **Uygulama ayrıntıları (kullanıcı onayı bekliyor):**
+  - **Uygulama ayrıntıları (kullanıcı kararı, 2026-11-20, Adım 14b başı):** Ofset deneysel sabit olarak kalır ve `attr_inspect --trace` ile izlenir; ADR-060 ile çelişkisi birkaç haftalık veriyle ayrı bir adımda çözülür. `CalibrationSuspect` bildirim üretmez.
     - **Kuyruk son parçaya katılır.** Son kenardan sonraki bölüm (`peak − son kenar` ve maliyeti) son parçanın parçasıdır. Tek başına bırakılınca diğer kaynağın yuvarlaması (ADR-060) `min` ile "Diğer"e akıyordu: açık haftada %6,8 → %5,1.
     - **Baş parçasından 0,5 puan düşülür** (`ROUNDING_OFFSET`, yukarıdaki bulgu). Bu yarım puan kullanım değil yuvarlama sayılır ve oturum paylarına orantılı eklenir; korunum gösterilen değere göre kalır. Gerçek veride "Diğer/toplam" %7,1 / %2,3 / %5,1'den %6,1 / %1,3 / %2,5'e indi; kırılım ≈ %1–4 / %0–1 / %0–3.
     - Bir `refresh` en fazla 64 pencere hesaplar (`MAX_PER_REFRESH`), en yeni pencereden başlar; kalan varsa 60 sn sonra devam eder. Uzun bir geçmişte ilk çalışma limit thread'ini bekletmez.
@@ -1421,7 +1421,7 @@
   - Yuvarlama ofseti deneysel bir sabittir. Kaynak ya da Anthropic'in hesaplaması değişirse baş parçası yeniden kayar; `attr_inspect --trace` bunu gösterir.
   - Orantılı yöntem (kapsamlı limitte bugün geçerli olan) dış kullanımı oturumlara yükler.
   - Tahmini haftaların yüzdesi bugünkü `k` ile hesaplanır; aylar önceki bir kalibrasyon sapması görünmez.
-  - Kalibrasyon sürümü değişince kapanmış pencerelerin listelerdeki payları, pencereler görüntülenene kadar eski sürümle kalır.
+  - Kalibrasyon sürümü değişince kapanmış pencerelerin listelerdeki payları, pencereler görüntülenene kadar eski sürümle kalır. (ADR-065: kalibrasyon turu bunları arka planda yakalar; arada liste satırı `stale` taşır.)
 - **Alternatifler:**
   - Aralık başına (plan): sistematik +3–4 puan (kapsamlı limitte +10–15).
   - 6 saatlik dilim: aralığa göre iyi ama 24 saatten belirgin kötü (%1,7 vs %0,9).
@@ -1429,3 +1429,61 @@
   - İki yönlü çapraz doğrulama (plan): başka makinede Claude Code kullanan herkeste sahte uyarı.
   - Ham olay kaynağı: kenar zamanı tam isabetli, ama 90 günden eski pencereler yeniden hesaplanamaz.
   - Ofseti "Diğer"e bırakmak: her pencerede ≈ 0,5 puan sahte dış kullanım.
+
+### ADR-065 — Sorgu katmanı: saklanan atıfı okur, keyset sayfalar, geniş aralıkta zaman indeksini atlar
+
+**Durum:** Önerildi (2026-11-20, Adım 14b). "(kullanıcı kararı)" işaretli maddeler 2026-11-20'de kullanıcıyla kararlaştırıldı; diğerleri bu adımın önerisidir ve kullanıcı onayı bekler. ADR-064'ün "kapanmış pencereler yalnızca görüntülenince yeniden hesaplanır" kuralının ve plandaki jiff `TimeZone::system()` notunun yerini alır.
+
+- **Bağlam:**
+  - Adım 15–17'nin sayfaları (Genel Bakış, pencere arşivi, oturumlar, projeler, ısı haritası) aynı görünüm modellerini okuyacak. Plan her sorgu için 1 yıllık sentetik veride ≤ 50 ms (p95) istiyor.
+  - Atıf 14a'da pencere başına saklanıyor (`attributions`, `attribution_runs`). Kalibrasyon sürümü değişince kapanmış pencereler yalnızca görüntülenince yeniden hesaplanıyordu; listeler eski değeri gösterebiliyordu.
+  - `usage_5m`'nin birincil anahtarı `(account_id, session_id, model_id, bucket_ts)`, ikincil indeksi `ix_5m_acct_bucket (account_id, bucket_ts)`. İlk ölçümde oturum listesi 2,1 s, oturum detayı 80 ms, zaman serisi 215 ms sürdü.
+  - jiff'in `TimeZone::system()` işlevi Windows'ta gömülü bir tzdb ister (ikili boyutu artar); planın notu bunu varsaymıştı.
+- **Karar:**
+  - **Modül:** `tokenradar_core::queries` (Tauri'siz). Her çağrı bir `QueryContext { account, now, calibrations, zone }` alır. Sorgular: `list_windows`, `get_window`, `list_sessions`, `get_session`, `get_session_impact`, `list_projects`, `get_project`, `get_timeseries`, `get_heatmap`, `get_overview`.
+  - **Bütün sorgular 14b'de Tauri komutu olur (kullanıcı kararı).** `app/src-tauri/src/history.rs` bağlamı çalışan çekirdekten kurar: birincil hesap, son kalibrasyonlar, bilgisayarın saat dilimi, canlı oturumlar ve plan. Sorgu `spawn_blocking` ile çalışır ve çekirdeğin kilidini tutmaz (`Store` klonlanır). Bindings yenilendi.
+  - **Eskimiş atıflar arka planda yakalanır (kullanıcı kararı).** `attribution::refresh(…, catch_up)`: kalibrasyon turu, kalibrasyon sürümü eskimiş kapanmış pencereleri de yeniden hesaplar (en yeniden başlar, turda en fazla 64). Yeni veri geldiğinde yapılan güncelleme bunu yapmaz. Listeler saklanan değeri okur; sürümü güncel olmayan satır `Basis.stale` taşır. `get_window` önce `ensure` çağırır.
+  - **"Bu hafta" açık `weekly_all` penceresidir (kullanıcı kararı).** "Geçen hafta", `resets_at`'i bu haftanın başlangıcına denk gelen penceredir. Haftalık penceresi olmayan hesapta son 7 gün ve önceki 7 gün kullanılır; o zaman yüzde yoktur.
+  - **Plan ücreti gömülü tablodan gelir, kullanıcı değeri önce gelir (kullanıcı kararı).**
+    - `pricing/plans.toml` claude.com/pricing sayfasından 2026-11-20'de doğrulandı: Ultra 200 $ (`max` + `max_20x`), Max 100 $, Pro 20 $. Koltuk başı fiyatlanan Team ve Enterprise tabloda yoktur.
+    - `config.toml`'daki `[[accounts]] plan_fee_usd` tablonun önüne geçer; pozitif bir sayı değilse yok sayılır.
+    - Oran = yerel takvim ayının API karşılığı maliyeti / aylık ücret.
+  - **Dürüst sayı kuralı (`Basis`):**
+    - Her yüzde `method`, `confidence`, `approx` (`method != calibrated`), `dim` (kalibre değilse ya da güven düşükse) ve `stale` taşır.
+    - Tahmini pencerede `hit_limit` `None` ("bilinmiyor") olur.
+    - Isı haritasının yüzde metriği `k·α·maliyet`tir, yöntemi `estimated`. `weekly_all` kalibrasyonu düşük güvendeyse yüzde verilmez (`cost_only`).
+  - **Keyset sayfalama:**
+    - İmleç `"{anahtar}:{id}"` biçimindedir (anahtar f64). SQL koşulu `k < ?k OR (k = ?k AND id < ?id)`, sıra azalan.
+    - Arada yeni satır gelse de sayfa kaymaz, satır tekrarlanmaz. Bozuk imleç baştan başlar.
+    - Sayfa boyutu varsayılan 50, en fazla 200.
+  - **Oturum ağacı:**
+    - Subagent ayrı satır olmaz. Maliyeti, modeli ve projesi ana oturumun hesabına yazılır; subagent'ın kendi `project_id`'si yoktur.
+    - Oturum adı başlıktır. Başlık yoksa `proje · uuid'nin ilk 8 karakteri` kullanılır (`fallback`).
+  - **Yerel saat (`LocalZone`):**
+    - Windows'ta anlık ofset `SystemTimeToTzSpecificLocalTime` ile alınır. Diğer sistemlerde Adım 21'e kadar UTC kullanılır.
+    - Aralık sabit ofsetli parçalara bölünür: saatlik yoklanır, değişim dakikası ikili aramayla bulunur. Saat kovası `(bucket_ts + ofset) / saat`.
+    - Yarım saatlik dilimler ve yaz saati geçişleri doğru kovaya düşer.
+  - **İndeks kuralı:**
+    - Bir oturum ağacını adlandıran sorgular ve 60 günden geniş aralıklar `+u.bucket_ts` yazar. Böylece SQLite zaman indeksini değil birincil anahtarı kullanır.
+    - Gerekçe: zaman indeksi satırları zaman sırasıyla gezer ve her biri için birincil anahtara bakar. Yoğun bir yılda ≈ 90 günden sonra bu, tüm tabloyu okumaktan pahalıdır.
+    - Toplamalar önce oturum başına anahtar sırasıyla (`MATERIALIZED` CTE), sonra ağaç ya da proje başına yapılır.
+    - Isı haritası satırları okuyup saat başına Rust'ta toplar. Saate göre `GROUP BY` her satırı geçici ağaçta sıralıyordu.
+    - Sonuç: oturum listesi 2,1 s'den 35 ms'ye, oturum detayı 80 ms'den 0,3 ms'ye indi.
+  - **Zaman serisi:**
+    - Yalnızca istenen limitin okumaları `ix_snap` boyunca okunur, pencere başına füzyonlanır (ADR-060) ve LTTB ile en fazla 1.500 noktaya seyreltilir.
+    - Oturum işaretleri limitin atıflarından gelir: aralıktaki pencerelerde payı olan en fazla 200 ağaç, maliyete göre sıralı.
+    - İşaretin başlangıcı ve bitişi, oturumun ömrünün aralıkla kesişimidir.
+- **Sonuç** (`docs/perf/2026-11-20-queries.md`):
+  - Sentetik yılda (3.000 ana oturum, ≈ 2.000 subagent, ayda ≈ 150 bin olay, 72 bin okuma, 104 pencere) her sorgunun p95'i ≤ 39 ms. Zaman serisi 26 ms, ısı haritası 25 ms, Genel Bakış 4 ms, oturum detayı 0,7 ms.
+  - Gerçek verinin kopyasında her sorgu ≤ 18 ms.
+- **Bedel:**
+  - Tüm yılı kapsayan liste sorguları tabloyu okur (sentetik yılda 30–39 ms). Süre `usage_5m` satır sayısıyla doğrusal büyür. Bütçe aşılırsa sonraki adım oturum × gün rollup tablosudur (yeni migration).
+  - Arka planda yakalama, kalibrasyon değişince 15 dakikaya kadar eski değeri `stale` olarak gösterir.
+  - Oturum işareti yalnızca atıfı olan pencerelerden gelir. Atıfı henüz yazılmamış pencerenin oturumları işaret almaz.
+  - macOS ve Linux'ta Adım 21'e kadar saat kovaları UTC'dir.
+- **Alternatifler:**
+  - jiff `TimeZone::system()`: Windows'ta gömülü tzdb gerekir.
+  - OFFSET sayfalama: plan yasaklıyor; arada gelen satır sayfayı kaydırır.
+  - Listelerde `ensure`: bir listede onlarca pencereyi yeniden hesaplamak sayfayı bekletir.
+  - Hemen rollup tablosu: ölçüm, bütçeyi şema değişikliği olmadan karşıladı.
+  - İşaretleri kullanımdan hesaplamak: yıllık aralıkta 46 ms sürüyor; atıflar zaten pencere başına toplanmış durumda.
