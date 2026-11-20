@@ -157,6 +157,32 @@ Başlığın altında iki eşit düğmeli bir segment kontrolü: `Özet | Ayrın
 - Yan yana iki kart: model karışımı (Genel Bakış'taki büyüklük listesi) ve en pahalı 5 oturum. Oturumlar tek ızgarada durur, böylece sayı sütunları hizalı kalır.
 - Altta projeye kilitli oturum listesi: proje seçici ve satırlardaki proje adı gizlidir, filtreler bu sayfanın URL parçasında durur.
 
+### Pencereler sayfası (Adım 17a, ADR-070)
+
+- Filtre satırı: görünüm (Haftalık döngüler · 5 saatlik pencereler · Liste), aralık (4 hafta · 12 hafta · Tümü · Özel) ve sağda "Dışa aktar…". 5 saatlik sekme yalnızca hesapta 5 saatlik pencere varsa görünür.
+- **Haftalık döngüler** tablosu, her haftalık pencere için bir satır:
+  - Yedi gün mini çubuklarla çizilir, tüm tablo için tek ölçek. Renk `--series-2`'dir (haftalık, ADR-066). Gelecek günlerin taban çizgisi noktalıdır.
+  - Limite takılan günün çerçevesi `--signal-crit`'tir. "Limite takıldı" sütunu aynı bilgiyi simge ve metinle verir (gün ve saat); renk tek başına taşımaz.
+  - Tahmini haftanın çubukları kesikli çerçeveli ve içi boştur, tepe `≈` ile ve soluk yazılır, "Tahmini" etiketi kesikli kenarlıklıdır.
+  - Tablonun altındaki not günlerin `≈` tahmin olduğunu, "Diğer"i içermediğini ve toplamlarının tepenin altında kalabileceğini söyler.
+- **5 saatlik şerit:** her yerel gün bir satır, en yenisi üstte, 24 saat soldan sağa. Pencere bloğunun dolgusu tepeyle koyulaşır (`--signal-ok` karışımı, ADR-066). Limite takılan blok `--signal-crit` çerçevelidir, tahmini blok kesikli. Lejant cümlesi bunu söyler; satırlar sanal kaydırılır.
+- **Pencere çekmecesi** sağdan açılan modal bir paneldir (Escape ya da "Kapat" listeye döner):
+  - Kullanım eğrisi (zaman grafiği, 75 ve 90 eşikleri). Tahmini pencerede yerine not vardır.
+  - Oturum katkıları: en büyük dört oturum `--series-2…5` sırasıyla, "Diğer oturumlar" `--text-3`; yığılı alan, 1 px zemin rengi ayırıcı. Lejant her zaman vardır, sol üstte yığının tepe değeri yazar, üzerine gelince dikey çizgi ve değerler çıkar.
+  - Pay tablosu oturumlara bağlantı verir; "Diğer (claude.ai, Desktop)" ayrı satırdır.
+  - Bildirimler listesi; boşsa kaydın 30 gün tutulduğunu söyler.
+
+### Örüntüler sayfası (Adım 17a, ADR-070)
+
+- **Isı haritası (gün × saat):** satırlar yerelin hafta düzeninde (TR Pazartesi, EN Pazar), sütunlar yerel saat. Tek renk tonu, açıktan koyuya: vurgu rengi zemin rengine beş adımda karışır; kullanım yoksa hücre zemin rengindedir. Altta "Az … Çok" lejantı. Üzerine gelinen hücre çerçevelenir, okuma satırı gün, saat, toplam ve etkin gün ortalamasını yazar. Ölçü seçici kartın köşesindedir.
+- **Gün içi dağılım:** saat başına iki çubuk, hafta içi `--series-2` ve hafta sonu `--series-3`, lejantlı, tek ölçek.
+- **Limit riski:** her başlangıç saati için tüm pencereler `--stroke`, %90'a ulaşanlar açık kırmızı, takılanlar `--signal-crit`. Üst cümle i18n şablonundan gelir. 5 saatlik penceresi olmayan hesapta boş durum, az veride "yeterli veri yok".
+- **Model karışımı:** haftalık yığılı paylar, renk aileye bağlıdır (oturum maliyet grafiğindeki gibi), 2 px zemin rengi ayırıcı, lejantlı.
+
+### Dışa aktarma
+
+- "Dışa aktar…" düğmesi küçük bir iletişim kutusu açar: biçim (CSV · JSON), oturumlarda "Proje yollarını gizle", sayfanın aralığını ve filtrelerini kullandığını ve yalnızca kullanım ile meta veri içerdiğini söyleyen not. Kaydedince dosya yolu yazılır; vazgeçilirse bir şey yazılmaz.
+
 ### Oturum şeridi (zaman grafiği, Adım 15b)
 
 - Grafiğin altında, aynı zaman ekseninde 10 px'lik bir şerit. Haftalık limitte payı en büyük 5 oturum (5 saatlik pencere yalnızca haftalık yoksa) 4 px'lik `--text-2` çubuklarla çizilir; payı bilinmeyen oturum daha soluktur.
@@ -334,6 +360,14 @@ Native çizilir (`tiny-skia` + layered window, ADR-058). Üst çubuk haftalık, 
 | Temporary folders | Geçici dizinler | Ayarlardaki desen listesi; "Geçici dizinleri gizle" |
 | Weekly impact | Haftalık etki | Projenin haftalık pencerelerden aldığı pay; her zaman `≈` |
 | Weekly avg. | Haftalık ort. | Pencere başına ortalama pay, `≈%4,5/hafta` (EN `/wk`) |
+| Weekly cycles | Haftalık döngüler | Pencereler sayfasının varsayılan görünümü |
+| Hit the limit | Limite takıldı | Simge ve metinle; tahmini pencerede "Bilinmiyor" |
+| Peak | Tepe | Pencerenin ölçülen en yüksek değeri |
+| Session contributions | Oturum katkıları | Pencere çekmecesindeki yığılı alan |
+| Week day and hour | Haftanın günü ve saat | Isı haritası |
+| Time of day | Gün içi dağılım | Hafta içi / hafta sonu ortalamaları |
+| Limit risk | Limite takılma riski | Yalnızca 5 saatlik pencereler |
+| Export… | Dışa aktar… | CSV / JSON |
 | Most expensive sessions | En pahalı oturumlar | Proje ayrıntısı |
 | Hit the limit | Limite takıldı mı | Tahmini pencerede "Bilinmiyor" |
 | Plan value / Plan fee | Plan değeri / Plan ücreti | "×3,1" ücretin katı; "Ayın %64'ü geçti"; her zaman "bilgi amaçlı, fatura değil" notuyla |

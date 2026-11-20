@@ -1666,3 +1666,56 @@
   - Haftalık sütunda en yoğun hafta: sezgisel, ama klasörlerde projelerin tepe değerleri toplanamaz.
   - Toplamı açık bir etiketle bırakmak: %100'ü aşan değerler kalırdı.
   - Görünen yolu `session_attrs` içindeki `cwd`'den sorgu anında türetmek: projenin her oturumunu taramak gerekir ve silinmiş transcript'lerde yine çalışmaz.
+
+### ADR-070 — Pencereler ve Örüntüler: haftalık öncelikli sayfa, 24 saatlik günler, yalnızca 5 saatlik limit riski, CSV/JSON dışa aktarma
+
+**Durum:** Önerildi (2026-11-21, Adım 17a). "(kullanıcı kararı)" işaretli maddeler adımın başında kullanıcıyla kararlaştırıldı. Diğer maddeler adım sonunda kullanıcının onayını bekliyor.
+
+- **Bağlam:**
+  - Plan 5 saatlik pencereleri varsayıyordu: 14 günlük şerit ve "en riskli saatler" bunlara dayanıyordu.
+  - Kullanıcının hesabı doğrulanmış Ultra: 2026-11-05'ten beri 5 saatlik pencere yok, yalnızca haftalık limitler var (ADR-041).
+  - Haftalık pencerenin içindeki gün dağılımı ölçülmez: statusline ve API haftanın toplamını verir, günleri vermez.
+- **Karar:**
+  - **Adım ikiye bölündü (kullanıcı kararı).** 17a: Pencereler, Örüntüler ve dışa aktarma. 17b: dönemsel özet ve v0.2 sürümü, ayrı bir oturumda.
+  - **Pencereler sayfası haftalık önceliklidir (kullanıcı kararı).**
+    - Varsayılan görünüm haftalık döngülerdir: her haftalık pencere bir satır.
+    - Satırda yedi günlük şerit, tepe, limite takıldığı gün, en çok etkileyen üç proje, kapsamlı limitlerin (Fable) birer sütunu ve Anthropic'in kırılımı vardır.
+    - Liste ve ayrıntı çekmecesi her pencere türünde çalışır.
+    - 5 saatlik şerit yazıldı, ama sekmesi yalnızca hesapta 5 saatlik pencere varsa görünür. Sentetik üretici 5 saatlik pencere üretir, şerit onunla sınanır.
+  - **Limit riski yalnızca 5 saatliktir (kullanıcı kararı).** Genel yazıldı ve sentetik veriyle sınandı. 5 saatlik penceresi olmayan hesapta kart nedenini söyleyen bir boş durum gösterir; haftalık bir karşılık uydurulmaz.
+  - **Günler sıfırlanmadan başlayan 24 saatlik dilimlerdir,** takvim günleri değil.
+    - Değerleri `≈` tahmindir: dilimin yerel maliyeti × kalibrasyon (`k · α`).
+    - "Diğer" (claude.ai, Desktop, başka bilgisayar) dahil değildir, bu yüzden günlerin toplamı ölçülen tepenin altında kalabilir. Tablonun altındaki not bunu söyler.
+    - Güvenilir kalibrasyon yoksa günler maliyeti gösterir ve not değişir.
+  - **Limite takıldığı an ölçümdür:** pencerenin %100 olan ilk okuması. Tahmini pencerede "Bilinmiyor" yazılır.
+  - **Çekmecedeki oturum katkıları:**
+    - En büyük dört oturum ve "Diğer oturumlar" yığılı alan olarak çizilir. Dört, çünkü tasarımın doğrulanmış dört kategorik rengi var; beşinci oturum yeni bir renk isterdi.
+    - Her oturumun saklanan payı, birikimli maliyetiyle orantılı olarak zamana yayılır. Değerler `≈`'dir, not bunu söyler.
+    - En çok 168 kova vardır, her biri 5 dakikanın katıdır. Kapsamlı pencerede yalnızca o modelin ailesi sayılır.
+    - Altındaki pay tablosu aynı verinin metin halidir; "Diğer" ayrı satırdadır, çünkü zaman profili yoktur.
+  - **Çekmecede bildirimler** `notification_log`'dan gelir. Kayıt 30 gün tutulduğu için eski pencerelerde liste boştur, not bunu söyler.
+  - **Riskli saat aralığı kuralı:**
+    - En az 10 ölçülmüş 5 saatlik pencere gerekir. Daha azında kart "yeterli veri yok" der.
+    - Aralık 3 saattir. En az 5 pencere ve 2 takılma içermeli, oranı genel oranın en az 1,5 katı olmalıdır.
+    - Böyle bir aralık yoksa cümle hiçbir saatin öne çıkmadığını söyler.
+  - **Haftanın ilk günü ön yüzden gelir:** `Intl.Locale#getWeekInfo`, yoksa tablo (tr → Pazartesi, en → Pazar). Isı haritası satırlarını ve model karışımının haftalarını belirler.
+  - **Dışa aktarma:**
+    - Oturumlar (CSV/JSON, isteğe bağlı yolları gizleme), pencereler (CSV/JSON) ve günlük toplamlar (CSV).
+    - Düğme her sayfada filtre satırındadır ve sayfanın o anki aralığını ve filtrelerini kullanır.
+    - CSV: UTF-8 BOM ve CRLF. TR'de `;` ayırıcı ve ondalık virgül, EN'de `,` ve nokta. Başlıklar yerelleştirilir.
+    - `= + - @`, sekme ya da satır başıyla başlayan metin hücresinin başına `'` eklenir (formül enjeksiyonu koruması).
+    - JSON: İngilizce anahtarlar, ISO UTC zamanlar, günler için yerel tarih.
+    - Kaydetme penceresi arka uçta açılır. Dosya yolu yalnızca kullanıcının seçtiği yerdir.
+    - İçerik yalnızca kullanım ve meta veridir; istem ve yanıt yoktur.
+  - **Varsayılanlar:** son 12 hafta, Pencereler'de haftalık sekmesi, ısı haritasında maliyet. Filtreler URL parçasındadır (`#windows?tab=list&range=all`, `#patterns?range=4w&metric=percent`).
+  - **Model karışımı payları gösterir** (haftanın API karşılığı maliyetinin yüzdesi). Mutlak tutar haftadan haftaya çok değiştiği için yığılı payda değişim daha okunur.
+- **Sonuç:** `docs/perf/2026-11-21-windows-patterns.md`.
+- **Bedel:**
+  - Günler ölçüm değildir. Kullanıcı onları tepe değerle birebir karşılaştırmamalıdır; not ve `≈` bunu söyler.
+  - Katkıların zamana yayılması bir modeldir: oturumun payı doğru, payın pencere içindeki zamanlaması maliyetle orantılı varsayılır.
+  - 30 günden eski pencerelerde bildirim geçmişi yoktur.
+- **Alternatifler:**
+  - Haftalık pencereler için "riskli saatler" uydurmak: haftalık takılma sayısı birkaç olayı geçmez, istatistik anlamsız olur.
+  - Takvim günleri: sıfırlama saatine göre ilk ve son gün kısmi kalır, yedi gün eşit karşılaştırılamaz.
+  - Gün değerlerini tepeye ölçeklemek: "Diğer"in gün dağılımı bilinmediği için uydurma olurdu.
+  - Beş oturumlu katkı grafiği: beşinci renk doğrulanmış paletin dışında kalırdı.

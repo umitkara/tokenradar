@@ -23,6 +23,17 @@ v0.2'yi tamamlamak:
 - Adım 11'deki `Notifier` (özet kuralı buraya eklenecek)
 - Adım 12'deki sürüm prosedürü
 
+## 17a öncesi kararlar (2026-11-21)
+
+Gerçek veride (salt okunur sayım) hiç 5 saatlik pencere yok (ADR-041): yalnızca `weekly_all` ve `weekly_scoped` (Fable) pencereleri var, kapanmış 2 ve açık 1. Sentetik üretici de 5 saatlik pencere üretmiyor.
+
+**Kullanıcıyla kararlaştırılanlar:**
+- **Bölme:** 17a Pencereler, Örüntüler ve dışa aktarma; 17b periyodik özet ve v0.2 sürümü (ayrı oturum).
+- **Pencereler haftalık öncelikli:** Ana görünüm haftalık döngülerdir. Her hafta bir satırdır: 7 günlük şeritte gün başına puan, tepe değer, limite takılınan gün, ilk 3 proje ve kapsamlı limit sütunları. Liste ve detay çekmecesi her tür pencerede çalışır. 5 saatlik zaman şeridi de yazılır, ama yalnızca hesapta 5 saatlik pencere varsa görünür. Sentetik üretici bunu sınamak için 5 saatlik pencere üretir.
+- **Limit riski yalnızca 5 saatlik pencerelerde:** Genel olarak yazılır ve sentetik veriyle sınanır. 5 saatlik penceresi olmayan hesapta açıklayıcı bir boş durum gösterilir; haftalık için bir karşılık uydurulmaz.
+
+**Önerilen kararlar (kullanıcı onayı bekliyor, ADR-070):** Devir notunda listelenir.
+
 ## Kapsam
 
 - **Pencereler ekranı:**
@@ -128,4 +139,62 @@ pnpm tauri build
 
 ## Devir notu
 
-_(Oturum sonunda doldurulur: yapılanlar · sapmalar · açık konular · sonraki adıma notlar)_
+### 17a (2026-11-21)
+
+**Yapılanlar:**
+- Çekirdek:
+  - `list_weeks`: 24 saatlik gün dilimleri, `hit_at`, ilk üç proje, kapsamlı tepeler, kırılım.
+  - `window_strip`: 5 saatlik pencereler gece yarısında kesilir.
+  - `get_window` iki alan kazandı: `contrib` ve `alerts`.
+  - `limit_risk` ve `model_mix_trend` eklendi; `get_heatmap` saat başına hafta içi ve hafta sonu ortalamalarını da döner.
+  - `export` modülü: CSV ve JSON.
+- i18n: `Domain::Export` ve `locales/*/export.ftl`.
+- Sentetik üretici 5 saatlik pencere ve 5 saatlik kalibrasyon üretiyor.
+- Uygulama:
+  - `list_weeks`, `window_strip`, `limit_risk`, `model_mix_trend` ve `export_data` komutları. `export_data` kaydetme penceresini açar.
+  - Pencereler sayfası: haftalık döngüler, 5 saatlik şerit, liste, çekmece.
+  - Örüntüler sayfası: ısı haritası, gün içi dağılım, limit riski, model karışımı.
+  - "Dışa aktar…" düğmesi Oturumlar, Pencereler ve Örüntüler sayfalarında.
+  - Galeride sentetik örnekler. `Soon.svelte` ve `main-soon-*` anahtarları kaldırıldı.
+- Testler:
+  - Çekirdek: `queries/tests/windows_patterns.rs` (7 test) ve `export.rs` birim testleri.
+  - Ön yüz: `windows/filter.test.ts` ve `windows/view.test.ts`.
+- Belgeler: ADR-070 (Önerildi), `architecture.md` §6, `design-language.md` (bileşenler ve sözlük), `docs/perf/2026-11-21-windows-patterns.md`.
+
+**Doğrulama:**
+- `cargo fmt --check` ve `cargo clippy --workspace --all-targets -D warnings` temiz.
+- `cargo test -p tokenradar-core -- queries export notifier` geçti.
+- `pnpm -C app check / test / lint / build` temiz; `main.html` JS 124,8 KB (≤ 180 KB).
+- Yeni sorguların hepsi p95 ≤ 50 ms (perf notu).
+- Görsel inceleme: galeri headless Edge'de açık/EN ve koyu/TR çekildi. Düzeltilen kusurlar:
+  - Haftalık tablo esnek düzende sıfır yüksekliğe çöküyordu.
+  - Risk lejantının renk kutuları çubuk sınıflarıyla çakışıp kayboluyordu; "%90" rengi oklch karışımında morumsu çıkıyordu.
+  - Katkı grafiğinde ölçek yoktu (sol üste tepe değeri eklendi).
+  - Proje sütunu çok genişti.
+
+**Sapmalar:**
+- Kullanıcı kararlarıyla haftalık öncelikli sayfa ve yalnızca 5 saatlik limit riski (bkz. "17a öncesi kararlar").
+- Katkı grafiği beş yerine dört oturum adlandırıyor: doğrulanmış kategorik renk dört tane (`CONTRIB_SESSIONS = 4`).
+- Günlük toplamlar yalnızca CSV (plandaki gibi), oturum ve pencere CSV/JSON.
+
+**Önerilen kararlar (kullanıcı onayı bekliyor, ADR-070):**
+1. Günler sıfırlanmadan başlayan 24 saatlik dilimler; değerleri `≈` yerel tahmin, "Diğer" yok, toplamları tepenin altında kalabilir (not ile).
+2. Limite takıldığı an ölçümdür (%100 olan ilk okuma); tahmini pencerede "Bilinmiyor".
+3. Katkılar: saklanan pay, birikimli maliyetle orantılı zamana yayılır; dört oturum ve "Diğer oturumlar".
+4. Riskli aralık kuralı: en az 10 pencere; 3 saatlik aralık, en az 5 pencere ve 2 takılma, oran genelin en az 1,5 katı.
+5. Haftanın ilk günü ön yüzden (`getWeekInfo`, yoksa tr → Pazartesi, en → Pazar).
+6. Dışa aktarma biçimi: BOM, CRLF, TR `;` ve ondalık virgül, formül koruması (`'`), JSON İngilizce anahtar ve ISO UTC.
+7. Dışa aktarma düğmesi her sayfanın filtre satırında, sayfanın aralığı ve filtreleriyle.
+8. Varsayılanlar: 12 hafta, haftalık sekmesi, ısı haritasında maliyet; model karışımı pay olarak.
+
+**Açık konular (kullanıcı gerekli):**
+- Gerçek veri koşusu: kurulu uygulama kapatılıp portable kopya açılmalı. Ekran görüntüleri %TEMP%'te kalır (git'e girmez).
+- 3 elle doğrulanmış örnek. Günler tepeyle değil, `dilim maliyeti × k` ile karşılaştırılır.
+- TR CSV'nin Excel'de açılması.
+- Bellek ölçümü (`measure-memory.ps1 -Scenario main-window`) release derlemesi ister; aynı koşuda yapılabilir.
+
+**17b'ye notlar:**
+- Değişmeyen `list_sessions/*` ve `list_projects/*` sorguları bu makinede gürültülü ölçüldü (p95 35–93 ms, eski veritabanında da). v0.2 raporu bunları sessiz bir makinede yeniden ölçmeli.
+- `list_weeks/year` ≈ 47 ms, sınıra yakın; gerekirse pencere başına sorgular toplu hale getirilir.
+- Bildirim geçmişi 30 günle sınırlı; dönemsel özet aynı `notification_log`'u kullanacaksa saklama süresi düşünülmeli.
+- Tarihler mevcut sayfalardaki gibi `toLocaleDateString` ile yazılıyor; ADR-031'in "Intl kullanılmaz" kuralı yalnızca sayı, süre ve saat biçimlendiricileri için uygulanıyor.

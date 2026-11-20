@@ -142,7 +142,7 @@ Sürümler uygulama anında güncel stable olarak seçilir ve lock dosyalarıyla
 | `Pricing` | Uygulamaya gömülü, sürümlü fiyat tablosu: model → $/MTok, modele özgü cache okuma çarpanı, uzun istem kademesi, fast mode çarpanı, web search ücreti. Bilinmeyen model aile yedeğiyle fiyatlanır (ADR-025). Aylık plan ücretleri `pricing/plans.toml`'dadır (`subscriptionType` + `rateLimitTier`); config'teki `plan_fee_usd` önce gelir (ADR-065). |
 | `Queries` (v0.2) | Geçmiş sayfalarının görünüm modelleri (ADR-065): pencere, oturum ve proje listeleri (keyset sayfalama, imleç `"{anahtar}:{id}"`), detaylar, LTTB'li zaman serisi ve oturum işaretleri, haftanın günü × saat ısı haritası, Genel Bakış (hafta geçen haftanın aynı anıyla, plan değeri ay ilerlemesi ve geçen ayın tam oranıyla; ADR-067). Saklanan atıfı okur, eski sürüm satırı `stale` taşır. Gün ve saat sınırları `LocalZone` ile yerel saattedir. Her değer `Basis` (yöntem, güven, `≈`, silik, eski) taşır. |
 
-**UI'da hesaplama yapılmaz.** Tauri komutları önceden agregasyonu yapılmış görünüm modelleri döner (`get_panel_snapshot`, `get_panel_detail`, `get_overview(range)`, `list_sessions(filter, page)`, `list_projects`, `project_tree`, `get_project` …). Frontend yalnızca çizer.
+**UI'da hesaplama yapılmaz.** Tauri komutları önceden agregasyonu yapılmış görünüm modelleri döner (`get_panel_snapshot`, `get_panel_detail`, `get_overview(range)`, `list_sessions(filter, page)`, `list_projects`, `project_tree`, `get_project`, `list_weeks`, `window_strip`, `limit_risk`, `model_mix_trend` …). Frontend yalnızca çizer.
 
 ## 6. Veri modeli (SQLite şeması v5)
 
@@ -289,6 +289,25 @@ CREATE INDEX ix_source_session ON source_files (session_id); -- "transcript sili
   - Her düğüm alt ağacının toplamlarını taşır: proje, oturum, son etkinlik, maliyet, haftalık ortalama ve 8 haftalık eğilim.
   - Çocuklar seçili sıralama ölçütüne göre sıralanır. Projesi olmayan tek çocuklu klasörler birleştirilir (`D:\Work\Clients\Orbit` tek satır).
   - Düğümler derinlik öncelikli düz bir dizi olarak gelir. Arayüz yalnızca açık ve kapalı durumunu tutar.
+
+**Pencereler ve örüntüler (Adım 17a, ADR-070):**
+- `list_weeks(range)`: aralığa dokunan haftalık pencereler, en yenisi önce. Her satırda:
+  - Yedi gün: sıfırlanmadan başlayan 24 saatlik dilimler. Değer, dilimin `usage_5m` maliyetinin `k · α` ile çarpımıdır (`≈`, "Diğer" dahil değil). Tek bir SQL okuması tüm pencerelerin dilimlerini toplar. Güvenilir kalibrasyon yoksa yalnızca maliyet gelir.
+  - `hit_at`: `window_readings` içinde pencerenin %100 olan ilk okuması; `hit_day` onun dilimi.
+  - Saklanan atıflardan en çok etkileyen üç proje, aynı sıfırlamadaki kapsamlı pencerelerin tepeleri ve `seven_day_breakdown`.
+- `window_strip(range)`: 5 saatlik pencereler yerel gece yarılarında kesilir; her gün bir satır, en yenisi önce. Gün uzunluğu saat değişiminde 1380 ya da 1500 dakikadır. Hesapta hiç 5 saatlik pencere yoksa `any = false` döner ve sorgu orada biter.
+- `get_window` iki alan kazandı:
+  - `contrib`: en büyük dört oturum ve geri kalanı. Oturumun saklanan payı birikimli maliyetiyle orantılı olarak zamana yayılır. En çok 168 kova, her biri 5 dakikanın katı; kapsamlı pencerede yalnızca o ailenin maliyeti sayılır. Payı olmayan pencerede birim maliyettir.
+  - `alerts`: `notification_log`'daki bu pencereye ait kayıtlar (30 gün).
+- `limit_risk(range)`: ölçülmüş 5 saatlik pencerelerin başlangıç saatine göre sayısı, takılanlar ve %90'a ulaşanlar. En az 10 pencere gerekir. Riskli aralık 3 saattir; en az 5 pencere ve 2 takılma içermeli, oranı genelin en az 1,5 katı olmalıdır.
+- `get_heatmap` ayrıca saat başına hafta içi ve hafta sonu ortalamalarını döner: toplam, aralıktaki o türden takvim günü sayısına bölünür.
+- `model_mix_trend(range, week_start)`: yerel haftalara göre aile başına maliyet, boş haftalar dahil. Yığın sırası Opus, Fable, Sonnet, Haiku, sonra diğerleri. Haftanın ilk günü ön yüzden gelir (`Intl.Locale#getWeekInfo`, yoksa tr → Pazartesi, en → Pazar).
+
+**Dışa aktarma (Adım 17a, ADR-070):** `tokenradar_core::export` oturumları, pencereleri ve günlük toplamları bayta çevirir; `export_data` komutu kaydetme penceresini açıp dosyayı yazar.
+- CSV: UTF-8 BOM, CRLF, yerelleştirilmiş başlıklar (`locales/*/export.ftl`). TR `;` ve ondalık virgül, EN `,` ve nokta.
+- `= + - @`, sekme ya da satır başıyla başlayan metin hücresine `'` öneki eklenir (formül enjeksiyonu).
+- JSON: İngilizce anahtarlar, ISO UTC zamanlar, günler için yerel tarih.
+- Oturum dışa aktarması `list_sessions` sayfalarını, pencere dışa aktarması `list_windows` sayfalarını dolaşır. "Yolları gizle" proje yolu sütununu düşürür.
 
 **Tekilleştirme UPSERT kuralı:**
 ```sql
