@@ -21,6 +21,49 @@ Bunun için şunlar yapılır:
 - `docs/data-sources.md` S2 (`seven_day_breakdown`)
 - Adım 13'ün devir notu ve backtest raporu
 
+## Ön keşif (2026-11-20, gerçek DB'nin `.backup` kopyası, salt okunur; sayılar yazılmadı)
+
+- **5 saatlik pencere yok** (ADR-041). `limit_windows` içinde yalnızca haftalık pencereler var: `weekly_all` ve Fable kapsamlı limit, ikişer kapanmış, birer açık. "En az 10 kapanmış pencere" kabul kriteri bu veriyle karşılanamaz.
+- Kurulu sürüm Adım 13'ten eski olduğu için `calibrations` tablosu boş. Atıf denemesinde kalibrasyon bellekte hesaplandı (`examples/attr_probe.rs`).
+- Ham olaylar 2026-09-26'dan, snapshot'lar 2026-11-05'ten beri var. `seven_day_breakdown`'da `claude_code` dışı pay hafta başına ≈ %0–4.
+- **Aralık başına formül "Diğer"i şişiriyor.** Kenar aralığı başına `yerel = min(Δp, k·ΔC)` yapıldığında, oranın gürültüsünün (yuvarlama, MAD ≈ %4) pozitif tarafı "Diğer"e akıyor. Gerçek ≈ %0–1 olan bir haftada "Diğer" aralık başına %4,3, 6 sa dilimde %1,7, 24 sa dilimde %0,9, pencere bütününde %0,0. Fable kapsamlı limitte (API, güven 0,29) aralık başına %13–19. Diğer haftalarda da 24 sa dilim `seven_day_breakdown`'a en yakın sonuç.
+
+## Kullanıcıyla kararlaştırılanlar (2026-11-20)
+
+- **Bölme:** Adım 14, **14a** ve **14b** olarak iki oturuma bölünür.
+  - 14a: atıf, pencere sonlandırma, tahmini geçmiş pencereler, çapraz doğrulama, gerçek veri incelemesi.
+  - 14b: sorgu API'leri, görünüm modelleri, sentetik üreteç, ≤ 50 ms benchmark'lar.
+- **"Diğer" 24 saatlik dilimde hesaplanır.** Dilimler pencere başlangıcına hizalıdır: `Diğer = max(0, ΣΔp − k·ΣαΔC)`. Dilimin yerel payı oturumlara α ağırlıklı maliyetle bölünür. 5 saatlik pencerede dilim pencerenin kendisidir.
+- **Kalibrasyon orta güvenin altındaysa "Diğer" hesaplanmaz.** Yüzde oturumlara maliyet oranıyla dağıtılır (v0.1 gibi); değerler `≈` ve silik gösterilir, nedeni belirtilir.
+- **Tahmini geçmiş pencereler yalnızca haftalık.** Gözlenen haftalık reset 7'şer gün geriye taşınır; yüzde `k·C` ile `≈` olarak tahmin edilir (`estimated = 1`, limite takılma bilinmez). 5 saatlik türetme, 5 saatlik snapshot'ı olan bir hesapta kural doğrulanana kadar yapılmaz ve kod yolu da hazırlanmaz.
+
+## Kullanıcıyla kararlaştırılanlar: 14a tasarımı (2026-11-20)
+
+Ajanın önerdiği 1–7 numaralı maddeleri kullanıcı yazıldığı gibi onayladı. 6. maddenin uyarı kuralı, bir yan ajanın notu üzerine kullanıcı kararıyla tek yönlü yapıldı.
+
+1. **Parçalar (segment).** Bir pencerenin kaynağı, o pencerede keskin kenarı çok olan kaynaktır (12t ile aynı kural). Keskin kenarlar 24 saatlik dilimlere göre gruplanır. Her parça, önceki dilimin son kenarından bu dilimin son kenarına kadar uzanır. Kenarı olmayan dilim bir sonrakine katılır.
+   - **Baş:** pencere başlangıcı (%0) → ilk grubun son kenarı. Kayıt pencere ortasında başladıysa da `Δp` bilinir.
+   - **Kuyruk:** son kenar → `min(now, resets_at)`, `Δp = peak_percent − son kenarın puanı`. Böylece toplam, gösterilen birleşik değere (ADR-060) eşit olur.
+   - Parçada yerel maliyet yoksa `Δp` tümüyle "Diğer"e gider.
+   - **Korunum:** Σ oturum payı + Diğer = `peak_percent`, tolerans 0,01 puan.
+2. **Maliyet kaynağı `usage_5m`.** Atıf, ham olaylar yerine 5 dakikalık rollup'ı kullanır. Rollup hiç silinmez, ham olaylar 90 günde silinir. Kenar zamanı 5 dakikalık kovaya yuvarlanır: kova başı < kenar ise kova o parçaya sayılır. 24 saatlik dilimde bu hata önemsiz kalır. Subagent kırılımı için tablo tutulmaz, sorgu anında `usage_5m`'den hesaplanır (14b ölçer).
+3. **Şema v3 (`0003_attribution.sql`).**
+   - Hiç yazılmamış `attributions` tablosu yeniden kurulur: `est_percent` NULL olabilir (yüzdesiz, yalnızca maliyet), `ON DELETE CASCADE`.
+   - Yeni `attribution_runs` tablosu (pencere başına): `calibration_version` (0 = kalibrasyonsuz), `method` (`calibrated` / `proportional` / `estimated` / `cost_only`), güven, toplam ve Diğer yüzdesi, `breakdown_other`, `suspect`, `closed`, `computed_at`.
+   - v3 veritabanını v2 build'ler açamaz (`SchemaTooNew`).
+4. **Güncelleme zamanlaması.** Boşta uyanma eklenmez.
+   - Açık pencere en fazla 60 saniyede bir yeniden hesaplanır, yalnızca o arada yeni snapshot ya da kullanım geldiyse.
+   - Kapanan pencere, kapandıktan sonraki ilk turda bir kez sonlandırılır (`closed = 1`).
+   - Kalibrasyon sürümü değişince kapanmış pencereler yalnızca görüntülenince (`ensure_attribution(window)`) yeniden hesaplanır.
+   - Hiç atıfı olmayan pencereler (yeni ve tahmini) kalibrasyon turunda (15 dk) arka planda doldurulur.
+5. **Tahmini pencereler yalnızca `weekly_all`.** Kapsamlı limitin snapshot'tan önce var olup olmadığı bilinmiyor. `hit_limit` sütunu `NOT NULL` olarak kalır (tablo yeniden kurulmaz); görünüm modeli tahmini pencerede limite takılmayı "bilinmiyor" (`None`) verir. Kalibrasyon orta güvenin altındaysa tahmini pencerenin yüzdesi yoktur (`peak_percent` NULL, `cost_only`).
+6. **Çapraz doğrulama yalnızca `weekly_all`.** Penceredeki son `seven_day_breakdown` (başlangıç ±5 dk eşleşir) ile karşılaştırılır. **Kural tek yönlüdür (kullanıcı kararı, 2026-11-20; plandaki iki yönlü `|fark| > 10` kuralının yerine).**
+   - Kırılım kullanımı makineye göre değil ürüne göre ayırır: başka bir bilgisayarda ya da WSL'de çalışan Claude Code orada `claude_code` sayılır. Bu yüzden `Σ claude_code dışı`, "Diğer"in alt sınırıdır.
+   - `Diğer/toplam < Σ claude_code dışı − 10 puan` ise `suspect = 1` yazılır ve `CalibrationSuspect` sinyali üretilir. Bu, makine sayısından bağımsız kesin bir çelişkidir.
+   - "Diğer" 10 puandan fazla üstteyse uyarı çıkmaz. Görünüm modeli bunu "başka makine ya da kalibrasyon" bilgisi olarak taşır (`other_excess`).
+   - UI'da gösterimi 14b/15'e kalır.
+7. **Kabul kriteri (değişiklik):** "En az 10 kapanmış pencere" yerine mevcut bütün kapanmış pencereler (bugün 4) ve açık pencere elle incelenir. Her haftalık pencerenin "Diğer" payı `seven_day_breakdown` ile karşılaştırılır. Özet devir notuna yalnızca yüzde olarak yazılır. Doğrulama yeni pencereler kapandıkça 14b'de genişletilir.
+
 ## Kapsam
 
 - `attribution/`: aralık bazlı dağıtım, korunum garantisi, "Diğer" kovası, subagent'ları ana oturumda toplama, `attributions` tablosu, sürüm bazlı tembel yeniden hesaplama.
