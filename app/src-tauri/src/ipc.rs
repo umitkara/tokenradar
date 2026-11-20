@@ -35,7 +35,13 @@ use crate::terminal_font::{
 };
 use crate::tray_pin::{self, TrayPinState};
 use crate::updater::{self, UpdateChanged, UpdateView};
-use crate::{core_bridge, notify, onboarding, panel, tray};
+use crate::{core_bridge, history, notify, onboarding, panel, tray};
+use tokenradar_core::domain::{LimitRef, ProjectId, SessionId};
+use tokenradar_core::queries::{
+    self, HeatMetric, Heatmap, ImpactRow, Overview, ProjectDetail, ProjectFilter, ProjectPage,
+    ProjectSort, SessionDetail, SessionFilter, SessionPage, SessionSort, TimeRange, TimeSeries,
+    WindowDetail, WindowFilter, WindowPage,
+};
 
 /// Relative to the `app/src-tauri` crate. Release builds never write the bindings.
 #[cfg(debug_assertions)]
@@ -108,6 +114,16 @@ pub fn builder() -> Builder<tauri::Wry> {
             panel_painted,
             panel_hide,
             refresh_limits,
+            list_windows,
+            get_window,
+            list_sessions,
+            get_session,
+            get_session_impact,
+            list_projects,
+            get_project,
+            get_timeseries,
+            get_heatmap,
+            get_overview,
             get_muted,
             toggle_mute,
             open_settings,
@@ -341,6 +357,151 @@ async fn set_autostart(app: AppHandle, enabled: bool) -> Result<bool, String> {
 async fn send_test_notification(app: AppHandle) {
     let locale = app.state::<Prefs>().locale();
     notify::show(&app, &notifier::test_notice(locale));
+}
+
+/// Limit windows, newest first, one keyset page after `cursor` (Step 14b).
+#[tauri::command]
+#[specta::specta]
+async fn list_windows(
+    app: AppHandle,
+    filter: WindowFilter,
+    cursor: Option<String>,
+    limit: Option<u32>,
+) -> Result<WindowPage, String> {
+    blocking(move || {
+        history::run(&app, |q, ctx| {
+            queries::list_windows(&q.store, ctx, &filter, cursor.as_deref(), limit)
+        })
+    })
+    .await
+}
+
+/// One window with its session shares and readings; attributes it first when stale.
+#[tauri::command]
+#[specta::specta]
+async fn get_window(app: AppHandle, id: i64) -> Result<Option<WindowDetail>, String> {
+    blocking(move || history::run(&app, |q, ctx| queries::get_window(&q.store, ctx, id))).await
+}
+
+/// Session trees with usage in the filter's range, one keyset page after `cursor`.
+#[tauri::command]
+#[specta::specta]
+async fn list_sessions(
+    app: AppHandle,
+    filter: SessionFilter,
+    sort: SessionSort,
+    cursor: Option<String>,
+    limit: Option<u32>,
+) -> Result<SessionPage, String> {
+    blocking(move || {
+        history::run(&app, |q, ctx| {
+            queries::list_sessions(
+                &q.store,
+                ctx,
+                &filter,
+                sort,
+                cursor.as_deref(),
+                limit,
+                &q.live,
+            )
+        })
+    })
+    .await
+}
+
+/// One session tree over its whole life; a subagent id opens its main session.
+#[tauri::command]
+#[specta::specta]
+async fn get_session(app: AppHandle, id: SessionId) -> Result<Option<SessionDetail>, String> {
+    blocking(move || {
+        history::run(&app, |q, ctx| {
+            queries::get_session(&q.store, ctx, id, &q.live)
+        })
+    })
+    .await
+}
+
+/// Every window a session tree has a share in, newest first.
+#[tauri::command]
+#[specta::specta]
+async fn get_session_impact(app: AppHandle, id: SessionId) -> Result<Vec<ImpactRow>, String> {
+    blocking(move || {
+        history::run(&app, |q, ctx| {
+            queries::get_session_impact(&q.store, ctx, id)
+        })
+    })
+    .await
+}
+
+/// Projects with usage in the filter's range, one keyset page after `cursor`.
+#[tauri::command]
+#[specta::specta]
+async fn list_projects(
+    app: AppHandle,
+    filter: ProjectFilter,
+    sort: ProjectSort,
+    cursor: Option<String>,
+    limit: Option<u32>,
+) -> Result<ProjectPage, String> {
+    blocking(move || {
+        history::run(&app, |q, ctx| {
+            queries::list_projects(&q.store, ctx, &filter, sort, cursor.as_deref(), limit)
+        })
+    })
+    .await
+}
+
+/// One project over all time: weekly trend, model mix, most expensive sessions.
+#[tauri::command]
+#[specta::specta]
+async fn get_project(app: AppHandle, id: ProjectId) -> Result<Option<ProjectDetail>, String> {
+    blocking(move || history::run(&app, |q, ctx| queries::get_project(&q.store, ctx, id))).await
+}
+
+/// A limit's fused readings in `range`, thinned to `max_points` (at most 1,500), with its
+/// windows and session markers.
+#[tauri::command]
+#[specta::specta]
+async fn get_timeseries(
+    app: AppHandle,
+    limit: LimitRef,
+    range: TimeRange,
+    max_points: Option<u32>,
+) -> Result<TimeSeries, String> {
+    blocking(move || {
+        history::run(&app, |q, ctx| {
+            queries::get_timeseries(&q.store, ctx, &limit, range, max_points)
+        })
+    })
+    .await
+}
+
+/// Usage per local week-day and hour in `range`.
+#[tauri::command]
+#[specta::specta]
+async fn get_heatmap(
+    app: AppHandle,
+    range: TimeRange,
+    metric: HeatMetric,
+) -> Result<Heatmap, String> {
+    blocking(move || {
+        history::run(&app, |q, ctx| {
+            queries::get_heatmap(&q.store, ctx, range, metric)
+        })
+    })
+    .await
+}
+
+/// The overview page: this week against the last, top sessions and projects, plan value.
+#[tauri::command]
+#[specta::specta]
+async fn get_overview(app: AppHandle) -> Result<Overview, String> {
+    blocking(move || {
+        history::run(&app, |q, ctx| {
+            queries::get_overview(&q.store, ctx, q.limits.clone(), &q.plan())
+        })
+    })
+    .await
 }
 
 /// Runs blocking work (disk, dialogs, restarting the core) off the async workers.

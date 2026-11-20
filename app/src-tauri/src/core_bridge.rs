@@ -210,6 +210,14 @@ pub fn panel_opened(app: &AppHandle) {
     with_core(app, CoreHandle::panel_opened);
 }
 
+/// The running core's database handle (cheap to clone), so a query runs without holding the
+/// core's lock; `None` until the core is running.
+pub fn store(app: &AppHandle) -> Option<tokenradar_core::store::Store> {
+    let state = app.try_state::<CoreState>()?;
+    let guard = state.0.lock().unwrap_or_else(PoisonError::into_inner);
+    guard.as_ref().map(|handle| handle.store().clone())
+}
+
 /// Runs `f` on the core once it is running; before that, or after a failed start, nothing
 /// happens (the core reads the stored settings when it starts).
 pub fn with_core(app: &AppHandle, f: impl FnOnce(&CoreHandle)) {

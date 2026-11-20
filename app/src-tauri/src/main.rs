@@ -7,6 +7,7 @@ mod chrome;
 mod core_bridge;
 #[cfg(debug_assertions)]
 mod gallery;
+mod history;
 mod ipc;
 mod logging;
 mod notify;

@@ -128,6 +128,29 @@ export const commands = {
 	panelHide: () => __TAURI_INVOKE<void>("panel_hide"),
 	/**  "Refresh": asks the usage API for data older than 60 s (with consent). */
 	refreshLimits: () => __TAURI_INVOKE<void>("refresh_limits"),
+	/**  Limit windows, newest first, one keyset page after `cursor` (Step 14b). */
+	listWindows: (filter: WindowFilter, cursor: string | null, limit: number | null) => typedError<WindowPage, string>(__TAURI_INVOKE("list_windows", { filter, cursor, limit })),
+	/**  One window with its session shares and readings; attributes it first when stale. */
+	getWindow: (id: number) => typedError<WindowDetail | null, string>(__TAURI_INVOKE("get_window", { id })),
+	/**  Session trees with usage in the filter's range, one keyset page after `cursor`. */
+	listSessions: (filter: SessionFilter, sort: SessionSort, cursor: string | null, limit: number | null) => typedError<SessionPage, string>(__TAURI_INVOKE("list_sessions", { filter, sort, cursor, limit })),
+	/**  One session tree over its whole life; a subagent id opens its main session. */
+	getSession: (id: SessionId) => typedError<SessionDetail | null, string>(__TAURI_INVOKE("get_session", { id })),
+	/**  Every window a session tree has a share in, newest first. */
+	getSessionImpact: (id: SessionId) => typedError<ImpactRow[], string>(__TAURI_INVOKE("get_session_impact", { id })),
+	/**  Projects with usage in the filter's range, one keyset page after `cursor`. */
+	listProjects: (filter: ProjectFilter, sort: ProjectSort, cursor: string | null, limit: number | null) => typedError<ProjectPage, string>(__TAURI_INVOKE("list_projects", { filter, sort, cursor, limit })),
+	/**  One project over all time: weekly trend, model mix, most expensive sessions. */
+	getProject: (id: ProjectId) => typedError<ProjectDetail | null, string>(__TAURI_INVOKE("get_project", { id })),
+	/**
+	 *  A limit's fused readings in `range`, thinned to `max_points` (at most 1,500), with its
+	 *  windows and session markers.
+	 */
+	getTimeseries: (limit: LimitRef, range: TimeRange, maxPoints: number | null) => typedError<TimeSeries, string>(__TAURI_INVOKE("get_timeseries", { limit, range, maxPoints })),
+	/**  Usage per local week-day and hour in `range`. */
+	getHeatmap: (range: TimeRange, metric: HeatMetric) => typedError<Heatmap, string>(__TAURI_INVOKE("get_heatmap", { range, metric })),
+	/**  The overview page: this week against the last, top sessions and projects, plan value. */
+	getOverview: () => typedError<Overview, string>(__TAURI_INVOKE("get_overview")),
 	getMuted: () => __TAURI_INVOKE<boolean>("get_muted"),
 	/**  Mutes notifications for an hour, or unmutes them; answered with [`MuteChanged`]. */
 	toggleMute: () => __TAURI_INVOKE<void>("toggle_mute"),
@@ -252,6 +275,28 @@ export type BarStyle =
 export type BarStyleSample = {
 	style: BarStyle,
 	sample: Span[],
+};
+
+/**  How a percentage was obtained and how to show it. */
+export type Basis = {
+	method: Method,
+	/**  Calibration confidence for this window's usage; `None` without a calibration. */
+	confidence: number | null,
+	/**  Show with `≈`: not split with a usable calibration. */
+	approx: boolean,
+	/**  Show dimmed: low confidence, or no measurement behind it. */
+	dim: boolean,
+	/**  Computed with an older calibration; a background pass will redo it. */
+	stale: boolean,
+};
+
+export type CacheStats = {
+	/**  `cache_read / (input + cache_read + cache_write)`, 0–1; `None` without input. */
+	hit_ratio: number | null,
+	write_5m: number,
+	write_1h: number,
+	/**  What the cache reads would have cost as plain input, minus what they cost. */
+	savings: MicroUsd,
 };
 
 /**  One limit's calibration as `get_calibration_status` and `CalibrationUpdated` carry it. */
@@ -575,6 +620,37 @@ export type Freshness =
  */
 export type Group = "limit" | "session" | "project" | "layout";
 
+/**  One week-day × hour cell (local time). */
+export type HeatCell = {
+	/**  Monday = 0. */
+	weekday: number,
+	hour: number,
+	/**  Cost in micro-USD, tokens, or points. */
+	total: number | null,
+	/**  `total / active_days`; 0 without activity. */
+	mean: number | null,
+	/**  Local dates with usage in this cell. */
+	active_days: number,
+};
+
+/**  What a heat map cell adds up. */
+export type HeatMetric = "cost" | "tokens" | 
+/**  `≈` points of the weekly limit: `k · Σ α · cost` with its calibration. */
+"percent";
+
+export type Heatmap = {
+	metric: HeatMetric,
+	range: TimeRange,
+	/**  All 168 cells, Monday 00:00 first. */
+	cells: HeatCell[],
+	max_total: number | null,
+	/**
+	 *  Set for [`HeatMetric::Percent`]; `None` without a usable calibration (then every
+	 *  total is 0).
+	 */
+	basis: Basis | null,
+};
+
 /**
  *  What stands for an item's label (Step 12p): the localized words, a few Unicode symbols, or
  *  Nerd Font icons (Octicons). Symbols do not depend on the language.
@@ -586,6 +662,22 @@ export type IconSet =
 "unicode" | 
 /**  Octicons from the Nerd Font, also for values that have no label in words. */
 "nerd";
+
+/**  One window a session took part in. */
+export type ImpactRow = {
+	window_id: number,
+	kind: LimitKind,
+	scope: Scope | null,
+	starts_at: Timestamp,
+	resets_at: Timestamp,
+	peak_percent: number | null,
+	/**  `None` for an estimated window. */
+	hit_limit: boolean | null,
+	estimated: boolean,
+	percent: number | null,
+	cost: MicroUsd,
+	basis: Basis,
+};
 
 /**  The result of [`StatuslinePrefs::import_toml`]. */
 export type Imported = {
@@ -745,6 +837,8 @@ export type LocalePref = "system" | "en" | "tr";
 /**  How much goes into the log file. Never content or tokens, at any level. */
 export type LogLevel = "error" | "warn" | "info" | "debug" | "trace";
 
+export type Method = "calibrated" | "proportional" | "estimated" | "cost_only";
+
 /**  US dollars × 10⁶. A price of $1 per million tokens is exactly one micro-dollar per token. */
 export type MicroUsd = number;
 
@@ -755,6 +849,14 @@ export type MicroUsd = number;
 export type ModelFamily = "fable" | "mythos" | "opus" | "sonnet" | "haiku" | 
 /**  Placeholder records Claude Code writes without an API call (`<synthetic>`). */
 "synthetic" | "unknown";
+
+/**  Cost and tokens of one model. */
+export type ModelSlice = {
+	model: string,
+	family: ModelFamily,
+	cost: MicroUsd,
+	tokens: number,
+};
 
 /**  Notifications were muted or unmuted (tray menu, panel, or the mute running out). */
 export type MuteChanged = {
@@ -806,6 +908,49 @@ export type OsFlavor =
 "win11" | 
 /**  No usable backdrop: opaque surfaces (design-language.md §4). */
 "win10";
+
+/**  The window's "Other" and its check against `seven_day_breakdown` (ADR-064). */
+export type OtherView = {
+	percent: number | null,
+	/**  Share of the window's total, 0–100. */
+	share_of_total: number | null,
+	/**  The breakdown's non-Claude-Code share, 0–100, when the API reported one. */
+	breakdown_other: number | null,
+	/**
+	 *  "Other" is more than 10 points below the breakdown: the calibration counts local use
+	 *  too high.
+	 */
+	suspect: boolean,
+	/**  "Other" is more than 10 points above it: another computer or the calibration (info). */
+	other_excess: boolean,
+};
+
+export type Overview = {
+	/**  The panel's current limits, passed through. */
+	limits: LimitView[],
+	week: WeekSpan,
+	/**  Last 7 days per limit with readings (5-hour and weekly). */
+	series: TimeSeries[],
+	cost: MicroUsd,
+	previous_cost: MicroUsd | null,
+	tokens: TokenBreakdown,
+	models: ModelSlice[],
+	top_sessions: TopSession[],
+	top_projects: TopProject[],
+	/**  Basis of the week's shares. */
+	basis: Basis | null,
+	other: OverviewOther,
+	calibration: CalibrationView | null,
+	plan: PlanValue,
+	generated_at: Timestamp,
+};
+
+export type OverviewOther = {
+	/**  This week's "Other" and its check; `None` when not computed (low confidence). */
+	other: OtherView | null,
+	/**  `seven_day_breakdown` rows of this week (key, percent), largest first. */
+	breakdown: ([string, number | null])[],
+};
 
 /**  One limit's use against the time gone (ADR-044). */
 export type PaceView = {
@@ -873,6 +1018,24 @@ export type PickError = { error: "not_a_directory" } |
 /**  Neither `projects\` nor `settings.json` inside: probably the wrong folder. */
 { error: "not_claude_dir" } | { error: "io"; message: string };
 
+export type PlanFeeSource = 
+/**  `pricing/plans.toml`. */
+"table" | 
+/**  The user's `plan_fee_usd`. */
+"user";
+
+export type PlanValue = {
+	/**  API-equivalent cost since local midnight on the 1st. */
+	month_cost: MicroUsd,
+	month_start: Timestamp,
+	/**  The plan's display name from the table, when known. */
+	plan: string | null,
+	fee: MicroUsd | null,
+	fee_source: PlanFeeSource | null,
+	/**  `month_cost / fee`. */
+	ratio: number | null,
+};
+
 /**  Counters for `doctor`. */
 export type PollDiagnostics = {
 	requests: number,
@@ -915,6 +1078,63 @@ export type Preset =
 "two_line" | "powerline" | 
 /**  The limits at the left, the model, folder and branch at the right (ADR-051). */
 "split";
+
+export type ProjectDetail = {
+	/**  All-time totals. */
+	project: ProjectRow,
+	/**  The last [`TREND_WEEKS`] weekly windows, oldest first. */
+	weeks: ProjectWeek[],
+	models: ModelSlice[],
+	top_sessions: SessionRow[],
+};
+
+export type ProjectFilter = {
+	/**  Cost and impact count this range; projects without usage in it are left out. */
+	range: TimeRange | null,
+	/**  Matches the name and parts of the path. */
+	search: string | null,
+};
+
+/**  Row id in `projects`. */
+export type ProjectId = number;
+
+export type ProjectPage = {
+	items: ProjectRow[],
+	next: string | null,
+};
+
+/**  A project as rows refer to it. */
+export type ProjectRef = {
+	id: ProjectId,
+	name: string,
+};
+
+export type ProjectRow = {
+	id: ProjectId,
+	name: string,
+	/**  Normalized path; `unresolved:<dir>` when the cwd is unknown. */
+	path: string,
+	/**  Main sessions with usage in the range. */
+	sessions: number,
+	last_active: Timestamp | null,
+	cost: MicroUsd,
+	/**  `≈` points of weekly windows in the range, summed over the project's sessions. */
+	weekly_percent: number | null,
+	/**  Cost per 7 days over the last [`TREND_WEEKS`] weeks, oldest first. */
+	trend: MicroUsd[],
+};
+
+export type ProjectSort = "last_active" | "cost" | "impact" | "sessions";
+
+/**  One weekly window of a project. */
+export type ProjectWeek = {
+	window_id: number,
+	starts_at: Timestamp,
+	resets_at: Timestamp,
+	estimated: boolean,
+	percent: number | null,
+	cost: MicroUsd,
+};
 
 export type Projection = {
 	/**  Percentage points per minute, never negative. */
@@ -1050,8 +1270,90 @@ export type SegmentKind = "five_hour" | "seven_day" |
  */
 "flex";
 
+export type SeriesPoint = {
+	at: Timestamp,
+	/**  Fused value (ADR-060). Never an estimate. */
+	percent: number | null,
+	source: Source,
+};
+
+export type SessionDetail = {
+	/**  Totals over the session's whole life. */
+	session: SessionRow,
+	git_branch: string | null,
+	cc_version: string | null,
+	entrypoint: string | null,
+	/**  The project's normalized path (`unresolved:<dir>` when the cwd is unknown). */
+	path: string | null,
+	/**  Cost per model per 5 minutes; merged into wider buckets beyond 1,500 buckets. */
+	timeline: TimelineBucket[],
+	/**  Width of a `timeline` bucket in ms. */
+	bucket_ms: number,
+	subagents: SubagentRow[],
+	cache: CacheStats,
+	impact: ImpactRow[],
+};
+
+/**  Which sessions a list shows. Cost and tokens count the range only. */
+export type SessionFilter = {
+	range: TimeRange | null,
+	project: ProjectId | null,
+	/**  Sessions that used this model family in the range. */
+	family: ModelFamily | null,
+	/**  Only the sessions whose uuid the caller lists as running. */
+	live_only: boolean,
+	/**  Matches title, project name and uuid. */
+	search: string | null,
+};
+
 /**  Row id in `sessions`. */
 export type SessionId = number;
+
+/**
+ *  A session tree with a share in the limit's windows in the range; `start`–`end` is its
+ *  life clipped to the range (the windows' span when the session's times are unknown).
+ */
+export type SessionMarker = {
+	session_id: SessionId,
+	name: SessionName,
+	start: Timestamp,
+	end: Timestamp,
+	/**  `≈` points of this limit's windows in the range. */
+	percent: number | null,
+};
+
+/**  A session's display name: the title, otherwise project and short uuid. Never content. */
+export type SessionName = {
+	text: string,
+	/**  No title was known; `text` is `project · uuid`. */
+	fallback: boolean,
+};
+
+export type SessionPage = {
+	items: SessionRow[],
+	next: string | null,
+};
+
+export type SessionRow = {
+	id: SessionId,
+	uuid: string,
+	name: SessionName,
+	project: ProjectRef | null,
+	first_ts: Timestamp | null,
+	last_ts: Timestamp | null,
+	live: boolean,
+	/**  Model names used in the range, most expensive first. */
+	models: string[],
+	cost: MicroUsd,
+	tokens: TokenSums,
+	subagents: number,
+	/**  `≈` points of weekly windows in the range, summed; `None` without a percentage. */
+	weekly_percent: number | null,
+	/**  Points of 5-hour windows in the range, summed (accounts that have them). */
+	session_percent: number | null,
+	/**  The weakest basis behind the two sums. */
+	impact_basis: Basis | null,
+};
 
 /**  One session tree's part in the current 5-hour window. */
 export type SessionShareView = {
@@ -1071,6 +1373,11 @@ export type SessionShareView = {
 	/**  Input, output and cache-write tokens per minute over the last 5 minutes. */
 	tokens_per_min: number | null,
 };
+
+/**  Descending order of a session list. */
+export type SessionSort = "last_active" | "started" | "cost" | "tokens" | 
+/**  Weekly share. */
+"impact";
 
 /**  Sent to every open window when [`SettingsView`] changed. */
 export type SettingsChanged = SettingsView;
@@ -1106,6 +1413,16 @@ export type SettingsView = {
 };
 
 export type Severity = "ok" | "warn" | "crit";
+
+/**  One session tree's part of a window. */
+export type ShareRow = {
+	session_id: SessionId,
+	name: SessionName,
+	project: ProjectRef | null,
+	/**  `≈` points; `None` when the window has no percentage to split. */
+	percent: number | null,
+	cost: MicroUsd,
+};
 
 /**  Where a number came from. The UI always shows it (honest numbers). */
 export type Source = "statusline" | "api" | 
@@ -1242,6 +1559,16 @@ export type StorageView = {
 	portable: boolean,
 };
 
+export type SubagentRow = {
+	id: SessionId,
+	uuid: string,
+	/**  Agent title or type when known. */
+	title: string | null,
+	cost: MicroUsd,
+	tokens: TokenSums,
+	models: string[],
+};
+
 /**  A settings file TokenRadar can write a font into. */
 export type TargetId = "windows_terminal" | "windows_terminal_preview" | 
 /**  The zip or Scoop install of Windows Terminal. */
@@ -1305,8 +1632,62 @@ export type Theme = "plain" |
 /**  The user's theme choice; `System` follows the operating system's app theme. */
 export type ThemePref = "system" | "light" | "dark";
 
+/**  `from <= t < to`, UTC. */
+export type TimeRange = {
+	from: Timestamp,
+	to: Timestamp,
+};
+
+export type TimeSeries = {
+	limit: LimitRef,
+	range: TimeRange,
+	/**  Oldest first, at most the requested number of points. */
+	points: SeriesPoint[],
+	windows: WindowBand[],
+	markers: SessionMarker[],
+};
+
+/**  Cost of one model in one 5-minute bucket. */
+export type TimelineBucket = {
+	at: Timestamp,
+	model: string,
+	cost: MicroUsd,
+};
+
 /**  Milliseconds since the Unix epoch, UTC. */
 export type Timestamp = number;
+
+export type TokenBreakdown = {
+	tokens: TokenSums,
+	cache_write_5m: number,
+	cache_write_1h: number,
+};
+
+/**  Input, output, cache-read and cache-write tokens. */
+export type TokenSums = {
+	input: number,
+	output: number,
+	cache_read: number,
+	cache_write: number,
+};
+
+export type TopProject = {
+	project: ProjectRef,
+	percent: number | null,
+	cost: MicroUsd,
+	daily: MicroUsd[],
+};
+
+export type TopSession = {
+	session_id: SessionId,
+	name: SessionName,
+	project: ProjectRef | null,
+	/**  `≈` points of this week's window; `None` without a percentage. */
+	percent: number | null,
+	cost: MicroUsd,
+	/**  Cost per local day of the week, oldest first. */
+	daily: MicroUsd[],
+};
 
 /**  Where the tray icon is shown. */
 export type TrayPinState = 
@@ -1348,6 +1729,15 @@ export type UpdateView = {
 	can_install: boolean,
 };
 
+/**  The week the overview is about. */
+export type WeekSpan = {
+	starts_at: Timestamp,
+	/**  The window's reset, or `now` for the rolling fallback. */
+	ends_at: Timestamp,
+	/**  The open `weekly_all` window; `None` when the account has none (last 7 days). */
+	window_id: number | null,
+};
+
 /**  Where the widget lives. */
 export type WidgetMode = 
 /**  On the desktop, always on top, draggable. */
@@ -1377,6 +1767,66 @@ export type WidgetPrefs = {
 	taskbar_align?: TaskbarAlign,
 	/**  Taskbar mode: logical pixels away from the anchor, `0..=MAX_TASKBAR_OFFSET`. */
 	taskbar_offset?: number,
+};
+
+/**  A window inside the range, drawn as a band. */
+export type WindowBand = {
+	window_id: number,
+	starts_at: Timestamp,
+	resets_at: Timestamp,
+	peak_percent: number | null,
+	/**  `None` for an estimated window. */
+	hit_limit: boolean | null,
+	/**  No readings: draw dashed. */
+	estimated: boolean,
+};
+
+export type WindowDetail = {
+	window: WindowRow,
+	shares: ShareRow[],
+	other: OtherView | null,
+	/**  Measured readings, fused (ADR-060) and thinned; empty for an estimated window. */
+	points: SeriesPoint[],
+};
+
+/**  Which windows a list shows. */
+export type WindowFilter = {
+	/**  Windows overlapping this range; all when `None`. */
+	range: TimeRange | null,
+	/**  One limit; all when `None`. */
+	limit: LimitRef | null,
+};
+
+export type WindowPage = {
+	items: WindowRow[],
+	/**  Pass back for the next page; `None` on the last one. */
+	next: string | null,
+};
+
+/**  One window in a list. */
+export type WindowRow = {
+	id: number,
+	kind: LimitKind,
+	scope: Scope | null,
+	starts_at: Timestamp,
+	resets_at: Timestamp,
+	/**
+	 *  Measured peak; for an estimated window the `≈` estimate (`basis.approx`), or `None`
+	 *  when it has no percentage.
+	 */
+	peak_percent: number | null,
+	/**  `None` for an estimated window: whether it hit the limit is unknown. */
+	hit_limit: boolean | null,
+	estimated: boolean,
+	/**  `resets_at` is still ahead. */
+	open: boolean,
+	/**  Cost the limit counts (only its family for a scoped limit). */
+	cost: MicroUsd,
+	sessions: number,
+	/**  "Other" share in points; `None` when not computed (ADR-064). */
+	other_percent: number | null,
+	/**  `None` until the window is attributed. */
+	basis: Basis | null,
 };
 
 /* Tauri Specta runtime */
