@@ -187,11 +187,20 @@ pnpm tauri build
 7. Dışa aktarma düğmesi her sayfanın filtre satırında, sayfanın aralığı ve filtreleriyle.
 8. Varsayılanlar: 12 hafta, haftalık sekmesi, ısı haritasında maliyet; model karışımı pay olarak.
 
-**Açık konular (kullanıcı gerekli):**
-- Gerçek veri koşusu: kurulu uygulama kapatılıp portable kopya açılmalı. Ekran görüntüleri %TEMP%'te kalır (git'e girmez).
-- 3 elle doğrulanmış örnek. Günler tepeyle değil, `dilim maliyeti × k` ile karşılaştırılır.
-- TR CSV'nin Excel'de açılması.
-- Bellek ölçümü (`measure-memory.ps1 -Scenario main-window`) release derlemesi ister; aynı koşuda yapılabilir.
+**Gerçek veri koşusu (2026-11-21):**
+- Kullanıcı kurulu uygulamayı kapattı. Release derlemesi, `portable` işaretli bir `%TEMP%` klasöründe gerçek verinin kopyasıyla açıldı; gerçek veri dizinine bir şey yazılmadı. Ekran görüntüleri `%TEMP%`'te kaldı.
+- **3 elle doğrulanmış örnek:** Son üç haftalık pencerenin 21 günü, ayrı bir Python betiğiyle salt okunur hesaplandı: `usage_5m` maliyeti, son haftalık kalibrasyonun `k · α` ile çarpıldı. Uygulamanın `list_weeks` IPC çıktısıyla maliyet ve `≈` değerleri birebir eşleşti. Gün toplamları tepeyle karşılaştırılmadı (yalnızca yerel kullanım, "Diğer" yok).
+- Gerçek veride hiç takılma yok. "Limite takıldı" yalnızca sentetik testlerle sınandı.
+- Bulunan ve düzeltilen kusurlar:
+  - Isı haritası rampası `oklch` karışımında lavanttan mora ve turkuaza kayıyordu: gri neredeyse hiç kroma taşımadığı için tonu belirsiz. Karışım `oklab`'a alındı, artık tek ton. Galeride gözden kaçmıştı.
+  - Liste görünümünde "Fable · haftalık" yanındaki "Sürüyor" etiketi kesiliyordu. İlk sütun en az 13em oldu.
+- Koşu ≈ 5 dakika sürdü. Bu sürede statusline ve API'den gelen 4 limit okuması kopyaya gitti ve gerçek veritabanına girmedi. Kopya `%TEMP%	r17aun` altında duruyor.
+
+**Açık konular:**
+- TR CSV'nin Excel'de açılması (kullanıcı).
+- Bellek ölçümü (`measure-memory.ps1 -Scenario main-window`) bu koşuda yapılmadı; 17b'nin v0.2 raporuna kaldı.
+- Pencere çekmecesi gerçek veride çekilmedi, yalnızca galeride.
+- Tahmini pencerelerin tepesi ondalıklı (`≈%95,1`), ölçülenler tam sayı (`%53`). Tutarsız görünüyor; tahminler tam sayıya yuvarlanabilir.
 
 **17b'ye notlar:**
 - Değişmeyen `list_sessions/*` ve `list_projects/*` sorguları bu makinede gürültülü ölçüldü (p95 35–93 ms, eski veritabanında da). v0.2 raporu bunları sessiz bir makinede yeniden ölçmeli.

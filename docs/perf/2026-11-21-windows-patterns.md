@@ -42,4 +42,5 @@ Yeni sorgular, yeni veritabanı (son koşu; ms):
   - Aynı sorgular eski veritabanında da aynı biçimde bütçeyi aştı (`list_sessions/cost` 84,6 ms, `list_projects/cost` 82,7 ms). Aynı koşuda `list_sessions/last_active` 41 ms idi.
   - Yani bu adımın verisi ya da kodu değil, makine yükü. Adım 16b'nin notu da aynı gürültüyü kaydetmişti (`list_sessions/cost` bir koşuda 81,7 ms).
   - v0.2 performans raporu (17b) bu sorguları sessiz bir makinede yeniden ölçmelidir.
-- Bellek ölçümü (`measure-memory.ps1 -Scenario main-window`) ve gerçek veri koşusu bu notta yok: kurulu uygulamanın kapatılmasını gerektiriyor (bkz. devir notu).
+- **Gerçek veri koşusu:** Release derlemesinin portable kopyası, gerçek verinin kopyasıyla açıldı. Göçler ve tam indeksleme ≈ 20 s sürdü. Son üç haftanın gün değerleri bağımsız bir hesapla birebir eşleşti (devir notu). Süre ölçülmedi.
+- Bellek ölçümü (`measure-memory.ps1 -Scenario main-window`) bu notta yok; v0.2 raporuna (17b) kaldı.

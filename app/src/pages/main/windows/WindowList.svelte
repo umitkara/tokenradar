@@ -19,7 +19,7 @@ interface Props {
 
 let { rows, hasMore, loading, onmore, query }: Props = $props();
 
-const COLUMNS = "minmax(0, 1.3fr) minmax(0, 1.4fr) minmax(0, 1.4fr) 6em 7em 5em 7em 6em";
+const COLUMNS = "minmax(13em, 1.4fr) minmax(0, 1.3fr) minmax(0, 1.3fr) 6em 7em 5em 7em 6em";
 
 function when(ms: number): string {
   return new Date(ms).toLocaleString(locale(), {

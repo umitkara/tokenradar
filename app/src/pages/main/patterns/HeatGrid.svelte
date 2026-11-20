@@ -41,7 +41,7 @@ function onmove(e: PointerEvent) {
 function shade(step: number): string {
   return step === 0
     ? "var(--surface-2)"
-    : `color-mix(in oklch, var(--accent) ${Math.round((step / HEAT_STEPS) * 90 + 10)}%, var(--surface-2))`;
+    : `color-mix(in oklab, var(--accent) ${Math.round((step / HEAT_STEPS) * 90 + 10)}%, var(--surface-2))`;
 }
 </script>
 
