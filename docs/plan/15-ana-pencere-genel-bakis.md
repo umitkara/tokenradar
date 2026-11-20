@@ -136,13 +136,14 @@ pnpm dev
   - Açık ve koyu tema ekran görüntüleri incelendi.
 - Bulunan hata: tema değişiminden sonra imleç yanlış zamana eşleniyordu (uPlot'un önbelleğe aldığı dikdörtgen). Her kurulum ve boyutlanmadan sonra `syncRect()` çağrılarak düzeltildi; CDP ile yeniden doğrulandı.
 
+**Karar (oturum sonunda):** `--series-2` mavisi ve "renk limite bağlı" kuralı kullanıcı tarafından onaylandı (ADR-066).
+
 **Sapmalar:**
 - Adım ikiye bölündü (kullanıcı kararı).
 - Doğrulamadaki `measure-memory.ps1 -Scenario main-window` parametresi betikte yok. Betik `-ProcessName`/`-RootPid` ve süre alıyor; senaryo 15b'de elle sürülecek ya da betiğe eklenecek.
 - Bundle bütçesinde CSS sınırı yok (performance-budget.md'de tanımlı değil); yalnızca raporlanıyor.
 
 **Açık konular (kullanıcı onayı bekleyen öneriler, ADR-066):**
-- `--series-2` mavisi ve "renk limite bağlı" kuralı. Hesapta 5 saatlik pencere olmadığı için 7 günlük grafiğin tek çizgisi mavi; alternatif, tek çizgide camgöbeği.
 - Geometrinin `kv`'de tutulması, CLI'ın uygulamayı bağlantıyla başlatması, başlığın `document.title`'ı izlemesi.
 
 **15b'ye notlar:**

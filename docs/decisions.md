@@ -1506,7 +1506,7 @@
   - **`tokenradar open [sayfa]`:** CLI, uygulamayı kendi klasöründe ya da bir üst klasörde bulur ve ayrık süreç olarak bağlantıyla başlatır. Uygulama çalışıyorsa bağlantıyı tek örnek eklentisi iletir. Pipe protokolü değişmez.
   - **Geometri `kv`'de:** `tauri-plugin-window-state` yerine `kv.main_window_geometry`. Ek bağımlılık gerekmez, ayar dosyası yazılmaz ve kayıtlı konuma başlık şeridi erişilebilirlik kontrolü uygulanır.
   - **Gizli oluştur, ilk boyamada göster:** `main_ready` ya da 1,5 sn zaman aşımı. Kapatma pencereyi gizler, 30 sn sonra webview yok edilir (mimari §2).
-  - **Grafik rengi limite bağlıdır, sıraya değil:** 5 saatlik `--signal-ok`, haftalık yeni `--series-2` (mavi), "Diğer" `--signal-other`. Bir filtre ya da 5 saatlik pencerenin yokluğu kalan çizgiyi yeniden boyamaz (dataviz kuralı). `--series-2` iki temada doğrulayıcıdan geçti: camgöbeğine karşı CVD ΔE 19,7 / 14,7, normal görüşte 21,9 / 17,6, Mica zemininde kontrast ≥ 3.
+  - **Grafik rengi limite bağlıdır, sıraya değil (kullanıcı kararı, 2026-11-20: "en uygun ve tutarlı olan"; tek çizgide camgöbeği seçeneği reddedildi):** 5 saatlik `--signal-ok`, haftalık yeni `--series-2` (mavi), "Diğer" `--signal-other`. Bir filtre ya da 5 saatlik pencerenin yokluğu kalan çizgiyi yeniden boyamaz (dataviz kuralı). `--series-2` iki temada doğrulayıcıdan geçti: camgöbeğine karşı CVD ΔE 19,7 / 14,7, normal görüşte 21,9 / 17,6, Mica zemininde kontrast ≥ 3.
   - **Bundle:** `main.html` için 180 KB JS bütçesi, giriş + tüm tembel sayfalarla birlikte sayılır (en kötü durum). İlk ölçüm 60,4 KB.
 - **Bedel:**
   - Hesapta 5 saatlik pencere olmadığı için 7 günlük grafiğin tek çizgisi mavi. Uygulamanın geri kalanında veri mürekkebi camgöbeği olduğundan bu ilk bakışta tutarsız görünebilir.
