@@ -55,7 +55,7 @@ let { query, preset = null }: Props = $props();
 const PAGE = 100;
 const MIN_GAP_MS = 10_000;
 const RELEVANT = new Set<CoreEvent["type"]>(["usage_appended", "live_sessions_changed"]);
-const COLUMNS = "minmax(0, 2fr) minmax(0, 2.2fr) 4.5em 7em 6em 5.5em 64px";
+const COLUMNS = "minmax(0, 2fr) minmax(0, 2.2fr) 4.5em 7em 6em 7.5em 64px";
 
 let current = $state<ProjectQuery>(untrack(() => parseProjectQuery(query)));
 let searchText = $state(untrack(() => current.q));
@@ -213,8 +213,10 @@ function activateNode(node: ProjectNode) {
 }
 
 function treeKey(key: string, node: ProjectNode, index: number): boolean {
-  if (key === "ArrowRight" && node.children > 0 && collapsed.has(node.path)) {
-    toggle(node, true);
+  if (key === "ArrowRight" && node.children > 0) {
+    // Closed: open it. Open: step down to its first child (the next row).
+    if (collapsed.has(node.path)) toggle(node, true);
+    else treeList?.select(index + 1);
     return true;
   }
   if (key === "ArrowLeft") {
@@ -241,8 +243,10 @@ function ago(ms: number | null): string {
   return d < 60_000 ? t("sessions-just-now") : t("sessions-ago", { ms: d });
 }
 
+/** The share per weekly window, averaged over the range (`≈%4,5/hafta`). */
 function weekly(pct: number | null): string {
-  return pct == null ? t("value-none") : t("value-pct", { pct, estimate: "yes" });
+  if (pct == null) return t("value-none");
+  return t("projects-per-week", { value: t("value-pct", { pct, estimate: "yes" }) });
 }
 
 function trendLabel(values: readonly number[]): string {

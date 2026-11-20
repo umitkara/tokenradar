@@ -985,3 +985,33 @@ fn session_dirs_are_the_tree_cwds_and_a_resolved_project_path() {
         Vec::<String>::new()
     );
 }
+
+#[test]
+fn projects_weekly_is_a_per_window_average() {
+    let e = Env::new();
+    week_fixture(&e);
+    let cals = [cal(0.5, 0.9, 3)];
+    let zone = FixedZone::utc();
+    let ctx = e.ctx(&cals, &zone, T0 + 4 * DAY);
+    attribution::refresh(&e.store, e.account, &cals, ctx.now, true, true).expect("refresh");
+    let weekly = |e: &Env| {
+        list_projects(
+            &e.store,
+            &ctx,
+            &ProjectFilter::default(),
+            ProjectSort::Cost,
+            None,
+            None,
+            &[],
+        )
+        .expect("list")
+        .items[0]
+            .weekly_percent
+            .expect("attributed")
+    };
+    let one = weekly(&e);
+    // An earlier weekly window without this usage: the same share over two windows.
+    e.reading(T0 - WEEK + HOUR, 10.0, T0);
+    let two = weekly(&e);
+    assert!((two - one / 2.0).abs() < 1e-9, "{two} vs {one} / 2");
+}

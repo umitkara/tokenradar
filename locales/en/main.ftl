@@ -248,10 +248,12 @@ projects-col-path = Path
 projects-col-sessions = Sessions
 projects-col-last = Last active
 projects-col-cost = Cost
-projects-col-weekly = Weekly
+projects-col-weekly = Weekly avg.
 projects-col-trend = 8 weeks
-projects-weekly-tip = Share of weekly limits in this range, summed over the project's sessions. Split from usage, so it is an estimate.
+projects-weekly-tip = Average share of a weekly limit: the project's share of every weekly window in this range, divided by the number of those windows. Split from usage, so it is an estimate.
 projects-trend-tip = Cost per week over the last 8 weeks, ${ NUM($usd, 2) } in total
+# A weekly share averaged per weekly window.
+projects-per-week = { $value }/wk
 projects-count = { $n ->
         [one] 1 project
        *[other] { NUM($n, 0) } projects
@@ -269,7 +271,7 @@ projects-empty-filtered-body = Try a longer time range, clear the search or show
 project-back = Back to projects
 project-not-found = This project is not in the database any more.
 project-cost = Cost, all time
-project-weekly-total = Weekly impact, all time
+project-weekly-total = Weekly average, all time
 project-weeks = Weekly impact
 project-weeks-empty = No weekly window recorded yet.
 project-weeks-note = Share of each weekly window, split from usage (≈). Dashed bars are estimated windows.

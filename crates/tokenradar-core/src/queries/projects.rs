@@ -55,7 +55,8 @@ pub struct ProjectRow {
     pub sessions: u32,
     pub last_active: Option<Timestamp>,
     pub cost: MicroUsd,
-    /// `≈` points of weekly windows in the range, summed over the project's sessions.
+    /// `≈` points per weekly window: the project's share of the weekly windows the range
+    /// touches, summed over its sessions and divided by the number of those windows.
     pub weekly_percent: Option<f64>,
     /// Cost per 7 days over the last [`TREND_WEEKS`] weeks, oldest first.
     pub trend: Vec<MicroUsd>,
@@ -87,6 +88,7 @@ pub struct ProjectNode {
     pub sessions: u32,
     pub last_active: Option<Timestamp>,
     pub cost: MicroUsd,
+    /// The sum of the projects' weekly averages (one divisor for all, so it adds up).
     pub weekly_percent: Option<f64>,
     pub trend: Vec<MicroUsd>,
     /// Nodes directly under this one; they follow it in [`ProjectTree::nodes`].
@@ -152,8 +154,15 @@ fn rows_sql(b: &str, only: Option<usize>) -> String {
       JOIN sessions t ON t.id = COALESCE(s.root_id, s.id)
       WHERE t.project_id IS NOT NULL
       GROUP BY pid, root),
+    -- Per weekly window on average: the share summed over the range, divided by the
+    -- weekly windows the range touches. One divisor for every row, so folder totals stay
+    -- sums and the order is that of the sums; a long range no longer adds up past 100 %.
+    weeks AS (
+      SELECT COUNT(*) AS n FROM limit_windows w
+      WHERE w.account_id = ?1 AND w.limit_kind = 'weekly_all' AND w.scope IS NULL
+        AND w.resets_at > ?2 AND w.starts_at < ?3),
     i AS (
-      SELECT s.project_id AS pid, SUM(a.est_percent) AS weekly
+      SELECT s.project_id AS pid, SUM(a.est_percent) / NULLIF((SELECT n FROM weeks), 0) AS weekly
       FROM attributions a JOIN limit_windows w ON w.id = a.window_id
       JOIN sessions s ON s.id = a.root_session_id
       WHERE w.account_id = ?1 AND w.limit_kind = 'weekly_all' AND w.scope IS NULL

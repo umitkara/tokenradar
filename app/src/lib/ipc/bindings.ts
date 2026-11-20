@@ -1199,6 +1199,7 @@ export type ProjectNode = {
 	sessions: number,
 	last_active: Timestamp | null,
 	cost: MicroUsd,
+	/**  The sum of the projects' weekly averages (one divisor for all, so it adds up). */
 	weekly_percent: number | null,
 	trend: MicroUsd[],
 	/**  Nodes directly under this one; they follow it in [`ProjectTree::nodes`]. */
@@ -1233,7 +1234,10 @@ export type ProjectRow = {
 	sessions: number,
 	last_active: Timestamp | null,
 	cost: MicroUsd,
-	/**  `≈` points of weekly windows in the range, summed over the project's sessions. */
+	/**
+	 *  `≈` points per weekly window: the project's share of the weekly windows the range
+	 *  touches, summed over its sessions and divided by the number of those windows.
+	 */
 	weekly_percent: number | null,
 	/**  Cost per 7 days over the last [`TREND_WEEKS`] weeks, oldest first. */
 	trend: MicroUsd[],

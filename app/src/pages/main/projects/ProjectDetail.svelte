@@ -154,7 +154,9 @@ function span(from: number, to: number): string {
       </div>
       <div>
         <dt>{t("project-weekly-total")}</dt>
-        <dd class="readout dim" title={t("projects-weekly-tip")}>{weekly(p.weekly_percent)}</dd>
+        <dd class="readout dim" title={t("projects-weekly-tip")}>
+          {p.weekly_percent == null ? t("value-none") : t("projects-per-week", { value: weekly(p.weekly_percent) })}
+        </dd>
       </div>
     </dl>
   </header>
