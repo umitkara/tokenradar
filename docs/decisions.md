@@ -1615,3 +1615,54 @@
   - Yalnızca ilk `cwd`: oturumların çoğu dizin değiştiriyor.
   - Pencereye opener kapsamı vermek: web içeriği herhangi bir yolu açabilirdi.
   - Model başına renk: model sayısı sınırsız ve renk oturumdan oturuma değişirdi.
+
+### ADR-069 — Projeler: SQL'de geçici dizin filtresi, çekirdekte klasör ağacı, şema v5 görünen yol
+
+**Durum:** Önerildi (2026-11-21, Adım 16b). "(kullanıcı kararı)" işaretli maddeler adım başında kullanıcıyla kararlaştırıldı. Diğer maddeler kullanıcı onayı bekliyor.
+
+- **Bağlam:**
+  - Gerçek veride (salt-okunur sayım) projelerin yaklaşık %80'i `AppData\Local\Temp` altında. Bunlar Claude Code'u geçici bir klasörde çalıştıran araçların bıraktığı tek oturumluk projeler.
+  - `projects.path_norm` küçük harfli bir eşleştirme anahtarı. Ekranda gösterilince yollar küçük harfle görünüyordu (yan ajan notu, kullanıcı iletti).
+  - Planın kabul kriteri: gerçek veride filtre yanıtı ≤ 150 ms, kaydırma kare < 16 ms.
+- **Karar:**
+  - **Desenler yol parçasıdır (kullanıcı kararı).**
+    - Desen yolun herhangi bir yerinde eşleşir. `*` herhangi bir metin, `%AD%` bir ortam değişkenidir; büyük/küçük harf duyarsızdır.
+    - Varsayılanlar `%TEMP%` ve `\Temp\`; liste Ayarlar → Gizlilik ve veri'de düzenlenir (`[data] temp_dirs`).
+    - Filtre çekirdekte SQL `LIKE … ESCAPE '\'` ile uygulanır. Tanımsız bir değişken deseni düşürür, yani hiçbir şeyi gizlemez.
+  - **Kapsam (kullanıcı kararı):** Gizleme yalnızca Projeler sayfasını ve Oturumlar listesinin proje seçicisini etkiler. Oturum toplamları ve Genel Bakış hiçbir oturumu gizlemez.
+  - **Klasör ağacı çekirdekte kurulur (kullanıcı kararı).** Her klasör alt ağacının toplamlarını taşır. Projesi olmayan tek çocuklu klasörler birleşir. Arayüz yalnızca açık/kapalı durumunu tutar.
+  - **Şema v5: `projects.display_path` (kullanıcı kararı).**
+    - Yol, Claude Code'un yazdığı haliyle saklanır; sayfa ve ağaç onu gösterir.
+    - Göç canlı dosyaları yeniden okutur. Kurulu sürüm v2'de olduğundan bu, v4'ün tam indekslemesiyle aynı geçiştir.
+    - Transcript'i silinmiş eski projeler küçük harfle kalır.
+  - **Gerçek veri ölçümü portable kopyayla yapılır (kullanıcı kararı).** Kurulu uygulamayı kullanıcı kapatıp açar.
+  - **"Haftalık" sütunu pencere başına ortalamadır (kullanıcı kararı, yan ajan notu üzerine).** Değer, aralıktaki haftalık pencerelerden alınan payların toplamının, aralığın dokunduğu haftalık pencere sayısına bölümüdür ve `≈%4,5/hafta` biçiminde gösterilir. Payda tüm satırlar için aynıdır: klasör değeri projelerinkinin toplamıdır, sıralama değişmez, uzun aralıkta %100 aşılmaz. Ayrıntı başlığı tüm zamanların ortalamasını gösterir.
+  - **Gizli sayısı ayrı ve ucuz bir sorgudur.** Liste, ilk sayfada aralıkta kullanımı olan kaç projenin gizlendiğini döner ve sayfa bunu "Göster" bağlantısıyla söyler. Sayım, listenin toplamasını tekrarlamak yerine desene uyan her proje için `usage_5m` birincil anahtarında bir `EXISTS` yoklaması yapar. İlk sürüm 50 ms bütçesini aşmıştı (57 ms → 34 ms).
+  - **Proje listesinin varsayılanları:** son 30 gün, son etkinliğe göre sıralı, geçici dizinler gizli, ağaç kapalı.
+    - Oturumların varsayılanı 7 gündür. Projeler daha seyrek değişir; 7 günde listenin çoğu boş kalıyordu.
+    - Ağaç açıldığında tüm klasörler açık başlar.
+  - **Filtreler URL parçasındadır,** oturumlarla aynı kurallarla: `#projects?range=all&q=…&sort=cost&view=tree&temp=1`. Geçici dizinler varsayılan olarak gizli olduğu için `temp=1` "göster" demektir.
+  - **Düz listede satır bağlantı değildir.** Oturum listesindeki gibi tıklama ya da Enter ile açılır. Ağaçta proje adı bağlantıdır, klasör satırı açılır/kapanır.
+  - **Sanal liste `onkey` ve `select(index)` kazandı.** Ağaç ← ve → tuşlarını bununla işler (WAI-ARIA ağaç deseni): → kapalı klasörü açar, açık klasörde ilk çocuğa iner. ← açık klasörü kapatır, değilse üst klasöre çıkar.
+  - **Proje ayrıntısı:**
+    - Son 8 haftalık pencerede proje payı çubuklarla gösterilir; renk `--series-2`'dir (haftalık, ADR-066).
+    - Tahmini pencereler kesikli çerçevelidir. Hiçbir haftada pay yoksa çubuklar maliyeti gösterir ve not bunu söyler.
+    - Altta projeye kilitli oturum listesi vardır. Filtreleri ayrıntının URL parçasında durur.
+  - **Varsayılan desenler arka uçtan gelir** (`PrefsView.default_temp_dirs`). "Varsayılanlara dön" düğmesi ön yüzde ikinci bir kopya tutmaz.
+- **Sonuç** (`docs/perf/2026-11-21-projects.md`):
+  - Gerçek veride filtre yanıtı: Projeler 49–110 ms, Oturumlar 28–113 ms (≤ 150 ms). Ölçüm haftalık ortalama değişikliğinden önce yapıldı.
+  - Boyama dahil kare aralığı vsync'te sabit (16,7 ms), atlanan kare yok.
+  - Etki tablosu 15 oturumda saklanan atıflarla birebir eşit.
+  - Göçten sonraki ilk tam indeksleme ≈ 28 s (≤ 60 s).
+  - `main.html` JS 105,1 KB (≤ 180 KB).
+- **Bedel:**
+  - Şema v5'e yükseltilmiş bir veritabanını eski sürümler açamaz (ADR-054'teki gibi).
+  - Desen bir yol parçası olduğu için geniş bir desen (`\Temp\`) adında "Temp" klasörü geçen gerçek bir projeyi de gizler. Not ve "Göster" bağlantısı bunu görünür kılar.
+  - Haftalık ortalama, tek haftada yoğun çalışılmış bir projeyi seyreltir. O haftanın payı proje ayrıntısındaki haftalık çubuklarda görünür.
+- **Alternatifler:**
+  - Düzenli ifade desenleri: güçlü ama hataya açık; SQLite'ta yerleşik değil.
+  - Filtreyi arayüzde uygulamak: sayfalama bozulur, her sayfa eksik gelir.
+  - Ağacı arayüzde kurmak: arayüzde hesaplama yapılmaz (`docs/architecture.md`, IPC ilkesi); toplamlar için tüm satırlar gerekir.
+  - Haftalık sütunda en yoğun hafta: sezgisel, ama klasörlerde projelerin tepe değerleri toplanamaz.
+  - Toplamı açık bir etiketle bırakmak: %100'ü aşan değerler kalırdı.
+  - Görünen yolu `session_attrs` içindeki `cwd`'den sorgu anında türetmek: projenin her oturumunu taramak gerekir ve silinmiş transcript'lerde yine çalışmaz.

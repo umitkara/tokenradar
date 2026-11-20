@@ -71,7 +71,7 @@ Doğrulanmış Ultra hesaplarında 5 saatlik pencere kalktı (ADR-041). Bu adım
 | 13 | [Kalibrasyon motoru](13-kalibrasyon.md) | 12 (+ ≥ 1 hafta veri) | ✅ (2026-11-19, ADR-061). 24 sa MAE 0,75; açık: `weekly_all` sapması sınıra yakın, `α_sonnet` izlenmeli |
 | 14 | [Atıf motoru ve pencere arşivi](14-atif-ve-pencereler.md) | 13 | ✅ (2026-11-20, ADR-064, ADR-065). 14a: atıf, pencere sonlandırma, tahmini haftalar, çapraz doğrulama · 14b: sorgu API'leri ve komutları, sentetik üretici, her sorgu p95 ≤ 39 ms; açık: ≥ 10 kapanmış pencere incelemesi veri bekliyor |
 | 15 | [Ana pencere kabuğu ve Genel Bakış](15-ana-pencere-genel-bakis.md) | 14 | ✅ (2026-11-20, ADR-066, ADR-067). 15a: kabuk, yaşam döngüsü, deep link ve `tokenradar open`, uPlot sarmalayıcısı · 15b: Genel Bakış bölümleri, plan ücreti, soğuk açılış 434 ms, bellek ≤ 129 MB; açık: 75 eşik rengi, ipucu örtmesi denenmedi |
-| 16 | [Oturumlar ve Projeler](16-oturumlar-ve-projeler.md) | 15 | 🟨 16a ✅ (2026-11-20, ADR-068): şema v4 öznitelikleri, sanal liste, Oturumlar listesi ve ayrıntısı, klasör açma; 10.000 satırda adım başına iş p95 1,7 ms · 16b: Projeler, geçici dizin filtresi, gerçek veri ölçümü |
+| 16 | [Oturumlar ve Projeler](16-oturumlar-ve-projeler.md) | 15 | ✅ 16a (2026-11-20, ADR-068): şema v4 öznitelikleri, Oturumlar · 16b (2026-11-21, ADR-069 önerildi): şema v5 görünen yol, Projeler listesi, ağacı ve ayrıntısı, geçici dizin filtresi; gerçek veride filtre yanıtı ≤ 113 ms, atlanan kare yok |
 | 17 | [Pencereler, Örüntüler, özet ve v0.2 sürümü](17-pencereler-oruntuler-v0.2.md) | 16 | ⬜ |
 
 ### v0.3 — Genişleme

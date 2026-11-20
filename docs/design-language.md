@@ -138,6 +138,25 @@ Başlığın altında iki eşit düğmeli bir segment kontrolü: `Özet | Ayrın
 - Klavye: ızgara tek odak noktasıdır, etkin satırı `aria-activedescendant` gösterir. ↑↓, Page Up/Down, Home/End, Enter. Etkin satır `--surface-2` zemin ve solda 2 px vurgu.
 - Rozetler: 1 px `--stroke` çerçeve, `--text-2` metin; proje rozeti vurgu çerçeveli, silinmiş transcript kesik çerçeveli ve `--text-3`.
 
+### Proje listesi ve klasör ağacı (Adım 16b)
+
+- Oturum listesiyle aynı sanal liste: 44 px satır, kart içinde kaydırma, sabit başlık, aynı klavye modeli.
+- Sütunlar: ad · yol (mono, sondan kısaltılır) · oturum · son etkinlik (göreli) · maliyet · haftalık ortalama (`≈%4,5/hafta`, soluk) · 8 haftalık maliyet kıvılcımı.
+- Filtre satırı: arama (Ctrl+F) · zaman aralığı (varsayılan 30 gün) · "Klasöre göre grupla" · "Geçici dizinleri gizle" (varsayılan açık) · sıralama. Gizli proje varsa altında tek satırlık bir not ve "Göster" bağlantısı çıkar.
+- Ağaç görünümü:
+  - Satırlar derinlik başına 16 px girintilenir. Klasörde açma/kapama oku vardır; yol sütununda "N proje" yazar ve bu metin mono değildir.
+  - Klasör adı `--text-2`, proje adı `--text-1`.
+  - Klavyede → klasörü açar ya da ilk çocuğa iner; ← klasörü kapatır ya da üst klasöre çıkar. Enter projeyi açar.
+  - Projesi olmayan tek çocuklu klasörler tek satırda birleşir (`Clients\Orbit`).
+
+### Proje ayrıntısı (Adım 16b)
+
+- Üstte "← Projelere dön" bağlantısı listenin son filtreleriyle döner.
+- Başlık: ad, tam yol (mono) ve dört okuma: tüm zamanların maliyeti, oturum, son etkinlik, tüm zamanların haftalık ortalaması (`≈`, soluk).
+- "Haftalık etki" kartı son 8 haftalık pencereyi çubuklarla gösterir. Rengi `--series-2`'dir, çünkü haftalık limit (ADR-066). Tahmini pencereler kesikli çerçeveli ve içi boştur; değerleri soluktur. 8'den az hafta varsa çubuklar sağa yaslanır, en yeni hafta hep sağ kenarda kalır. Hiçbir haftada pay yoksa çubuklar maliyeti gösterir ve not bunu söyler.
+- Yan yana iki kart: model karışımı (Genel Bakış'taki büyüklük listesi) ve en pahalı 5 oturum. Oturumlar tek ızgarada durur, böylece sayı sütunları hizalı kalır.
+- Altta projeye kilitli oturum listesi: proje seçici ve satırlardaki proje adı gizlidir, filtreler bu sayfanın URL parçasında durur.
+
 ### Oturum şeridi (zaman grafiği, Adım 15b)
 
 - Grafiğin altında, aynı zaman ekseninde 10 px'lik bir şerit. Haftalık limitte payı en büyük 5 oturum (5 saatlik pencere yalnızca haftalık yoksa) 4 px'lik `--text-2` çubuklarla çizilir; payı bilinmeyen oturum daha soluktur.
@@ -311,6 +330,11 @@ Native çizilir (`tiny-skia` + layered window, ADR-058). Üst çubuk haftalık, 
 | Transcript deleted | Transcript silindi | Claude Code dosyayı sildi; toplamlar durur |
 | Effort / Fast mode | Efor / Hızlı mod | `/effort` düzeyleri: düşük, orta, yüksek, çok yüksek |
 | Open folder | Klasörü aç | Yalnızca veritabanının bu oturum için bildiği klasörler |
+| Group by folder | Klasöre göre grupla | Proje listesinin ağaç görünümü |
+| Temporary folders | Geçici dizinler | Ayarlardaki desen listesi; "Geçici dizinleri gizle" |
+| Weekly impact | Haftalık etki | Projenin haftalık pencerelerden aldığı pay; her zaman `≈` |
+| Weekly avg. | Haftalık ort. | Pencere başına ortalama pay, `≈%4,5/hafta` (EN `/wk`) |
+| Most expensive sessions | En pahalı oturumlar | Proje ayrıntısı |
 | Hit the limit | Limite takıldı mı | Tahmini pencerede "Bilinmiyor" |
 | Plan value / Plan fee | Plan değeri / Plan ücreti | "×3,1" ücretin katı; "Ayın %64'ü geçti"; her zaman "bilgi amaçlı, fatura değil" notuyla |
 | Context window | Bağlam penceresi | Statusline'da kısa form her dilde "ctx" |

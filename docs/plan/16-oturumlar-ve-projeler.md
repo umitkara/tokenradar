@@ -28,6 +28,16 @@ görebilmeli. Projeler için aynı bilgi toplu halde sunulur.
 - **"Klasörü aç" bir arka uç komutudur.** Yol yalnızca veritabanından okunur; frontend rastgele bir yol gönderemez ve pencereye `opener` izni verilmez.
 - **Geçici dizin desenleri Ayarlar'da düzenlenir** (16b).
 
+### 16b öncesi kararlar (2026-11-21)
+
+Gerçek veride (salt-okunur sayım) projelerin yaklaşık %80'i `AppData\Local\Temp` altında.
+
+- **Desen biçimi:** yol parçası. Desen yolun herhangi bir yerinde eşleşir; `*` joker, `%TEMP%` gibi ortam değişkenleri açılır, büyük/küçük harf duyarsız. Varsayılanlar `%TEMP%` ve `\Temp\`. Filtre çekirdekte SQL ile uygulanır.
+- **Kapsam:** Projeler sayfası ve Oturumlar listesindeki proje seçicisi. Oturum listesi ve Genel Bakış toplamları hiçbir oturumu gizlemez.
+- **Klasör ağacı çekirdekte kurulur:** ortak önek ağacı, tek çocuklu zincirler birleşik, her klasörde toplamlar. UI yalnızca aç/kapa durumunu tutar.
+- **Gerçek veri ölçümü:** kurulu uygulamayı kullanıcı kapatıp açar; ölçüm sırası gelince haber verilir.
+- **Şema v5: görünen yol.** `projects` tablosu orijinal yazımlı yolu da saklar; sayfa ve ağaç onu gösterir. Kurulu sürüm hâlâ v2'de olduğu için v4'ün tam indekslemesiyle aynı yükseltmede dolar. Transcript'i silinmiş eski projeler küçük harfle kalır (yan ajan notu üzerine kullanıcı kararı).
+
 ## Kapsam
 
 - **Sanal liste bileşeni:** hafif ve kütüphanesiz. Sabit satır yüksekliği, keyset sayfalamasıyla sonsuz kaydırma, klavye navigasyonu.
@@ -198,4 +208,64 @@ pnpm dev   # Oturumlar → filtre → detay → proje → geri
 
 ### 16b
 
-_(Oturum sonunda doldurulur: yapılanlar · sapmalar · açık konular · sonraki adıma notlar)_
+**Yapılanlar (2026-11-21, `step/16b-projects`, ADR-069 önerildi):**
+- **Çekirdek:**
+  - Şema v5: `projects.display_path`. Yollar orijinal yazımla görünür; göç canlı dosyaları yeniden okutur.
+  - `[data] temp_dirs` desenleri (`temp_like_patterns`) ve SQL `LIKE` filtresi. `list_projects` ilk sayfada gizlenen proje sayısını döner (`hidden`).
+  - `project_tree`: büyük/küçük harf duyarsız klasör ağacı, düğüm toplamları, tek çocuklu zincirlerin birleşmesi.
+  - "Haftalık" değeri pencere başına ortalama.
+  - Benchmark'a `list_projects/hide_temp` ve `project_tree/cost` eklendi.
+- **Ana pencere:**
+  - Projeler sayfası: düz liste ya da klasör ağacı, arama (Ctrl+F), aralık, sıralama, "Geçici dizinleri gizle" ve gizli proje notu. Filtreler URL parçasında (`#projects?…`).
+  - Proje ayrıntısı: başlık okumaları, son 8 haftalık pencerede pay, model karışımı, en pahalı 5 oturum, projeye kilitli oturum listesi, "← Projelere dön".
+  - `SessionList` için `locked` ve `base` prop'ları eklendi. `VirtualList` için `onkey` ve `select(index)` eklendi (ağaçta ← →).
+  - Genel Bakış'taki "En çok tüketenler" adları ayrıntı sayfalarına bağlanıyor.
+  - `main-soon-projects*` anahtarları kaldırıldı.
+- **Ayarlar → Gizlilik ve veri:** "Geçici dizinler" kartı. Desen eklenir, kaldırılır, "Varsayılanlara dön" ile sıfırlanır; varsayılanlar arka uçtan gelir (`PrefsView.default_temp_dirs`).
+- **Galeri:** Projeler listesi, ağaç ve ayrıntı (sentetik). Ayrıntıdaki oturum listesi de sentetik satırlarla dolu.
+- **Testler:**
+  - Rust: desen genişletme, ağaç kurma, gizli sayısı, haftalık ortalama, görünen yol, yapılandırma.
+  - Vitest: proje filtresi URL gidiş-dönüşü, görünür düğümler, üst düğüm, hafta çubukları.
+- **Gerçek veri koşusu (`docs/perf/2026-11-21-projects.md`):**
+  - Kurulum: release derlemesinin portable kopyası ve gerçek veritabanının kopyası. Kurulu uygulamayı kullanıcı kapatıp açtı; kopya koşudan sonra silindi.
+  - Filtre yanıtı: Projeler 49–110 ms, Oturumlar 28–113 ms.
+  - Boyama dahil kare aralığı vsync'te sabit, atlanan kare yok.
+  - Etki tablosu 15 oturumda saklanan atıflarla birebir eşit.
+  - Klasör açma: var olan klasör açıldı, silinmiş olan `"missing"`, bilinmeyen yol `"not allowed"` döndü.
+  - Gezinti: liste → ayrıntı → geri, aynı filtrelerle.
+  - Göçten sonraki ilk tam indeksleme ≈ 28 s.
+- **Görsel inceleme** (galeri, açık/EN ve koyu/TR). Düzeltilen kusurlar:
+  - En pahalı oturumlarda sütunlar hizasızdı; tek ızgaraya alındı.
+  - Klasör satırındaki "N proje" mono yazı tipindeydi.
+  - Açık klasörde → ilk çocuğa inmiyordu.
+  - Galeride gömülü oturum listesi boş kalıyordu.
+
+**Kullanıcıyla kararlaştırılanlar:**
+- Adım başındaki dört karar ve şema v5 (yukarıda, "16b öncesi kararlar").
+- **"Haftalık" sütunu pencere başına ortalamadır** (yan ajan notu üzerine). Değer toplam bölü aralığın dokunduğu haftalık pencere sayısıdır ve `≈%4,5/hafta` biçiminde gösterilir. Öncesinde değer toplamdı; 30 günlük varsayılanda bile %100'ü aşabiliyordu.
+
+**Önerilen kararlar (kullanıcı onayı bekliyor, ADR-069):**
+- Proje listesinin varsayılanları: son 30 gün, son etkinliğe göre sıralı, ağaç kapalı. Ağaç açılınca bütün klasörler açık başlar.
+- Filtrelerin URL biçimi; `temp=1` "göster" demektir.
+- Düz listede satırlar bağlantı değildir, oturum listesi gibi tıklama ya da Enter ile açılır. Ağaçta proje adı bağlantıdır.
+- `VirtualList`'e `onkey` ve `select` eklenmesi, ağaçta WAI-ARIA ← → davranışı.
+- Gizli proje sayısı için ayrı `EXISTS` sorgusu.
+- Proje ayrıntısının yerleşimi: hafta çubukları `--series-2`, tahmini pencereler kesikli, 8'den az haftada sağa yaslı.
+- Varsayılan desenlerin `PrefsView` ile gönderilmesi.
+
+**Sapmalar:**
+- Gerçek veride 10.000 satırlık liste yok: en uzun liste birkaç bin satır. Boyama dahil ölçüm o listeyle yapıldı. 10.000 satır yalnızca sentetik olarak (boyama hariç) ölçüldü; 10.000 satırda boyamanın da bütçede kaldığı bir çıkarım.
+- Haftalık ortalamaya geçiş gerçek veri ölçümünden sonra yapıldı. Filtre yanıtı bu değişiklikten sonra gerçek veride yeniden ölçülmedi; sentetik sorgu süreleri bütçede.
+- Kabul kriterindeki "breadcrumb", 16a'daki gibi tek bir "← Projelere dön" bağlantısı (gezinti işaretli `nav`).
+
+**Bilinen sınırlar:**
+- Transcript'i silinmiş eski projeler küçük harfli yolla kalır.
+- Geniş bir desen (`\Temp\`), adında "Temp" klasörü geçen gerçek bir projeyi de gizler; not ve "Göster" bağlantısı bunu görünür kılar.
+- Haftalık ortalama, tek haftada yoğun çalışılmış bir projeyi seyreltir. O haftanın payı ayrıntıdaki çubuklarda görünür.
+- Oturum ayrıntısından "geri", projeden gelinse bile Oturumlar listesine döner.
+- Ağacın kökü yalnızca "D:" diye görünür (`D:\` daha doğal olurdu). Dar pencerede sıralama seçicisi filtre satırında ikinci satıra kayar (oturum listesinde de aynı).
+
+**17'ye notlar:**
+- Kurulu sürüm hâlâ şema v2'de. v0.2 ile gelen ilk açılış v3, v4 ve v5 göçlerini birlikte yapar ve bir tam indeksleme kadar sürer (gerçek veride ≈ 28 s).
+- Gerçek veri koşusu betikleri `%TEMP%\tr16b` altında (kurulum, filtre ve kare ölçümü, etki karşılaştırması, klasör açma). Git'te değiller.
+- Pencereler ve Örüntüler sayfaları, Projeler'in filtre ve URL yardımcılarını (`sessions/filter.ts` → `rangeFilter`, `parseRange`, `writeRange`) kullanabilir.

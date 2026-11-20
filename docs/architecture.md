@@ -142,9 +142,9 @@ Sürümler uygulama anında güncel stable olarak seçilir ve lock dosyalarıyla
 | `Pricing` | Uygulamaya gömülü, sürümlü fiyat tablosu: model → $/MTok, modele özgü cache okuma çarpanı, uzun istem kademesi, fast mode çarpanı, web search ücreti. Bilinmeyen model aile yedeğiyle fiyatlanır (ADR-025). Aylık plan ücretleri `pricing/plans.toml`'dadır (`subscriptionType` + `rateLimitTier`); config'teki `plan_fee_usd` önce gelir (ADR-065). |
 | `Queries` (v0.2) | Geçmiş sayfalarının görünüm modelleri (ADR-065): pencere, oturum ve proje listeleri (keyset sayfalama, imleç `"{anahtar}:{id}"`), detaylar, LTTB'li zaman serisi ve oturum işaretleri, haftanın günü × saat ısı haritası, Genel Bakış (hafta geçen haftanın aynı anıyla, plan değeri ay ilerlemesi ve geçen ayın tam oranıyla; ADR-067). Saklanan atıfı okur, eski sürüm satırı `stale` taşır. Gün ve saat sınırları `LocalZone` ile yerel saattedir. Her değer `Basis` (yöntem, güven, `≈`, silik, eski) taşır. |
 
-**UI'da hesaplama yapılmaz.** Tauri komutları önceden agregasyonu yapılmış görünüm modelleri döner (`get_panel_snapshot`, `get_panel_detail`, `get_overview(range)`, `list_sessions(filter, page)` …). Frontend yalnızca çizer.
+**UI'da hesaplama yapılmaz.** Tauri komutları önceden agregasyonu yapılmış görünüm modelleri döner (`get_panel_snapshot`, `get_panel_detail`, `get_overview(range)`, `list_sessions(filter, page)`, `list_projects`, `project_tree`, `get_project` …). Frontend yalnızca çizer.
 
-## 6. Veri modeli (SQLite şeması v4)
+## 6. Veri modeli (SQLite şeması v5)
 
 Tüm zamanlar **UTC epoch milisaniye** (`INTEGER`) olarak saklanır. Para birimi **mikro-USD** (`INTEGER`) olarak tutulur.
 
@@ -181,7 +181,8 @@ CREATE TABLE source_files (
 
 CREATE TABLE projects (
   id INTEGER PRIMARY KEY, account_id INTEGER NOT NULL, path_norm TEXT NOT NULL,
-  display_name TEXT NOT NULL, UNIQUE (account_id, path_norm));
+  display_name TEXT NOT NULL, UNIQUE (account_id, path_norm),
+  display_path TEXT);                                       -- v5 (0005_project_display_path.sql)
 
 CREATE TABLE sessions (
   id INTEGER PRIMARY KEY, account_id INTEGER NOT NULL, uuid TEXT NOT NULL,  -- subagent: 'agent-<id>'
@@ -271,6 +272,23 @@ CREATE INDEX ix_source_session ON source_files (session_id); -- "transcript sili
 ```
 
 > **Şema v4 (Adım 16a, ADR-068):** `session_attrs`, oturum başına farklı `cwd` değerlerini, `/effort` düzeylerini ve hızlı modu, ilk ve son görüldükleri anla tutar. İndeksleyici bunları yalnızca kullanım kayıtlarından okur (`cwd`, `effort`, `usage.speed`). Göç, canlı dosyaların okuma konumunu sıfırlar (v2'deki gibi): ilk açılış bir tam indeksleme kadar sürer, yeniden okunan olaylar tekilleşmede düşer. Claude Code'un önceden sildiği transcript'lerin öznitelikleri geri gelmez; bu oturumlarda liste boştur.
+
+> **Şema v5 (Adım 16b, ADR-069):** `projects.display_path`, klasör yolunu Claude Code'un yazdığı haliyle tutar: harfler korunur, Windows'ta ayırıcı `\` olur, sürücü harfi büyük, sondaki ayırıcı atılır. `path_norm` eşleştirme anahtarı olarak kalır (küçük harf). Yol çözülemeyen projelerde değer `NULL` kalır ve arayüz `path_norm`'u gösterir. Bir güncelleme değeri boş gönderirse eski değer korunur (`COALESCE`). Göç, v4 gibi canlı dosyaların okuma konumunu sıfırlar. v2 veya v3'ten gelen bir veritabanında bu, göç 4'ün başlattığı tam indekslemeyle aynı geçiştir; ikinci kez okunmaz. Claude Code'un önceden sildiği transcript'lerin projeleri küçük harfli yolla kalır.
+
+**Geçici dizinler ve klasör ağacı (Adım 16b):**
+- `[data] temp_dirs`, yol parçası desenlerinin listesidir. Varsayılan `%TEMP%` ve `\Temp\`, en fazla 32 desen, her biri en fazla 260 karakter.
+- Uygulama desenleri her sorguda genişletir (`temp_like_patterns`):
+  - `%AD%` ortam değişkeniyle değiştirilir. Tanımsız bir değişken deseni düşürür, yani hiçbir şeyi gizlemez.
+  - `*` herhangi bir metin, `?` tek karakterdir.
+  - Desen küçük harfe çevrilir ve `LIKE` özel karakterleri kaçışlanır. Desen yolun herhangi bir yerinde eşleşir; `\` ve `/` biçimlerinin ikisi de denenir.
+- Filtre SQL'dedir: `p.path_norm LIKE ? ESCAPE '\' OR …`. Gizleme yalnızca proje listesini, klasör ağacını ve oturum listesinin proje seçicisini etkiler. Oturum toplamları ve Genel Bakış hiçbir oturumu gizlemez.
+- Liste, ilk sayfada aralıkta kullanımı olan kaç projenin gizlendiğini de döner (`hidden`). Sayım listenin toplamasını tekrarlamaz: desene uyan her proje için `usage_5m` birincil anahtarında bir `EXISTS` yoklaması yapar.
+- **Haftalık ortalama (ADR-069):** Proje satırının haftalık değeri, aralıktaki haftalık pencerelerden alınan payların toplamının, aralığın dokunduğu haftalık pencere sayısına bölümüdür. Payda tüm satırlar için aynı olduğundan klasör değeri projelerinkinin toplamıdır ve sıralama toplamınkiyle aynıdır. Uzun aralıkta değer artık %100'ü aşmaz.
+- `project_tree`, listenin satırlarından çekirdekte bir klasör ağacı kurar:
+  - Bölümler büyük/küçük harf duyarsız eşleşir. UNC (`\\sunucu`) ve POSIX (`/home`) kökü ilk bölüme yapışır. Çözülemeyen yollar tek yaprak olur.
+  - Her düğüm alt ağacının toplamlarını taşır: proje, oturum, son etkinlik, maliyet, haftalık ortalama ve 8 haftalık eğilim.
+  - Çocuklar seçili sıralama ölçütüne göre sıralanır. Projesi olmayan tek çocuklu klasörler birleştirilir (`D:\Work\Clients\Orbit` tek satır).
+  - Düğümler derinlik öncelikli düz bir dizi olarak gelir. Arayüz yalnızca açık ve kapalı durumunu tutar.
 
 **Tekilleştirme UPSERT kuralı:**
 ```sql
