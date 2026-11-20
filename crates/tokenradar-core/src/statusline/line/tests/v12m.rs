@@ -211,7 +211,7 @@ fn the_reset_can_be_a_local_clock_time() {
     let p = alone(clock(SegmentKind::FiveHour));
     assert_eq!(
         draw(Locale::Tr, &line, &p, None),
-        "5s %72 · Cmt 02:08 ▲38dk"
+        "5s %72 · Cmt 02:08 ▲≈38dk"
     );
     // Narrow: the clock goes with the countdowns, before the limit itself.
     let p = alone(clock(SegmentKind::SevenDay));

@@ -6,7 +6,7 @@ sl-label-five-hour = 5h
 sl-label-seven-day = 7d
 sl-percent = { PCT($pct) }
 sl-resets-in = { DUR($ms, "compact") }
-sl-eta = ▲{ DUR($ms, "compact") }
+sl-eta = ▲≈{ DUR($ms, "compact") }
 # How much of the window's time has passed (clock time, not usage). $mark is a symbol
 # (`⏱`, or an hourglass icon), the same in every language.
 sl-elapsed = { $mark }{ PCT($pct) }

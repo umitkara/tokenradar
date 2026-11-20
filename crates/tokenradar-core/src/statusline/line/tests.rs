@@ -90,7 +90,7 @@ fn the_default_line_without_a_five_hour_window() {
 fn an_account_with_the_window_leads_with_it() {
     assert_eq!(
         draw(Locale::En, &with_five_hour(), &classic(), None),
-        "5h ██████░░ 72% · 1h48m ▲38m │ 7d ████░░░░ 41% · 3d4h │ Fable 22% │ ctx 38% │ \
+        "5h ██████░░ 72% · 1h48m ▲≈38m │ 7d ████░░░░ 41% · 3d4h │ Fable 22% │ ctx 38% │ \
          ≈2.1% this session │ API $4.12"
     );
 }
@@ -136,17 +136,17 @@ fn a_narrow_terminal_drops_session_segments_then_detail_then_limits() {
     // Session segments go first, from the end.
     assert_eq!(
         draw(Locale::En, &line, &p, cols(width - 1)),
-        "5h ██████░░ 72% · 1h48m ▲38m │ 7d ████░░░░ 41% · 3d4h │ Fable 22% │ ctx 38% │ \
+        "5h ██████░░ 72% · 1h48m ▲≈38m │ 7d ████░░░░ 41% · 3d4h │ Fable 22% │ ctx 38% │ \
          ≈2.1% this session"
     );
     assert_eq!(
         draw(Locale::En, &line, &p, cols(70)),
-        "5h ██████░░ 72% · 1h48m ▲38m │ 7d ████░░░░ 41% · 3d4h │ Fable 22%"
+        "5h ██████░░ 72% · 1h48m ▲≈38m │ 7d ████░░░░ 41% · 3d4h │ Fable 22%"
     );
     // Then the bar, the projection and the countdowns.
     assert_eq!(
         draw(Locale::En, &line, &p, cols(50)),
-        "5h 72% · 1h48m ▲38m │ 7d 41% · 3d4h │ Fable 22%"
+        "5h 72% · 1h48m ▲≈38m │ 7d 41% · 3d4h │ Fable 22%"
     );
     assert_eq!(
         draw(Locale::En, &line, &p, cols(30)),
@@ -193,12 +193,44 @@ fn colors_follow_the_thresholds() {
     assert!(out.contains("\x1b[31m93%\x1b[0m"), "{out:?}");
     assert!(out.contains("\x1b[36m41%\x1b[0m"), "{out:?}");
     assert!(out.contains("\x1b[2m░░░░\x1b[0m"), "{out:?}");
-    assert!(out.contains("\x1b[33m▲38m\x1b[0m"), "{out:?}");
+    assert!(out.contains("\x1b[33m▲≈38m\x1b[0m"), "{out:?}");
     assert!(out.contains("\x1b[33mctx 80%\x1b[0m"), "{out:?}");
     // The separator is an item: dim, the spaces around it plain (ADR-051).
     assert!(out.contains(" \x1b[2m│\x1b[0m "), "{out:?}");
     // A full bar has no empty part, and no empty escape pair is written for it.
     assert!(!out.contains("\x1b[2m\x1b[0m"), "{out:?}");
+}
+
+#[test]
+fn a_rough_projection_is_dimmed_not_a_warning() {
+    // Step 12t follow-up: the app's low-confidence rate stays visible, marked ≈ and dim.
+    let l = Localizer::new(Locale::En, &[Domain::Cli]);
+    let mut line = with_five_hour();
+    line.five_hour.as_mut().expect("5h").eta = Some(Eta {
+        ms: 38 * MIN,
+        rough: true,
+    });
+    let style = Style {
+        color: true,
+        width: None,
+    };
+    let out = render(&l, &line, &classic(), style);
+    assert!(out.contains("\x1b[2m▲≈38m\x1b[0m"), "{out:?}");
+    assert!(!out.contains("\x1b[33m▲"), "{out:?}");
+}
+
+#[test]
+fn the_projection_is_rough_unless_the_app_trusts_its_rate() {
+    let now = Timestamp::from_millis(NOW);
+    let rough = |confidence: Option<&str>| {
+        let mut a = app_limit("session", None, 50.0, "api");
+        a.projection_confidence = confidence.map(Into::into);
+        super::eta(Some(&a), now).map(|e| e.rough)
+    };
+    assert_eq!(rough(Some("high")), Some(false));
+    assert_eq!(rough(Some("medium")), Some(false));
+    assert_eq!(rough(Some("low")), Some(true));
+    assert_eq!(rough(None), Some(true));
 }
 
 #[test]
@@ -331,7 +363,14 @@ fn the_payload_wins_and_the_app_adds_scoped_projection_and_share() {
     assert_eq!(five.source, Source::Statusline);
     assert_eq!(five.observed_at, now());
     assert_eq!(five.resets_in, Some(2 * 3_600_000));
-    assert_eq!(five.eta, Some(30 * MIN), "the app's projection");
+    assert_eq!(
+        five.eta,
+        Some(Eta {
+            ms: 30 * MIN,
+            rough: false
+        }),
+        "the app's projection"
+    );
     let seven = line.seven_day.as_ref().expect("7d from the app");
     assert!((seven.percent - 20.0).abs() < 1e-9);
     assert_eq!(seven.source, Source::Api);

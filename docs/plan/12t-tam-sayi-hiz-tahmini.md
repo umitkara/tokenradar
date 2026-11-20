@@ -141,8 +141,9 @@ Aşağıdakiler ajanın önerileridir, kullanıcı onaylamadan karar sayılmaz.
 - **Notifier:** değişmedi; `projection_rule` `Low` güveni ve 60 dakikadan uzak ETA'yı zaten yok sayıyor ve bu testle sabit.
 - **Mod:** `parseStatus` `projection_confidence`'ı okur (`RadarLimit.confidence`). `mergeRows` her satır için `soon` hesaplar (`warnsSoon`: `willHit`, güven orta/yüksek, `0 < ETA − now ≤ PROJECTION_HORIZON_MS` = 60 dk). `rowLevel` ve `alertsOf` `willHit` yerine `soon`'a bakar. Kart ve `/radar` raporu düşük güvenli öngörüye "(kaba)" / "(rough)" ekler (`fullIn`).
 - **Görünüm:** bindings yeniden üretildi (`"steps"`). Uygulamanın Ayrıntı ve ana kartı düşük güveni zaten silik ve `≈` ile gösteriyordu; değişmedi.
+- **Statusline dolma süresi (ek düzeltme, kullanıcı kararı):** `Window.eta` artık `Eta { ms, rough }`. Metin her zaman `≈` taşır (`sl-eta = ▲≈…`, EN/TR); güven `Low` ya da yoksa silik, değilse uyarı rengi. Ufuk uygulanmaz. Dal: `fix/12t-statusline-eta`.
 - **Örnek:** `examples/rate_compare.rs` (salt okunur; yalnızca oran ve pay basar).
-- **Testler:** çekirdek 537 (+15: rate 12, motor 4, bir motor testi güncellendi), CLI 28, uygulama 101, frontend 136, mod 42 (+1).
+- **Testler:** çekirdek 539 (+17: rate 12, motor 4, statusline 2; bir motor testi ve statusline beklenen dizeleri güncellendi), CLI 28, uygulama 101, frontend 136, mod 42 (+1).
 
 **Sapmalar:**
 - Planda `history`'nin birleşik değeri kenar için kullanılabileceği düşünülmüştü. Birleşik değer `weekly_all`'da kaynağa göre farklı eşiklerde adım ürettiği için kenarlar ham okumalardan, kaynak başına çıkarıldı (kullanıcıya adım başında bildirildi).
@@ -152,7 +153,6 @@ Aşağıdakiler ajanın önerileridir, kullanıcı onaylamadan karar sayılmaz.
 **Açık konular:**
 - **ADR-062'nin uygulama ayrıntıları** (`RateMethod::Steps`, `Row.soon`, "(kaba)" eki) kullanıcı onayı bekliyor.
 - **Gerçek veride yeni hız gerçeğin altında (≈ 0,4–0,6×, kullanım olan anlarda).** Kenar hızı geçmişe bakıyor ve durma tavanı moladan sonra hızı düşürüyor; uyarı geç gelebilir. Mutlak hata ve gidip gelme ise belirgin azaldı. İzlenmeli; gerekirse tavan ya da kenar sayısı ayarlanır.
-- **Statusline `eta` segmenti** (`statusline/line.rs` `eta`) öngörüyü güvenden bağımsız gösteriyor. Bu adımın kapsamında değildi; düşük güvende gizlenmesi ya da işaretlenmesi düşünülebilir.
 - Yeni davranış gerçek Claude Code mod'unda ve kurulu uygulamada gözlenmedi (yeni sürüm gerekli).
 - Kapsamlı limitin kalibre maliyet yedeği yapılmadı (kullanıcı kararı); seyrek API adımlarında kapsamlı limitte öngörü eskisine göre daha az zaman var.
 

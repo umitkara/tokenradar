@@ -59,14 +59,23 @@ impl<T> Reading<T> {
     }
 }
 
+/// The app's projection to 100 %: always an estimate (shown with `≈`), dimmed when the app's
+/// rate is low-confidence (Step 12t follow-up, ADR-062).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Eta {
+    /// Until 100 %, ms.
+    pub ms: i64,
+    pub rough: bool,
+}
+
 /// One limit window as the line shows it.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Window {
     pub percent: f64,
     /// Until the reset, ms.
     pub resets_in: Option<i64>,
-    /// Until 100 % at the current rate, ms; only when it comes before the reset.
-    pub eta: Option<i64>,
+    /// Until 100 % at the current rate; only when it comes before the reset.
+    pub eta: Option<Eta>,
     /// How much of the window's time has passed, 0–100 %: a measurement of the clock, not
     /// an estimate (ADR-044). `None` without a reset time.
     pub elapsed: Option<f64>,
@@ -558,7 +567,10 @@ impl Line {
         Self {
             at,
             five_hour: five_hour.then(|| Window {
-                eta: Some(38 * MIN),
+                eta: Some(Eta {
+                    ms: 38 * MIN,
+                    rough: false,
+                }),
                 ..w(five, 108 * MIN, SESSION_WINDOW_MS)
             }),
             seven_day: Some(Window {
@@ -858,10 +870,14 @@ fn until(at: Option<Timestamp>, now: Timestamp) -> Option<i64> {
 
 pub use crate::limits::pace::elapsed;
 
-fn eta(app: Option<&LimitInfo>, now: Timestamp) -> Option<i64> {
-    app.filter(|a| a.will_hit_before_reset)
-        .and_then(|a| until(a.eta_100_at, now))
-        .filter(|ms| *ms > 0)
+fn eta(app: Option<&LimitInfo>, now: Timestamp) -> Option<Eta> {
+    let a = app.filter(|a| a.will_hit_before_reset)?;
+    let ms = until(a.eta_100_at, now).filter(|ms| *ms > 0)?;
+    Some(Eta {
+        ms,
+        rough: a.projection_confidence.as_deref() != Some("medium")
+            && a.projection_confidence.as_deref() != Some("high"),
+    })
 }
 
 /// The app's measurement as a window; `None` for its estimates.

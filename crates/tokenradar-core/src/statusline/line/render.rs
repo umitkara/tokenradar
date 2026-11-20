@@ -9,7 +9,7 @@
 //! 2. a 12-cell bar becomes an 8-cell one;
 //! 3. the bar (with its time mark);
 //! 4. the elapsed time (`⏱ 43%`);
-//! 5. the projection (`▲38m`);
+//! 5. the projection (`▲≈38m`);
 //! 6. the resets, countdowns and clock times alike;
 //! 7. limit items from the end, keeping the first; then the remaining texts.
 //!
@@ -1136,7 +1136,7 @@ fn value_paint<T>(line: &Line, r: &Reading<T>, paint: Paint) -> Paint {
     }
 }
 
-/// `7d ███│░░░░░ 41% ⏱ 43% · 3d4h ▲38m`. With `look.remaining` the percentage is what is
+/// `7d ███│░░░░░ 41% ⏱ 43% · 3d4h ▲≈38m`. With `look.remaining` the percentage is what is
 /// left (`59% left`), the colors still follow what is used.
 fn window(ctx: &Ctx<'_>, label: &str, w: &Window, d: Detail, look: Look) -> Vec<Span> {
     let (l, line) = (ctx.l, ctx.line);
@@ -1204,11 +1204,15 @@ fn window(ctx: &Ctx<'_>, label: &str, w: &Window, d: Detail, look: Look) -> Vec<
         out.push(span(" · ", Paint::Dim));
         out.push(span(text, if dim { Paint::Dim } else { Paint::Plain }));
     }
-    if let Some(ms) = w.eta.filter(|_| d.eta) {
+    if let Some(eta) = w.eta.filter(|_| d.eta) {
         out.push(span(" ", Paint::Plain));
         out.push(span(
-            l.fmt("sl-eta", &[("ms", ms_arg_i(ms))]),
-            if dim { Paint::Dim } else { Paint::Warn },
+            l.fmt("sl-eta", &[("ms", ms_arg_i(eta.ms))]),
+            if dim || eta.rough {
+                Paint::Dim
+            } else {
+                Paint::Warn
+            },
         ));
     }
     out

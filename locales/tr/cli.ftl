@@ -6,7 +6,7 @@ sl-label-five-hour = 5s
 sl-label-seven-day = 7g
 sl-percent = { PCT($pct) }
 sl-resets-in = { DUR($ms, "compact") }
-sl-eta = ▲{ DUR($ms, "compact") }
+sl-eta = ▲≈{ DUR($ms, "compact") }
 # Pencerenin zaman olarak ne kadarının geçtiği (kullanım değil, saat).
 sl-elapsed = { $mark }{ PCT($pct) }
 sl-session-share = ≈{ PCT($pct) } bu oturum

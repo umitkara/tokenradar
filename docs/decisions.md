@@ -1339,6 +1339,7 @@
   - **Öncelik (kullanıcı kararı):** ondalıklı okumaların Theil–Sen eğimi > kenar hızı (≥ `Medium`) > kalibre maliyet yedeği (`Low`, ADR-061) > kenar hızı (`Low`) > `k0` önseli. Theil–Sen artık yalnızca ondalıklı okumalarla beslenir (`fusion::interval(...).exact`); tam sayı okumalar yalnızca kenarlara gider.
   - **Mod uyarısı uygulamanın kuralıyla (kullanıcı kararı):** öngörü bant ve toast'u yalnızca güven `Low` değilse ve ETA 60 dakika (`PROJECTION_HORIZON_MIN`) içindeyse açar. `projection_confidence` yoksa (eski CLI) açmaz. Mod'un kendi sabiti `PROJECTION_HORIZON_MS` uygulamanınkiyle aynı değerdedir.
   - **Kapsamlı limitin maliyet yedeği bu adımda eklenmez (kullanıcı kararı).**
+  - **Statusline'ın dolma süresi öğesi gösterge olarak kalır (kullanıcı kararı, 2026-11-20).** Ufuk uygulanmaz, uzak ETA da görünür. Her zaman `≈` ile yazılır (`▲≈38m`; önceden işaretsizdi). Güven `Low` ya da bilinmiyorsa uyarı rengi yerine silik çizilir (`statusline::line::Eta.rough`).
   - **Uygulama ayrıntıları (onay bekliyor):**
     - `RateMethod::Steps` eklendi (bindings'te `"steps"`); arayüz `method`'u göstermediği için görünür bir değişiklik yok.
     - Mod, kararı `mergeRows` içinde bir kez verip satıra `soon` olarak yazar; `rowLevel` ve `alertsOf` buna bakar.
