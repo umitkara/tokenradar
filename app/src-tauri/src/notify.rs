@@ -4,7 +4,8 @@
 //! On Windows the toast is built here instead of by `tauri-plugin-notification` (ADR-040).
 //! Windows reports a click from the Action Center only to an app with a COM activator, and the
 //! plugin has no way to name one. Our toast uses protocol activation instead: a click, on screen
-//! or in the Action Center, starts `tokenradar-app.exe tokenradar://panel`. The installer
+//! or in the Action Center, starts `tokenradar-app.exe tokenradar://panel` (a summary:
+//! `tokenradar://main/overview`, Step 17b). The installer
 //! registers the scheme (`plugins > deep-link` in `tauri.conf.json`). The single-instance plugin
 //! hands that launch to the running app, and a cold start opens the panel itself (`init`).
 //! A portable copy registers no scheme, so there a click does nothing. The same launch path
@@ -16,14 +17,15 @@
 //! an error.
 
 use tauri::AppHandle;
-use tokenradar_core::deeplink::Link;
-use tokenradar_core::notifier::Notice;
+use tokenradar_core::deeplink::{Link, MainRoute};
+use tokenradar_core::notifier::{Notice, NoticeTarget};
 
 #[cfg(not(windows))]
 use crate::panel;
 
-/// What a toast click launches. Registered by the installer only.
-pub const PANEL_URI: &str = "tokenradar://panel";
+/// What a limit alert's click launches. Registered by the installer only.
+#[cfg(test)]
+const PANEL_URI: &str = "tokenradar://panel";
 
 /// Opens what a `tokenradar://` launch argument names (a toast click, `tokenradar open`). On
 /// other platforms it also registers the plugin's click handler; toasts shown before this report
@@ -44,26 +46,36 @@ pub fn init(app: &AppHandle) {
     }
 }
 
-/// Shows `notice` as a toast.
+/// Shows `notice` as a toast; a click opens what its target names.
 pub fn show(app: &AppHandle, notice: &Notice) {
-    show_text(app, &notice.title, &notice.body);
+    let link = match notice.target {
+        NoticeTarget::Panel => Link::Panel,
+        NoticeTarget::Overview => Link::Main(Some(MainRoute::Overview)),
+    };
+    show_linked(app, &notice.title, &notice.body, link);
 }
 
 /// Shows a toast that no notifier rule decided (the widget's "could not dock", Step 18b).
 pub fn show_text(app: &AppHandle, title: &str, body: &str) {
+    show_linked(app, title, body, Link::Panel);
+}
+
+fn show_linked(app: &AppHandle, title: &str, body: &str, link: Link) {
     #[cfg(windows)]
     {
         let app_id = toast::app_id(&app.config().identifier);
-        let (title, body) = (title.to_owned(), body.to_owned());
+        let (title, body, launch) = (title.to_owned(), body.to_owned(), link.uri());
         // WinRT activation can take a moment on first use; keep it off the event loop.
         tauri::async_runtime::spawn_blocking(move || {
-            if let Err(error) = toast::show(&app_id, &title, &body) {
+            if let Err(error) = toast::show(&app_id, &title, &body, &launch) {
                 tracing::warn!(%error, "could not show a notification");
             }
         });
     }
     #[cfg(not(windows))]
     {
+        // The plugin's click opens the panel whatever the link (Step 21).
+        let _ = link;
         use tauri_plugin_notification::NotificationExt as _;
         let result = app.notification().builder().title(title).body(body).show();
         if let Err(error) = result {
@@ -79,8 +91,6 @@ mod toast {
     use windows::Data::Xml::Dom::XmlDocument;
     use windows::UI::Notifications::{ToastNotification, ToastNotificationManager};
     use windows::core::{HSTRING, h};
-
-    use super::PANEL_URI;
 
     /// The sender Windows shows for builds that are not installed, as the plugin does.
     const POWERSHELL_APP_ID: &str =
@@ -106,13 +116,14 @@ mod toast {
     }
 
     /// The toast the plugin used to build (silent, short, `ToastGeneric`), plus protocol
-    /// activation. Text goes in through the DOM, so it cannot change the markup.
-    pub fn document(title: &str, body: &str) -> windows::core::Result<XmlDocument> {
+    /// activation of `launch` (a `tokenradar://` link). Text goes in through the DOM, so it
+    /// cannot change the markup.
+    pub fn document(title: &str, body: &str, launch: &str) -> windows::core::Result<XmlDocument> {
         let doc = XmlDocument::new()?;
         let toast = doc.CreateElement(h!("toast"))?;
         toast.SetAttribute(h!("duration"), h!("short"))?;
         toast.SetAttribute(h!("activationType"), h!("protocol"))?;
-        toast.SetAttribute(h!("launch"), &HSTRING::from(PANEL_URI))?;
+        toast.SetAttribute(h!("launch"), &HSTRING::from(launch))?;
         let visual = doc.CreateElement(h!("visual"))?;
         let binding = doc.CreateElement(h!("binding"))?;
         binding.SetAttribute(h!("template"), h!("ToastGeneric"))?;
@@ -131,18 +142,19 @@ mod toast {
         Ok(doc)
     }
 
-    pub fn show(app_id: &str, title: &str, body: &str) -> windows::core::Result<()> {
-        let toast = ToastNotification::CreateToastNotification(&document(title, body)?)?;
+    pub fn show(app_id: &str, title: &str, body: &str, launch: &str) -> windows::core::Result<()> {
+        let toast = ToastNotification::CreateToastNotification(&document(title, body, launch)?)?;
         ToastNotificationManager::CreateToastNotifierWithId(&HSTRING::from(app_id))?.Show(&toast)
     }
 
     #[cfg(test)]
     mod tests {
+        use super::super::PANEL_URI;
         use super::*;
 
         #[test]
         fn toast_launches_the_panel_uri_and_keeps_text_as_text() {
-            let xml = document("5h <90%> & \"up\"", "body")
+            let xml = document("5h <90%> & \"up\"", "body", PANEL_URI)
                 .expect("toast document")
                 .GetXml()
                 .expect("toast xml");
@@ -152,6 +164,23 @@ mod toast {
                  launch=\"tokenradar://panel\"><visual><binding template=\"ToastGeneric\">\
                  <text id=\"1\">5h &lt;90%&gt; &amp; \"up\"</text><text id=\"2\">body</text>\
                  </binding></visual><audio silent=\"true\"/></toast>"
+            );
+        }
+
+        #[test]
+        fn a_summary_toast_launches_the_overview() {
+            let launch = tokenradar_core::deeplink::Link::Main(Some(
+                tokenradar_core::deeplink::MainRoute::Overview,
+            ))
+            .uri();
+            let xml = document("t", "b", &launch)
+                .expect("toast document")
+                .GetXml()
+                .expect("toast xml")
+                .to_string();
+            assert!(
+                xml.contains("launch=\"tokenradar://main/overview\""),
+                "{xml}"
             );
         }
 

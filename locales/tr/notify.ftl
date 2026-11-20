@@ -44,3 +44,39 @@ notify-summary-title = Duraklatılmışken { $count } bildirim
 
 notify-test-title = TokenRadar test bildirimi
 notify-test-body = Bildirimler çalışıyor. Limit uyarıları böyle görünecek.
+
+## Dönemsel özetler (Adım 17b). Tıklanınca Genel Bakış açılır.
+## $approx: yes | no, yüzdenin tahmin olup olmadığı (≈ ile gösterilir).
+
+digest-weekly-title = Geçen hafta: tepe { $approx ->
+    [yes] ≈
+   *[no] {""}
+}{ PCT($pct) }
+digest-weekly-title-nopct = Geçen haftanın özeti
+# $windows tane 5 saatlik pencereden $hit tanesi %100'e ulaştı.
+digest-five-hour-hits = { $hit ->
+    [0] Hiçbir 5 saatlik pencere limite takılmadı
+   *[other] { $windows } adet 5 saatlik pencereden { $hit } tanesi limite takıldı
+}
+# $at: gün ve saat, ör. "Çar 14:20".
+digest-weekly-hit-at = Haftalık limite { TR_SUFFIX($at, "loc") } takıldı
+digest-weekly-hit = Haftalık limite takıldı
+digest-weekly-not-hit = Haftalık limite takılmadı
+digest-weekly-hit-unknown = Limite takılıp takılmadığı bilinmiyor (tahmini hafta)
+# $name: kapsamlı haftalık limitin modeli, ör. "Fable".
+digest-scoped-hit = { $name } doldu
+digest-scoped-peak = { $name } { $approx ->
+    [yes] ≈
+   *[no] {""}
+}{ PCT($pct) }
+digest-cost = API karşılığı ${ NUM($usd, 2) }
+digest-top-project = En çok: { $name }
+# $parts: aşağıdaki karşılaştırmalar, ", " ile birleştirilmiş.
+digest-delta = Önceki haftaya göre: { $parts }
+# $delta: işaretli sayı, ör. "+12" veya "−8"; maliyette işaretli yüzde.
+digest-delta-peak = tepe { $delta } puan
+digest-delta-cost = maliyet { $delta }
+# $pts: dün haftalık limitten harcanan tahmini puan.
+digest-daily-title = Dün: haftalık limitin ≈{ NUM($pts, 1) } puanı
+digest-daily-title-cost = Dün: { $cost }
+digest-sessions = { $count } oturum

@@ -15,6 +15,7 @@
 //! both end, the held ones that are still true are announced together: one notice as is,
 //! several as one summary.
 
+mod digest;
 mod prefs;
 /// How far ahead a projection may warn, and the least confidence it needs (ADR-062, ADR-063):
 /// an hour at medium for the 5-hour window and others, a day at high for weekly limits. The
@@ -29,6 +30,8 @@ pub fn projection_horizon(kind: &LimitKind) -> (u32, Confidence) {
 }
 
 #[cfg(test)]
+mod digest_tests;
+#[cfg(test)]
 mod tests;
 
 use std::sync::Arc;
@@ -38,9 +41,13 @@ use specta::Type;
 use tokenradar_i18n::format::weekday_clock;
 use tokenradar_i18n::{Arg, Domain, Locale, Localizer};
 
+pub use digest::{
+    AFTER_RESET_MS, ATTRIBUTION_WAIT_MS, DigestState, Period, Slot, daily_slot, weekly_preview,
+    weekly_slot,
+};
 pub use prefs::{
-    MAX_THRESHOLDS, NotifyPrefs, PROJECTION_HORIZON_MIN, QuietHours, WEEKLY_PROJECTION_HORIZON_MIN,
-    parse_hhmm,
+    DigestPrefs, MAX_THRESHOLDS, NotifyPrefs, PROJECTION_HORIZON_MIN, QuietHours,
+    WEEKLY_PROJECTION_HORIZON_MIN, WeeklyAt, parse_hhmm,
 };
 
 use crate::clock::LocalClock;
@@ -71,6 +78,8 @@ pub enum Rule {
     Summary,
     /// "Send test notification" in the settings. Never recorded.
     Test,
+    /// A periodic summary (Step 17b).
+    Digest,
 }
 
 impl Rule {
@@ -82,6 +91,7 @@ impl Rule {
             Self::Reset => "reset",
             Self::Summary => "summary",
             Self::Test => "test",
+            Self::Digest => "digest",
         }
     }
 
@@ -91,9 +101,20 @@ impl Rule {
             "projection" => Self::Projection,
             "final" => Self::Final,
             "reset" => Self::Reset,
+            "digest" => Self::Digest,
             _ => return None,
         })
     }
+}
+
+/// What a click on a notice opens.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Type)]
+#[serde(rename_all = "snake_case")]
+pub enum NoticeTarget {
+    /// The tray panel: limit alerts.
+    Panel,
+    /// The main window's overview: summaries.
+    Overview,
 }
 
 /// Something to show the user, already localized.
@@ -102,6 +123,7 @@ pub struct Notice {
     pub rule: Rule,
     pub title: String,
     pub body: String,
+    pub target: NoticeTarget,
 }
 
 /// One rule that fired for one window: a `notification_log` row.
@@ -318,6 +340,12 @@ impl Notifier {
         if self.held.is_empty() {
             return None;
         }
+        self.suppression_end(now)
+    }
+
+    /// The end of the mute or of quiet hours, whichever comes first; `None` when neither is
+    /// ahead.
+    fn suppression_end(&self, now: Timestamp) -> Option<Timestamp> {
         let mute_end = self.muted_until.filter(|&u| u > now);
         let quiet_end = self.prefs.quiet_hours.span().and_then(|(_, end)| {
             let minute = i64::from(self.clock.local(now)?.minute_of_day());
@@ -551,7 +579,7 @@ impl Notifier {
                 };
                 l.percent < f64::from(first.copied().unwrap_or(100))
             }),
-            Rule::Summary | Rule::Test => false,
+            Rule::Summary | Rule::Test | Rule::Digest => false,
         }
     }
 
@@ -563,7 +591,14 @@ impl Notifier {
 
     fn forget_old(&mut self, now: Timestamp) {
         let horizon = now.as_millis() - HISTORY_MS;
-        self.fired.retain(|f| f.resets_at.as_millis() >= horizon);
+        let digest_horizon = now.as_millis() - digest::DIGEST_HISTORY_MS;
+        self.fired.retain(|f| {
+            if f.rule == Rule::Digest {
+                f.at.as_millis() >= digest_horizon
+            } else {
+                f.resets_at.as_millis() >= horizon
+            }
+        });
     }
 
     // -----------------------------------------------------------------------------------------
@@ -607,9 +642,14 @@ impl Notifier {
                     .fmt(key, &[base[0], base[1], base[2], ("eta", Arg::from(eta))]);
                 (title, resets)
             }
-            Rule::Reset | Rule::Summary | Rule::Test => return None,
+            Rule::Reset | Rule::Summary | Rule::Test | Rule::Digest => return None,
         };
-        Some(Notice { rule, title, body })
+        Some(Notice {
+            rule,
+            title,
+            body,
+            target: NoticeTarget::Panel,
+        })
     }
 
     /// "5-hour window", "Weekly limit", "Fable weekly limit".
@@ -649,6 +689,7 @@ impl Notifier {
                 .l10n
                 .fmt("notify-reset-title", &[("what", Arg::Str(&what))]),
             body: self.l10n.msg("notify-reset-body"),
+            target: NoticeTarget::Panel,
         }
     }
 
@@ -664,6 +705,7 @@ impl Notifier {
                 .map(|n| n.title.as_str())
                 .collect::<Vec<_>>()
                 .join("\n"),
+            target: NoticeTarget::Panel,
         }
     }
 }
@@ -675,6 +717,7 @@ pub fn test_notice(locale: Locale) -> Notice {
         rule: Rule::Test,
         title: l10n.msg("notify-test-title"),
         body: l10n.msg("notify-test-body"),
+        target: NoticeTarget::Panel,
     }
 }
 

@@ -56,6 +56,11 @@ export const commands = {
 	setAutostart: (enabled: boolean) => typedError<boolean, string>(__TAURI_INVOKE("set_autostart", { enabled })),
 	/**  "Send test notification": shows one toast at once, ignoring mute and quiet hours. */
 	sendTestNotification: () => __TAURI_INVOKE<void>("send_test_notification"),
+	/**
+	 *  Shows last week's summary now, as the scheduled one would look (Step 17b). Not recorded,
+	 *  so the scheduled one still comes. `false` when no weekly window has reset yet.
+	 */
+	previewWeeklyDigest: () => typedError<boolean, string>(__TAURI_INVOKE("preview_weekly_digest")),
 	/**  Claude Code directories, the statusline bridge and the API consent. */
 	getDataSources: () => typedError<DataSourcesView, string>(__TAURI_INVOKE("get_data_sources")),
 	/**
@@ -575,6 +580,19 @@ export type DiffLine = {
 	text: string,
 };
 
+/**  The periodic summaries: the past weekly limit window and, optionally, the past day. */
+export type DigestPrefs = {
+	weekly?: boolean,
+	weekly_at?: WeeklyAt,
+	/**  Monday-zero day for [`WeeklyAt::Custom`]. */
+	weekly_day?: number,
+	/**  `HH:MM` for [`WeeklyAt::Custom`]. */
+	weekly_time?: string,
+	daily?: boolean,
+	/**  `HH:MM`: when yesterday's summary is sent. */
+	daily_time?: string,
+};
+
 export type Drift = {
 	/**  When the CUSUM crossed its threshold. */
 	detected_at: Timestamp,
@@ -1056,7 +1074,15 @@ export type Notice = {
 	rule: Rule,
 	title: string,
 	body: string,
+	target: NoticeTarget,
 };
+
+/**  What a click on a notice opens. */
+export type NoticeTarget = 
+/**  The tray panel: limit alerts. */
+"panel" | 
+/**  The main window's overview: summaries. */
+"overview";
 
 /**  When and how the notifier speaks. [`NotifyPrefs::normalized`] makes any value safe to use. */
 export type NotifyPrefs = {
@@ -1073,6 +1099,8 @@ export type NotifyPrefs = {
 	/**  A reset is announced only if the window peaked at or above this percentage. */
 	reset_notify_min?: number,
 	quiet_hours?: QuietHours,
+	/**  The periodic summaries (Step 17b). */
+	digest?: DigestPrefs,
 };
 
 /**  Which window backdrop the system supports (`data-os` on `<html>`). */
@@ -1480,7 +1508,9 @@ export type Rule = "threshold" | "projection" |
 /**  Several held notices announced together after a mute or quiet hours. Never recorded. */
 "summary" | 
 /**  "Send test notification" in the settings. Never recorded. */
-"test";
+"test" | 
+/**  A periodic summary (Step 17b). */
+"digest";
 
 /**  The state the settings preview draws its sample in. */
 export type SampleState = "normal" | "warn" | "crit" | 
@@ -2085,6 +2115,13 @@ export type WeekSpan = {
 	/**  The open `weekly_all` window; `None` when the account has none (last 7 days). */
 	window_id: number | null,
 };
+
+/**  When the weekly summary is sent. */
+export type WeeklyAt = 
+/**  An hour after the weekly limit resets. */
+"after_reset" | 
+/**  On `weekly_day` at `weekly_time`, local time. */
+"custom";
 
 /**  Where the widget lives. */
 export type WidgetMode = 

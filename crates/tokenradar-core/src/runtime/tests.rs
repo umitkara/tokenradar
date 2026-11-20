@@ -390,6 +390,7 @@ fn notify_config(env: &Env) -> CoreConfig {
         prefs,
         locale: Locale::En,
         clock: Arc::new(crate::clock::UtcClock),
+        zone: Arc::new(crate::queries::FixedZone::utc()),
     });
     config
 }
@@ -678,4 +679,59 @@ fn terminals_are_kept_once_in_order_of_kind() {
     status.saw_terminal(Vscode);
     assert_eq!(status.terminals, [WindowsTerminal, Vscode]);
     assert_eq!(status.last_terminal, Some(Vscode));
+}
+
+/// The weekly summary of a window that reset while the app was closed goes out at the next
+/// start, once: a restart does not repeat it (Step 17b).
+#[test]
+fn a_due_weekly_summary_is_sent_once_across_restarts() {
+    use crate::domain::{LimitKind, Source};
+    const HOUR: i64 = 3_600_000;
+    let env = Env::new();
+    // The first start registers the account.
+    CoreRuntime::start(&notify_config(&env))
+        .expect("start")
+        .shutdown(SHUTDOWN_TIMEOUT);
+    let now = Timestamp::now().as_millis();
+    {
+        // A week that reset 3.5 h ago: past the hour's wait and the wait for attribution.
+        let store = Store::open(&env.db_path).expect("store");
+        store
+            .writer()
+            .record_snapshot(
+                LimitObservation {
+                    account: AccountId(1),
+                    kind: LimitKind::WeeklyAll,
+                    scope: None,
+                    percent: 60.0,
+                    resets_at: Some(Timestamp::from_millis(now - 7 * HOUR / 2)),
+                    severity: None,
+                    source: Source::Api,
+                    session_uuid: None,
+                    observed_at: Timestamp::from_millis(now - 48 * HOUR),
+                },
+                Some(7 * 24 * HOUR),
+            )
+            .expect("snapshot");
+    }
+
+    let handle = CoreRuntime::start(&notify_config(&env)).expect("restart");
+    let rx = events(&handle);
+    let notice = wait_for(&rx, Duration::from_secs(5), |e| match e {
+        CoreEvent::Notify(n) if n.rule == notifier::Rule::Digest => Some(n.clone()),
+        _ => None,
+    })
+    .expect("weekly summary");
+    assert_eq!(notice.title, "Last week: peak 60%");
+    assert_eq!(notice.target, notifier::NoticeTarget::Overview);
+    handle.shutdown(SHUTDOWN_TIMEOUT);
+
+    let handle = CoreRuntime::start(&notify_config(&env)).expect("second restart");
+    let rx = events(&handle);
+    let again = wait_for(&rx, Duration::from_secs(2), |e| match e {
+        CoreEvent::Notify(n) if n.rule == notifier::Rule::Digest => Some(n.clone()),
+        _ => None,
+    });
+    assert_eq!(again, None, "the restart repeated the summary");
+    handle.shutdown(SHUTDOWN_TIMEOUT);
 }

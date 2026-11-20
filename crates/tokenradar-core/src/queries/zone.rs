@@ -107,6 +107,28 @@ pub fn local_day_start(zone: &dyn LocalZone, at: Timestamp) -> Timestamp {
     to_utc(zone, local - local.rem_euclid(DAY_MS))
 }
 
+/// UTC instant of `minute` (after local midnight) on the local day that starts at `day`
+/// ([`local_day_start`]).
+pub fn at_local_minute(zone: &dyn LocalZone, day: Timestamp, minute: u16) -> Timestamp {
+    let local = day.as_millis() + zone.offset_ms(day) + i64::from(minute) * MINUTE_MS;
+    to_utc(zone, local)
+}
+
+/// The next local midnight after the day containing `at`.
+pub fn next_local_day_start(zone: &dyn LocalZone, at: Timestamp) -> Timestamp {
+    // Noon of the next day is past any DST shift; its midnight is the answer.
+    let start = local_day_start(zone, at);
+    local_day_start(
+        zone,
+        Timestamp::from_millis(start.as_millis() + DAY_MS + DAY_MS / 2),
+    )
+}
+
+/// Monday-zero week day of the local day containing `at`.
+pub fn local_weekday(zone: &dyn LocalZone, at: Timestamp) -> u8 {
+    weekday_hour(at.as_millis() + zone.offset_ms(at)).0
+}
+
 /// UTC instant of local midnight on the first day of the month containing `at`.
 pub fn local_month_start(zone: &dyn LocalZone, at: Timestamp) -> Timestamp {
     let local = at.as_millis() + zone.offset_ms(at);

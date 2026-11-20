@@ -13,6 +13,14 @@
 //! enabled = false
 //! start = "23:00"
 //! end = "08:00"
+//!
+//! [notifications.digest]
+//! weekly = true
+//! weekly_at = "after_reset"   # or "custom": weekly_day and weekly_time
+//! weekly_day = 0              # Monday-zero
+//! weekly_time = "09:00"
+//! daily = false
+//! daily_time = "09:00"
 //! ```
 
 use serde::{Deserialize, Serialize};
@@ -43,6 +51,8 @@ pub struct NotifyPrefs {
     /// A reset is announced only if the window peaked at or above this percentage.
     pub reset_notify_min: u8,
     pub quiet_hours: QuietHours,
+    /// The periodic summaries (Step 17b).
+    pub digest: DigestPrefs,
 }
 
 impl Default for NotifyPrefs {
@@ -55,6 +65,46 @@ impl Default for NotifyPrefs {
             final_warning_min: 15,
             reset_notify_min: 80,
             quiet_hours: QuietHours::default(),
+            digest: DigestPrefs::default(),
+        }
+    }
+}
+
+/// When the weekly summary is sent.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, Type)]
+#[serde(rename_all = "snake_case")]
+pub enum WeeklyAt {
+    /// An hour after the weekly limit resets.
+    #[default]
+    AfterReset,
+    /// On `weekly_day` at `weekly_time`, local time.
+    Custom,
+}
+
+/// The periodic summaries: the past weekly limit window and, optionally, the past day.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(default)]
+pub struct DigestPrefs {
+    pub weekly: bool,
+    pub weekly_at: WeeklyAt,
+    /// Monday-zero day for [`WeeklyAt::Custom`].
+    pub weekly_day: u8,
+    /// `HH:MM` for [`WeeklyAt::Custom`].
+    pub weekly_time: String,
+    pub daily: bool,
+    /// `HH:MM`: when yesterday's summary is sent.
+    pub daily_time: String,
+}
+
+impl Default for DigestPrefs {
+    fn default() -> Self {
+        Self {
+            weekly: true,
+            weekly_at: WeeklyAt::AfterReset,
+            weekly_day: 0,
+            weekly_time: "09:00".into(),
+            daily: false,
+            daily_time: "09:00".into(),
         }
     }
 }
@@ -130,6 +180,16 @@ impl NotifyPrefs {
         ] {
             *field = parse_hhmm(field).map_or(fallback, |m| format!("{:02}:{:02}", m / 60, m % 60));
         }
+        let digest = DigestPrefs::default();
+        for (field, fallback) in [
+            (&mut self.digest.weekly_time, digest.weekly_time),
+            (&mut self.digest.daily_time, digest.daily_time),
+        ] {
+            *field = parse_hhmm(field).map_or(fallback, |m| format!("{:02}:{:02}", m / 60, m % 60));
+        }
+        if self.digest.weekly_day > 6 {
+            self.digest.weekly_day = 0;
+        }
         self
     }
 }
@@ -159,6 +219,30 @@ mod tests {
         assert_eq!(prefs.reset_notify_min, 100);
         assert_eq!(prefs.quiet_hours.start, "07:05");
         assert_eq!(prefs.quiet_hours.end, "08:00");
+    }
+
+    #[test]
+    fn digest_times_and_day_are_normalized() {
+        let prefs = NotifyPrefs {
+            digest: DigestPrefs {
+                weekly_day: 9,
+                weekly_time: "7:5".into(),
+                daily_time: "noon".into(),
+                ..DigestPrefs::default()
+            },
+            ..NotifyPrefs::default()
+        }
+        .normalized();
+        assert_eq!(prefs.digest.weekly_day, 0);
+        assert_eq!(prefs.digest.weekly_time, "07:05");
+        assert_eq!(prefs.digest.daily_time, "09:00");
+    }
+
+    #[test]
+    fn a_config_without_a_digest_section_gets_the_defaults() {
+        let prefs: NotifyPrefs = toml::from_str("enabled = true").expect("toml");
+        assert_eq!(prefs.digest, DigestPrefs::default());
+        assert!(prefs.digest.weekly && !prefs.digest.daily);
     }
 
     #[test]

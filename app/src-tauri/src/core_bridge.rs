@@ -132,6 +132,7 @@ fn open() -> Result<CoreHandle, Box<dyn std::error::Error>> {
         prefs: app_config.notifications.clone(),
         locale: app_config.general.locale(),
         clock: Arc::new(SystemClock),
+        zone: Arc::new(tokenradar_core::queries::SystemZone),
     });
     // The statusline bridge (Step 07): serve the CLI and import what it spooled meanwhile.
     match tokenradar_core::ipc::pipe_name() {

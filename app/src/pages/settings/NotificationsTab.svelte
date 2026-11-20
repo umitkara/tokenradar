@@ -1,5 +1,6 @@
 <!--
-  Notifications: thresholds, projection, last warning, resets, quiet hours and a test toast.
+  Notifications: thresholds, projection, last warning, resets, quiet hours, the periodic
+  summaries (Step 17b) and a test toast.
   Every change sends the whole `NotifyPrefs`; the core normalizes and answers with what it kept.
 -->
 <script lang="ts">
@@ -7,8 +8,16 @@ import Button from "../../lib/components/Button.svelte";
 import Card from "../../lib/components/Card.svelte";
 import Select from "../../lib/components/Select.svelte";
 import Toggle from "../../lib/components/Toggle.svelte";
-import { t } from "../../lib/i18n/i18n.svelte";
-import { commands, type NotifyPrefs, type QuietHours } from "../../lib/ipc/bindings";
+import { weekdayName } from "../../lib/i18n/format";
+import { locale, t } from "../../lib/i18n/i18n.svelte";
+import {
+  commands,
+  type DigestPrefs,
+  type NotifyPrefs,
+  type QuietHours,
+  type WeeklyAt,
+} from "../../lib/ipc/bindings";
+import { firstWeekday, toJsDay, weekOrder } from "../main/windows/view";
 import Field from "./Field.svelte";
 import { savePrefs, store } from "./state.svelte";
 import ThresholdChips from "./ThresholdChips.svelte";
@@ -17,10 +26,25 @@ import { FINAL_WARNING_PRESETS, MAX_THRESHOLDS, optionsWith, RESET_PRESETS } fro
 let { onerror }: { onerror: (key: string | null) => void } = $props();
 
 let testSent = $state(false);
+/** "Show now": `shown`, `none` (no week has reset yet) or `failed`. */
+let preview = $state<"shown" | "none" | "failed" | null>(null);
 
 const prefs = $derived(store.prefs?.notifications ?? null);
 const off = $derived(prefs?.enabled === false);
 const quiet = $derived<QuietHours>(prefs?.quiet_hours ?? {});
+const digest = $derived<DigestPrefs>(prefs?.digest ?? {});
+const weeklyOff = $derived(off || digest.weekly === false);
+const custom = $derived((digest.weekly_at ?? "after_reset") === "custom");
+
+const whens = $derived<{ value: WeeklyAt; label: string }[]>([
+  { value: "after_reset", label: t("notify-digest-after-reset") },
+  { value: "custom", label: t("notify-digest-custom") },
+]);
+const days = $derived(
+  weekOrder(
+    firstWeekday(locale(), typeof navigator === "undefined" ? undefined : navigator.language),
+  ).map((d) => ({ value: d, label: weekdayName(locale(), toJsDay(d)) })),
+);
 
 const finals = $derived(
   optionsWith(FINAL_WARNING_PRESETS, prefs?.final_warning_min ?? 15).map((m) => ({
@@ -50,6 +74,15 @@ function setQuiet(patch: Partial<QuietHours>) {
 function time(e: Event & { currentTarget: HTMLInputElement }): string | null {
   // An emptied time field keeps the stored value.
   return /^\d{2}:\d{2}$/.test(e.currentTarget.value) ? e.currentTarget.value : null;
+}
+
+function setDigest(patch: Partial<DigestPrefs>) {
+  void save({ digest: { ...digest, ...patch } });
+}
+
+async function showDigest() {
+  const result = await commands.previewWeeklyDigest();
+  preview = result.status === "error" ? "failed" : result.data ? "shown" : "none";
 }
 
 async function test() {
@@ -156,6 +189,84 @@ async function test() {
     </div>
   </Card>
 
+  <Card>
+    <Field label={t("notify-digest-weekly")} hint={t("notify-digest-weekly-hint")}>
+      <Toggle
+        checked={digest.weekly ?? true}
+        label={t("notify-digest-weekly")}
+        labelHidden
+        disabled={off}
+        onchange={(weekly) => setDigest({ weekly })}
+      />
+    </Field>
+    <Field label={t("notify-digest-when")} id="digest-when">
+      <Select
+        id="digest-when"
+        value={digest.weekly_at ?? "after_reset"}
+        options={whens}
+        disabled={weeklyOff}
+        onchange={(weekly_at) => setDigest({ weekly_at })}
+      />
+    </Field>
+    {#if custom}
+      <div class="times">
+        <Select
+          value={digest.weekly_day ?? 0}
+          options={days}
+          label={t("notify-digest-day")}
+          disabled={weeklyOff}
+          onchange={(weekly_day) => setDigest({ weekly_day })}
+        />
+        <input
+          type="time"
+          aria-label={t("notify-digest-time")}
+          value={digest.weekly_time ?? "09:00"}
+          disabled={weeklyOff}
+          onchange={(e) => {
+            const weekly_time = time(e);
+            if (weekly_time) setDigest({ weekly_time });
+          }}
+        />
+      </div>
+    {/if}
+    <div class="preview">
+      <Button disabled={off} onclick={showDigest}>{t("notify-digest-preview")}</Button>
+      {#if preview === "none"}
+        <p class="hint" role="status">{t("notify-digest-preview-none")}</p>
+      {:else if preview === "failed"}
+        <p class="hint" role="status">{t("notify-digest-preview-failed")}</p>
+      {:else if preview === "shown"}
+        <p class="hint" role="status">{t("notify-test-sent")}</p>
+      {/if}
+    </div>
+  </Card>
+
+  <Card>
+    <Field label={t("notify-digest-daily")} hint={t("notify-digest-daily-hint")}>
+      <Toggle
+        checked={digest.daily ?? false}
+        label={t("notify-digest-daily")}
+        labelHidden
+        disabled={off}
+        onchange={(daily) => setDigest({ daily })}
+      />
+    </Field>
+    <div class="times">
+      <label>
+        {t("notify-digest-time")}
+        <input
+          type="time"
+          value={digest.daily_time ?? "09:00"}
+          disabled={off || !digest.daily}
+          onchange={(e) => {
+            const daily_time = time(e);
+            if (daily_time) setDigest({ daily_time });
+          }}
+        />
+      </label>
+    </div>
+  </Card>
+
   <div class="test">
     <Button onclick={test}>{t("notify-test")}</Button>
     {#if testSent}<p class="hint" role="status">{t("notify-test-sent")}</p>{/if}
@@ -187,6 +298,12 @@ async function test() {
   }
   input:disabled {
     opacity: 0.5;
+  }
+  .preview {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding-bottom: var(--space-2);
   }
   .test {
     display: flex;

@@ -499,6 +499,21 @@ notify-quiet-to = To
 notify-test = Send test notification
 notify-test-sent = Sent. If nothing appeared, check notifications for TokenRadar in Windows settings.
 
+## Periodic summaries (Step 17b)
+
+notify-digest-weekly = Weekly summary
+notify-digest-weekly-hint = Last limit week: peak, whether a limit filled up, API-equivalent cost, top project and the change from the week before. A click opens the overview. If the app is closed then, it comes when it starts within two days.
+notify-digest-when = Send
+notify-digest-after-reset = An hour after the weekly reset
+notify-digest-custom = On a day and time I choose
+notify-digest-day = Day
+notify-digest-time = Time
+notify-digest-preview = Show last week's summary now
+notify-digest-preview-none = No weekly window has reset yet.
+notify-digest-preview-failed = The summary could not be built.
+notify-digest-daily = Daily summary
+notify-digest-daily-hint = Yesterday's usage: ≈ points of the weekly limit, API-equivalent cost, sessions and top project.
+
 ## Privacy & data
 
 privacy-storage = Storage

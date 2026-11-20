@@ -50,13 +50,14 @@ use crate::limits::{
     AccountMeta, IndexState, LimitEngine, LimitEvent, PanelSnapshot, SchemaDriftView, VisibleKey,
 };
 use crate::live_sessions::{self, LiveSession, LiveSessionTracker};
-use crate::notifier::{self, Fired, Notifier, NotifyPrefs, Outcome};
+use crate::notifier::{self, DigestState, Fired, Notifier, NotifyPrefs, Outcome, Period};
 use crate::pricing::{Pricing, UNPRICED_LOOKBACK_MS};
 use crate::providers::claude::credentials::{self, CREDENTIALS_FILE};
 use crate::providers::claude::usage_api::{
     HttpTransport, PollInputs, PollUpdate, PollerMsg, UsageApiPoller,
 };
 use crate::providers::claude::{AccountDescriptor, PROJECTS_DIR, classify_path};
+use crate::queries::{self, LocalZone, QueryContext, TimeRange};
 use crate::statusline::spool;
 use crate::store::{Store, StoreError};
 use crate::terminal_font::TerminalKind;
@@ -76,6 +77,11 @@ pub const LIVENESS_INTERVAL: Duration = Duration::from_secs(15);
 /// The panel snapshot is rebuilt at most this often; statusline calls can arrive every second.
 pub const LIMITS_REBUILD_GAP: Duration = Duration::from_secs(2);
 /// Attribution of the open window is redone at most this often, and only after new data.
+/// A summary that could not be built yet is tried again after this long.
+const DIGEST_RETRY_MS: i64 = 15 * 60_000;
+/// Without an open weekly window to schedule from, the summaries are looked at again after
+/// this long (a reset event also triggers a look).
+const DIGEST_FALLBACK_MS: i64 = 6 * 3_600_000;
 const ATTRIBUTION_GAP: Duration =
     Duration::from_millis(attribution::LIVE_REFRESH_MS.unsigned_abs());
 /// A repeated statusline payload (live refresh of an idle session, Step 12r) rebuilds the
@@ -147,6 +153,8 @@ pub struct NotifySetup {
     pub locale: Locale,
     /// The user's wall clock, for quiet hours and weekday texts.
     pub clock: Arc<dyn LocalClock>,
+    /// The user's time zone, for the summaries' local days and times (Step 17b).
+    pub zone: Arc<dyn LocalZone>,
 }
 
 impl std::fmt::Debug for NotifySetup {
@@ -312,6 +320,7 @@ impl CoreRuntime {
             .collect();
         let engine = LimitEngine::new(store.clone(), metas, config.api_consent, Timestamp::now())?;
         let setup = config.notify.clone();
+        let digest_zone = setup.as_ref().map(|s| Arc::clone(&s.zone));
         let (limits_bus, limits_status, limits_store) =
             (bus.clone(), status.clone(), store.clone());
         let (spool_dir, limits_dirs) = (config.spool_dir.clone(), account_dirs.clone());
@@ -330,6 +339,8 @@ impl CoreRuntime {
                 account_dirs: limits_dirs,
                 repeat_built: None,
                 calibration: CalibrationState::default(),
+                digest_zone,
+                next_digest: None,
             };
             limits_loop(ctx, &limits_rx, calibration_delay);
         })?);
@@ -1155,6 +1166,10 @@ struct LimitsCtx {
     /// When a repeated payload last asked for a rebuild.
     repeat_built: Option<Instant>,
     calibration: CalibrationState,
+    /// The zone the summaries are scheduled in; `None` without a notifier.
+    digest_zone: Option<Arc<dyn LocalZone>>,
+    /// When the summaries are next checked; `None`: at the next turn of the loop.
+    next_digest: Option<Timestamp>,
 }
 
 /// What the limits thread remembers between calibrations.
@@ -1350,6 +1365,10 @@ impl LimitsCtx {
                 let outcome = notifier.on_reset(&e, now);
                 self.deliver(outcome, now);
             }
+            // A reset closes a weekly window: its summary may now be scheduled.
+            if matches!(e, LimitEvent::Reset { .. }) {
+                self.next_digest = None;
+            }
             self.bus.publish(CoreEvent::Limit(e));
         }
         any
@@ -1445,6 +1464,7 @@ impl LimitsCtx {
                 if let Some(n) = &mut self.notifier {
                     n.set_prefs(*prefs);
                 }
+                self.next_digest = None;
             }
             LimitsMsg::NotifyLocale(locale) => {
                 if let Some(n) = &mut self.notifier {
@@ -1455,9 +1475,141 @@ impl LimitsCtx {
                 if let Some(n) = &mut self.notifier {
                     n.set_muted_until(until);
                 }
+                self.next_digest = None;
             }
         }
         Some(true)
+    }
+
+    /// Sends the summaries that are due (Step 17b) and returns when to look again.
+    fn check_digests(&mut self, now: Timestamp) -> Option<Timestamp> {
+        let notifier = self.notifier.as_ref()?;
+        let zone = Arc::clone(self.digest_zone.as_ref()?);
+        // The primary account, as on the main window (one account until Step 19).
+        let &(account, _) = self.account_dirs.first()?;
+        let weekly_on = notifier.digest_enabled(Period::Weekly);
+        let daily_on = notifier.digest_enabled(Period::Daily);
+        if !weekly_on && !daily_on {
+            return None;
+        }
+        let prefs = notifier.digest_prefs().clone();
+        let cals = self
+            .calibration
+            .stored
+            .get(&account)
+            .cloned()
+            .unwrap_or_default();
+        let ctx = QueryContext {
+            account,
+            now,
+            calibrations: &cals,
+            zone: zone.as_ref(),
+        };
+        let retry = now.saturating_add_millis(DIGEST_RETRY_MS);
+        let mut wake: Vec<Timestamp> = Vec::new();
+
+        if weekly_on {
+            match queries::week_bounds(&self.store, &ctx) {
+                Ok((closed, open)) => {
+                    if let Some(week) = closed {
+                        let slot = notifier::weekly_slot(&prefs, week, zone.as_ref());
+                        wake.extend(self.weekly_digest(&ctx, &slot, now, retry));
+                    }
+                    // The next summary is due after the open window resets; without one
+                    // (no reading yet) a reset event or this fallback looks again.
+                    wake.push(
+                        open.map_or(now.saturating_add_millis(DIGEST_FALLBACK_MS), |r| {
+                            let next = queries::WeekBounds {
+                                starts_at: r,
+                                resets_at: r,
+                            };
+                            notifier::weekly_slot(&prefs, next, zone.as_ref()).due_at
+                        }),
+                    );
+                }
+                Err(error) => {
+                    tracing::warn!(%error, "summary: weekly windows not readable");
+                    wake.push(retry);
+                }
+            }
+        }
+        if daily_on {
+            let (slot, next) = notifier::daily_slot(&prefs, now, zone.as_ref());
+            wake.push(next);
+            let state = self
+                .notifier
+                .as_ref()
+                .map_or(DigestState::Off, |n| n.digest_state(&slot, now));
+            match state {
+                DigestState::Wait(t) => wake.push(t),
+                DigestState::Due => {
+                    match queries::daily_digest(
+                        &self.store,
+                        &ctx,
+                        TimeRange::new(slot.from, slot.to),
+                    ) {
+                        Ok(d) => {
+                            if let Some(n) = self.notifier.as_mut() {
+                                let notice = (!d.is_empty()).then(|| n.daily_notice(&d));
+                                let outcome = n.send_digest(&slot, notice, now);
+                                self.deliver(outcome, now);
+                            }
+                        }
+                        Err(error) => {
+                            tracing::warn!(%error, "summary: daily totals not readable");
+                            wake.push(retry);
+                        }
+                    }
+                }
+                DigestState::Off | DigestState::Done | DigestState::Missed => {}
+            }
+        }
+        wake.into_iter().filter(|&t| t > now).min()
+    }
+
+    /// The weekly part of [`Self::check_digests`]: sends `slot` when due, or says when to
+    /// look again.
+    fn weekly_digest(
+        &mut self,
+        ctx: &QueryContext<'_>,
+        slot: &notifier::Slot,
+        now: Timestamp,
+        retry: Timestamp,
+    ) -> Option<Timestamp> {
+        let state = self.notifier.as_ref()?.digest_state(slot, now);
+        match state {
+            DigestState::Wait(t) => return Some(t),
+            DigestState::Due => {}
+            DigestState::Off | DigestState::Done | DigestState::Missed => return None,
+        }
+        let week = queries::WeekBounds {
+            starts_at: slot.from,
+            resets_at: slot.to,
+        };
+        let digest = match queries::weekly_digest(&self.store, ctx, week) {
+            Ok(d) => d,
+            Err(error) => {
+                tracing::warn!(%error, "summary: weekly window not readable");
+                return Some(retry);
+            }
+        };
+        // Attribution runs every few minutes; wait a little for the project line.
+        let waiting = now.as_millis() < slot.due_at.as_millis() + notifier::ATTRIBUTION_WAIT_MS;
+        if waiting
+            && digest
+                .as_ref()
+                .is_some_and(|d| !d.attributed() && !d.is_empty())
+        {
+            return Some(retry);
+        }
+        let n = self.notifier.as_mut()?;
+        let notice = digest
+            .as_ref()
+            .filter(|d| !d.is_empty())
+            .map(|d| n.weekly_notice(d));
+        let outcome = n.send_digest(slot, notice, now);
+        self.deliver(outcome, now);
+        None
     }
 
     /// Rebuilds the snapshot, keeps it in [`CoreStatus`] and publishes it if it looks different.
@@ -1511,6 +1663,11 @@ fn limits_loop(mut ctx: LimitsCtx, rx: &mpsc::Receiver<LimitsMsg>, calibration_d
         }
         let resets = ctx.engine.tick(now);
         dirty |= ctx.publish_all(resets);
+        if ctx.notifier.is_some() && ctx.next_digest.is_none_or(|t| now >= t) {
+            ctx.next_digest = ctx
+                .check_digests(now)
+                .or(Some(Timestamp::from_millis(i64::MAX)));
+        }
         ctx.sync_poll_inputs();
         if dirty && Instant::now() >= next_build {
             ctx.rebuild(now, &mut last_key);
@@ -1520,13 +1677,14 @@ fn limits_loop(mut ctx: LimitsCtx, rx: &mpsc::Receiver<LimitsMsg>, calibration_d
 
         // Sleep until the engine's next reset or freshness step, the end of a mute or quiet
         // hours that hold notices back, or the pending rebuild.
-        let wake = match (
+        let wake = [
             ctx.engine.next_wake(now),
             ctx.notifier.as_ref().and_then(|n| n.next_wake(now)),
-        ) {
-            (Some(a), Some(b)) => Some(a.min(b)),
-            (a, b) => a.or(b),
-        };
+            ctx.next_digest.filter(|t| t.as_millis() < i64::MAX),
+        ]
+        .into_iter()
+        .flatten()
+        .min();
         let mut wait: Option<Duration> = wake.map(|w| {
             Duration::from_millis(u64::try_from(w.as_millis() - now.as_millis()).unwrap_or(0))
         });

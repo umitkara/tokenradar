@@ -12,6 +12,7 @@
 //!   cursors stay in UTC.
 
 mod cycles;
+mod digest;
 mod lttb;
 mod overview;
 mod patterns;
@@ -39,6 +40,9 @@ use crate::store::StoreError;
 pub use cycles::{
     CycleDay, CycleProject, CycleRow, ScopedPeak, StripDay, StripSegment, StripSession,
     StripWindow, SurfaceShare, WeekCycles, WindowStrip, list_weeks, window_strip,
+};
+pub use digest::{
+    DailyDigest, FiveHourHits, WeekBounds, WeeklyDigest, daily_digest, week_bounds, weekly_digest,
 };
 pub use lttb::lttb;
 pub use overview::{
@@ -69,7 +73,10 @@ pub use windows::{
     WindowDetail, WindowFilter, WindowPage, WindowRow, get_window, list_windows,
 };
 pub(crate) use zone::spans as local_spans;
-pub use zone::{FixedZone, LocalZone, SystemZone, local_day_start, local_month_start};
+pub use zone::{
+    FixedZone, LocalZone, SystemZone, at_local_minute, local_day_start, local_month_start,
+    local_weekday, next_local_day_start,
+};
 
 pub type Result<T, E = StoreError> = std::result::Result<T, E>;
 

@@ -481,6 +481,21 @@ notify-quiet-to = Bitiş
 notify-test = Test bildirimi gönder
 notify-test-sent = Gönderildi. Bir şey görünmediyse Windows ayarlarında TokenRadar bildirimlerini kontrol edin.
 
+## Dönemsel özetler (Adım 17b)
+
+notify-digest-weekly = Haftalık özet
+notify-digest-weekly-hint = Geçen limit haftası: tepe değer, limite takılma, API karşılığı maliyet, en çok etkileyen proje ve önceki haftaya göre fark. Tıklanınca Genel Bakış açılır. Uygulama o an kapalıysa iki gün içinde açıldığında gelir.
+notify-digest-when = Gönderim
+notify-digest-after-reset = Haftalık reset'ten bir saat sonra
+notify-digest-custom = Seçtiğim gün ve saatte
+notify-digest-day = Gün
+notify-digest-time = Saat
+notify-digest-preview = Geçen haftanın özetini şimdi göster
+notify-digest-preview-none = Henüz yenilenmiş bir haftalık pencere yok.
+notify-digest-preview-failed = Özet oluşturulamadı.
+notify-digest-daily = Günlük özet
+notify-digest-daily-hint = Dünün kullanımı: haftalık limitten ≈ puan, API karşılığı maliyet, oturum sayısı ve en çok kullanılan proje.
+
 ## Gizlilik ve veri
 
 privacy-storage = Depolama

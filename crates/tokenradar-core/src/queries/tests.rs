@@ -1016,4 +1016,5 @@ fn projects_weekly_is_a_per_window_average() {
     assert!((two - one / 2.0).abs() < 1e-9, "{two} vs {one} / 2");
 }
 
+mod digest;
 mod windows_patterns;

@@ -88,6 +88,7 @@ pub fn builder() -> Builder<tauri::Wry> {
             get_autostart,
             set_autostart,
             send_test_notification,
+            preview_weekly_digest,
             get_data_sources,
             plan_statusline,
             plan_statusline_refresh,
@@ -372,6 +373,30 @@ async fn set_autostart(app: AppHandle, enabled: bool) -> Result<bool, String> {
 async fn send_test_notification(app: AppHandle) {
     let locale = app.state::<Prefs>().locale();
     notify::show(&app, &notifier::test_notice(locale));
+}
+
+/// Shows last week's summary now, as the scheduled one would look (Step 17b). Not recorded,
+/// so the scheduled one still comes. `false` when no weekly window has reset yet.
+#[tauri::command]
+#[specta::specta]
+async fn preview_weekly_digest(app: AppHandle) -> Result<bool, String> {
+    let locale = app.state::<Prefs>().locale();
+    let handle = app.clone();
+    let digest = blocking(move || {
+        history::run(&handle, |q, ctx| {
+            let Some(week) = queries::week_bounds(&q.store, ctx)?.0 else {
+                return Ok(None);
+            };
+            queries::weekly_digest(&q.store, ctx, week)
+        })
+    })
+    .await?;
+    let Some(digest) = digest else {
+        return Ok(false);
+    };
+    let clock = crate::tray::system::SystemClock;
+    notify::show(&app, &notifier::weekly_preview(locale, &clock, &digest));
+    Ok(true)
 }
 
 /// Limit windows, newest first, one keyset page after `cursor` (Step 14b).
