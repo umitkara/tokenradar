@@ -23,10 +23,13 @@ import type { Source, ThemePref } from "../../lib/ipc/bindings";
 import { inTauri } from "../../lib/ipc/runtime";
 import { applyTheme, settings } from "../../lib/settings.svelte";
 import OverviewBody from "../main/overview/OverviewBody.svelte";
+import PatternsPage from "../main/patterns/PatternsPage.svelte";
 import ProjectDetail from "../main/projects/ProjectDetail.svelte";
 import ProjectList from "../main/projects/ProjectList.svelte";
 import SessionDetail from "../main/sessions/SessionDetail.svelte";
 import SessionList from "../main/sessions/SessionList.svelte";
+import WindowDrawer from "../main/windows/WindowDrawer.svelte";
+import WindowsPage from "../main/windows/WindowsPage.svelte";
 import Detail from "../panel/Detail.svelte";
 import { detailOf, session, snapshot } from "../panel/fixtures";
 import { emptyChart, sparks, twoLines, weeklyOnly } from "./charts";
@@ -34,6 +37,15 @@ import { bars as initialBars, limit, nudge, ringCases, sessions, weekly } from "
 import { overviewDemo } from "./overview";
 import { projectDetailDemo, projectSessionsDemo, projectsDemo, projectTreeDemo } from "./projects";
 import { sessionDetailDemo, sessionsDemo } from "./sessions";
+import {
+  heatmapDemo,
+  mixDemo,
+  riskDemo,
+  stripDemo,
+  weeksDemo,
+  windowDetailDemo,
+  windowRowsDemo,
+} from "./windows";
 
 let rings = $state(ringCases);
 let bars = $state(initialBars);
@@ -194,6 +206,53 @@ function change() {
         query=""
         preset={projectDetailDemo(Date.now())}
         presetSessions={projectSessionsDemo(Date.now())}
+      />
+    </div>
+  </section>
+
+  <section id="weeks">
+    <h2>{t("gallery-weeks")}</h2>
+    <div class="overview">
+      <WindowsPage
+        query=""
+        preset={{ weeks: weeksDemo(Date.now()), strip: stripDemo(Date.now()), rows: windowRowsDemo(Date.now()) }}
+      />
+    </div>
+  </section>
+
+  <section id="strip">
+    <h2>{t("gallery-strip")}</h2>
+    <div class="sessions">
+      <WindowsPage
+        query="tab=strip"
+        preset={{ weeks: weeksDemo(Date.now()), strip: stripDemo(Date.now()), rows: windowRowsDemo(Date.now()) }}
+      />
+    </div>
+  </section>
+
+  <section id="window-list">
+    <h2>{t("gallery-window-list")}</h2>
+    <div class="sessions">
+      <WindowsPage
+        query="tab=list"
+        preset={{ weeks: weeksDemo(Date.now()), strip: stripDemo(Date.now()), rows: windowRowsDemo(Date.now()) }}
+      />
+    </div>
+  </section>
+
+  <section id="window-detail">
+    <h2>{t("gallery-window-detail")}</h2>
+    <div class="overview">
+      <WindowDrawer id={898} query="" inline preset={windowDetailDemo(Date.now())} />
+    </div>
+  </section>
+
+  <section id="patterns">
+    <h2>{t("gallery-patterns")}</h2>
+    <div class="overview">
+      <PatternsPage
+        query=""
+        preset={{ heatmap: heatmapDemo(Date.now()), risk: riskDemo(), mix: mixDemo(Date.now()) }}
       />
     </div>
   </section>

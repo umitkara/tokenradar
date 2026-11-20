@@ -14,10 +14,6 @@ main-load-failed = This page could not be loaded. Close the window and open it a
 
 ## Pages that arrive in a later version.
 
-main-soon-windows = The limit window archive is coming
-main-soon-windows-body = Each closed 5-hour and weekly window, how full it got and what used it.
-main-soon-patterns = Usage patterns are coming
-main-soon-patterns-body = When in the week you use Claude Code most, as a heat map.
 
 ## Charts
 
@@ -281,3 +277,120 @@ project-models-empty = No usage recorded.
 project-top = Most expensive sessions
 project-top-empty = No sessions.
 project-sessions = Sessions
+
+## Windows (Step 17a)
+
+span-4w = 4 weeks
+span-12w = 12 weeks
+span-all = All
+span-custom = Custom
+windows-tabs = View
+windows-tab-weeks = Weekly cycles
+windows-tab-strip = 5-hour windows
+windows-tab-list = List
+windows-filters = Window filters
+windows-empty = No windows in this range.
+windows-col-week = Week
+windows-col-days = Days
+windows-col-peak = Peak
+windows-col-hit = Hit the limit
+windows-col-projects = Top projects
+windows-col-surfaces = Anthropic's breakdown
+windows-col-start = Start
+windows-col-end = End
+windows-col-limit = Limit
+windows-col-sessions = Sessions
+windows-col-cost = Cost
+windows-col-other = Other
+windows-hit-no = No
+windows-hit-unknown = Unknown
+windows-estimated = Estimated
+windows-open = Current
+windows-limit-five = 5-hour window
+windows-days-note = Days are 24-hour slices from the reset. Their values are ≈ estimates of this computer's Claude Code use and leave out "Other", so they can add up to less than the peak.
+windows-days-by-cost = There is no reliable calibration yet, so the days show cost.
+windows-day-tip = { $when } · { $value } · { $cost }
+windows-day-future = { $when } · not yet
+windows-project-none = No project
+windows-strip-none-title = This account has no 5-hour window
+windows-strip-none-body = Verified Ultra accounts only have weekly limits. The weekly cycles show them.
+windows-strip-legend = Fill shows the peak. A red outline means the window hit the limit; a dashed one means it is estimated.
+windows-strip-days = Days
+windows-block-tip = { $from }–{ $to } · peak { $peak }{ $hit ->
+    [yes] {" "}· hit the limit
+   *[no] {""}
+}
+window-close = Close
+window-curve = Usage
+window-curve-none = No readings for this window: it was estimated from the logs.
+window-contrib = Session contributions
+window-contrib-rest = Other sessions
+window-contrib-note = Each session's share, spread over time like its cost.
+window-contrib-cost = This window has no percentage to split, so contributions show cost.
+window-contrib-empty = No Claude Code use in this window.
+window-shares = Shares
+window-share-other = Other (claude.ai, Desktop)
+window-shares-empty = Not attributed yet.
+window-alerts = Notifications
+window-alerts-empty = No notification for this window. The log keeps 30 days.
+window-alert = { $rule ->
+    [threshold] Crossed { $threshold } %
+    [projection] Projected to reach the limit
+    [final] Last warning before the limit
+    [reset] Limit reset
+   *[other] { $rule }
+}
+window-not-found = This window no longer exists.
+
+## Patterns (Step 17a)
+
+patterns-filters = Pattern filters
+patterns-heatmap = Week day and hour
+patterns-metric = Metric
+patterns-metric-percent = ≈ % weekly
+patterns-metric-cost = Cost
+patterns-metric-tokens = Tokens
+patterns-heat-label = Usage by week day and hour, local time
+patterns-cell-tip = { $day } { $hour } · total { $total } · { $days ->
+    [0] no activity
+    [one] average { $mean } on 1 active day
+   *[other] average { $mean } on { $days } active days
+}
+patterns-heat-legend-low = Less
+patterns-heat-legend-high = More
+patterns-percent-none = There is no reliable calibration yet, so ≈ % is not available. Pick cost or tokens.
+patterns-empty = No usage in this range.
+patterns-hours = Time of day
+patterns-weekday = Weekdays
+patterns-weekend = Weekend
+patterns-hours-note = Average per weekday and per weekend day in the range.
+patterns-hour-tip = { $hour } · weekdays { $weekday } · weekend { $weekend }
+patterns-risk = Hours with the highest limit risk
+patterns-risk-none-title = No 5-hour windows
+patterns-risk-none-body = This needs 5-hour windows. Verified Ultra accounts only have weekly limits.
+patterns-risk-few = Not enough data yet: { $n } of { $min } windows.
+patterns-risk-statement = Your windows hit the limit most often when they start between { $from } and { $to } ({ $hit } of { $n }).
+patterns-risk-flat = No start hour stands out: { $hit } of { $n } windows hit the limit.
+patterns-risk-hit = Hit the limit
+patterns-risk-high = Reached 90 %
+patterns-risk-windows = All windows
+patterns-risk-tip = { $hour } · { $n } windows · { $hit } hit · { $high } at 90 % or more
+patterns-mix = Model mix by week
+patterns-mix-note = Share of each week's API-equivalent cost.
+patterns-mix-tip = Week of { $when } · { $parts }
+
+## Export (Step 17a)
+
+export-button = Export…
+export-title = Export { $what ->
+    [sessions] sessions
+    [windows] windows
+   *[daily] daily totals
+}
+export-format = Format
+export-hide-paths = Hide project paths
+export-scope = Uses the range and filters shown on this page.
+export-privacy = Usage and metadata only. No prompts or responses.
+export-save = Save…
+export-saved = Saved to { $path }
+export-failed = The file could not be written: { $error }

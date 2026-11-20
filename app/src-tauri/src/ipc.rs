@@ -39,10 +39,12 @@ use crate::updater::{self, UpdateChanged, UpdateView};
 use crate::{core_bridge, history, notify, onboarding, panel, tray};
 use tokenradar_core::deeplink::MainRoute;
 use tokenradar_core::domain::{LimitRef, ProjectId, SessionId};
+use tokenradar_core::export::{ExportFormat, ExportRequest};
 use tokenradar_core::queries::{
-    self, HeatMetric, Heatmap, ImpactRow, Overview, ProjectDetail, ProjectFilter, ProjectPage,
-    ProjectSort, ProjectTree, SessionDetail, SessionFilter, SessionPage, SessionSort, TimeRange,
-    TimeSeries, WindowDetail, WindowFilter, WindowPage,
+    self, HeatMetric, Heatmap, ImpactRow, LimitRisk, MixTrend, Overview, ProjectDetail,
+    ProjectFilter, ProjectPage, ProjectSort, ProjectTree, SessionDetail, SessionFilter,
+    SessionPage, SessionSort, TimeRange, TimeSeries, WeekCycles, WindowDetail, WindowFilter,
+    WindowPage, WindowStrip,
 };
 
 /// Relative to the `app/src-tauri` crate. Release builds never write the bindings.
@@ -128,6 +130,11 @@ pub fn builder() -> Builder<tauri::Wry> {
             get_project,
             get_timeseries,
             get_heatmap,
+            list_weeks,
+            window_strip,
+            limit_risk,
+            model_mix_trend,
+            export_data,
             get_overview,
             get_muted,
             toggle_mute,
@@ -549,6 +556,56 @@ async fn get_heatmap(
         })
     })
     .await
+}
+
+/// Weekly windows in `range`, newest first, with their days, projects and scoped limits
+/// (Step 17a).
+#[tauri::command]
+#[specta::specta]
+async fn list_weeks(app: AppHandle, range: TimeRange) -> Result<WeekCycles, String> {
+    blocking(move || history::run(&app, |q, ctx| queries::list_weeks(&q.store, ctx, range))).await
+}
+
+/// 5-hour windows in `range`, cut into local days (Step 17a).
+#[tauri::command]
+#[specta::specta]
+async fn window_strip(app: AppHandle, range: TimeRange) -> Result<WindowStrip, String> {
+    blocking(move || history::run(&app, |q, ctx| queries::window_strip(&q.store, ctx, range))).await
+}
+
+/// Limit hits of 5-hour windows by local start hour (Step 17a).
+#[tauri::command]
+#[specta::specta]
+async fn limit_risk(app: AppHandle, range: TimeRange) -> Result<LimitRisk, String> {
+    blocking(move || history::run(&app, |q, ctx| queries::limit_risk(&q.store, ctx, range))).await
+}
+
+/// Cost per model family and local week; weeks begin on `week_start` (Monday = 0).
+#[tauri::command]
+#[specta::specta]
+async fn model_mix_trend(
+    app: AppHandle,
+    range: TimeRange,
+    week_start: u8,
+) -> Result<MixTrend, String> {
+    blocking(move || {
+        history::run(&app, |q, ctx| {
+            queries::model_mix_trend(&q.store, ctx, range, week_start)
+        })
+    })
+    .await
+}
+
+/// Asks where to save, then writes the export there (Step 17a). `Ok(None)`: cancelled.
+#[tauri::command]
+#[specta::specta]
+async fn export_data(
+    app: AppHandle,
+    request: ExportRequest,
+    format: ExportFormat,
+    hide_paths: bool,
+) -> Result<Option<String>, String> {
+    blocking(move || history::export(&app, &request, format, hide_paths)).await
 }
 
 /// The overview page: this week against the last, top sessions and projects, plan value.

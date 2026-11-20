@@ -165,6 +165,19 @@ export const commands = {
 	getTimeseries: (limit: LimitRef, range: TimeRange, maxPoints: number | null) => typedError<TimeSeries, string>(__TAURI_INVOKE("get_timeseries", { limit, range, maxPoints })),
 	/**  Usage per local week-day and hour in `range`. */
 	getHeatmap: (range: TimeRange, metric: HeatMetric) => typedError<Heatmap, string>(__TAURI_INVOKE("get_heatmap", { range, metric })),
+	/**
+	 *  Weekly windows in `range`, newest first, with their days, projects and scoped limits
+	 *  (Step 17a).
+	 */
+	listWeeks: (range: TimeRange) => typedError<WeekCycles, string>(__TAURI_INVOKE("list_weeks", { range })),
+	/**  5-hour windows in `range`, cut into local days (Step 17a). */
+	windowStrip: (range: TimeRange) => typedError<WindowStrip, string>(__TAURI_INVOKE("window_strip", { range })),
+	/**  Limit hits of 5-hour windows by local start hour (Step 17a). */
+	limitRisk: (range: TimeRange) => typedError<LimitRisk, string>(__TAURI_INVOKE("limit_risk", { range })),
+	/**  Cost per model family and local week; weeks begin on `week_start` (Monday = 0). */
+	modelMixTrend: (range: TimeRange, weekStart: number) => typedError<MixTrend, string>(__TAURI_INVOKE("model_mix_trend", { range, weekStart })),
+	/**  Asks where to save, then writes the export there (Step 17a). `Ok(None)`: cancelled. */
+	exportData: (request: ExportRequest, format: ExportFormat, hidePaths: boolean) => typedError<string | null, string>(__TAURI_INVOKE("export_data", { request, format, hidePaths })),
 	/**  The overview page: this week against the last, top sessions and projects, plan value. */
 	getOverview: () => typedError<Overview, string>(__TAURI_INVOKE("get_overview")),
 	getMuted: () => __TAURI_INVOKE<boolean>("get_muted"),
@@ -233,6 +246,14 @@ export type AccountView = {
 	tier: string | null,
 	/**  From the usage API; `None` until it answered. */
 	extra_usage_enabled: boolean | null,
+};
+
+/**  A notification the window caused. */
+export type AlertRow = {
+	/**  `threshold`, `projection`, `final` or `reset`. */
+	rule: string,
+	threshold: number | null,
+	at: Timestamp,
 };
 
 /**  The 16 terminal colors. The terminal's own palette decides what they look like. */
@@ -394,6 +415,30 @@ export type ColorMode =
 /**  Ordered: `Low < Medium < High`. */
 export type Confidence = "low" | "medium" | "high";
 
+/**  Cumulative session contributions over the window, largest share at the bottom. */
+export type Contrib = {
+	unit: ContribUnit,
+	/**  Bucket ends, oldest first; up to now for an open window. */
+	at: Timestamp[],
+	series: ContribSeries[],
+};
+
+/**  One stacked series of [`Contrib`]. */
+export type ContribSeries = {
+	/**  `None` for "the other sessions" (everything after the largest four). */
+	session_id: SessionId | null,
+	name: SessionName | null,
+	/**  Running total at each of [`Contrib::at`]. */
+	values: (number | null)[],
+};
+
+/**  What [`Contrib`] values count. */
+export type ContribUnit = 
+/**  `≈` points: each session's stored share spread over time like its cost. */
+"percent" | 
+/**  Micro-USD, when the window's shares have no percentage. */
+"cost";
+
 /**  Something in the core changed. New variants may be added in any release. */
 export type CoreEvent = 
 /**  Initial or safety-net indexing progressed. Incremental passes do not report progress. */
@@ -459,6 +504,38 @@ export type CwdRow = {
 	last_ts: Timestamp,
 };
 
+/**  One 24-hour slice of a weekly window. */
+export type CycleDay = {
+	starts_at: Timestamp,
+	/**  `≈` points of local usage; `None` without a usable calibration. */
+	percent: number | null,
+	cost: MicroUsd,
+	/**  The slice starts after now. */
+	future: boolean,
+};
+
+/**  A project's part of a weekly window (stored attribution). */
+export type CycleProject = {
+	/**  `None` for sessions without a project. */
+	project: ProjectRef | null,
+	percent: number | null,
+	cost: MicroUsd,
+};
+
+export type CycleRow = {
+	window: WindowRow,
+	/**  Seven slices; fewer only when the window is shorter than a week. */
+	days: CycleDay[],
+	/**  First measured reading at 100 %; `None` when it never got there or is unknown. */
+	hit_at: Timestamp | null,
+	/**  Index into `days` of `hit_at`. */
+	hit_day: number | null,
+	/**  At most three, largest share (then cost) first. */
+	projects: CycleProject[],
+	breakdown: SurfaceShare[],
+	scoped: ScopedPeak[],
+};
+
 /**  `[data]`: what is kept and whether updates are looked for. */
 export type DataConfig = {
 	/**  Days raw usage events are kept; the 5-minute rollup stays forever (ADR-020). */
@@ -518,6 +595,11 @@ export type DriftSource = "claude_jsonl";
 export type EstimateReason = 
 /**  `resets_at` passed without a new reading: assumed 0 %. */
 "reset";
+
+export type ExportFormat = "csv" | "json";
+
+/**  What to export: the list a page shows. */
+export type ExportRequest = { kind: "sessions"; filter: SessionFilter } | { kind: "windows"; range: TimeRange | null } | { kind: "daily"; range: TimeRange };
 
 export type FailedStage = "check" | "install";
 
@@ -686,6 +768,17 @@ export type Heatmap = {
 	 *  total is 0).
 	 */
 	basis: Basis | null,
+	/**  The same totals per hour of the day, weekday and weekend averages (Step 17a). */
+	hours: HourSplit[],
+};
+
+/**  One hour of the day: weekday and weekend averages per calendar day of that kind. */
+export type HourSplit = {
+	hour: number,
+	/**  Monday–Friday total divided by the Monday–Friday days in the range. */
+	weekday: number | null,
+	/**  Saturday and Sunday total divided by the weekend days in the range. */
+	weekend: number | null,
 };
 
 /**
@@ -814,6 +907,21 @@ export type LimitRef = {
 	scope: Scope | null,
 };
 
+export type LimitRisk = {
+	/**  The account has 5-hour windows at all (ADR-041). */
+	any: boolean,
+	/**  Measured 5-hour windows that started in the range. */
+	windows: number,
+	hit: number,
+	/**  `windows >= MIN_RISK_WINDOWS`: rates and the statement may be shown. */
+	enough: boolean,
+	minimum: number,
+	/**  All 24 hours. */
+	hours: RiskHour[],
+	/**  Set only with enough data and a span clearly above the overall rate. */
+	span: RiskSpan | null,
+};
+
 export type LimitView = {
 	kind: LimitKind,
 	scope: Scope | null,
@@ -887,6 +995,25 @@ export type Method = "calibrated" | "proportional" | "estimated" | "cost_only";
 
 /**  US dollars × 10⁶. A price of $1 per million tokens is exactly one micro-dollar per token. */
 export type MicroUsd = number;
+
+export type MixTrend = {
+	/**
+	 *  Opus, Fable, Sonnet, Haiku when used, then `None` for every other family; the order
+	 *  of the stack from the bottom.
+	 */
+	families: (ModelFamily | null)[],
+	/**  Oldest first, every week from the first usage in range, empty weeks included. */
+	weeks: MixWeek[],
+};
+
+/**  One local week of the model mix. */
+export type MixWeek = {
+	/**  Local midnight of the week's first day. */
+	starts_at: Timestamp,
+	total: MicroUsd,
+	/**  Cost per [`MixTrend::families`] entry, same order. */
+	parts: MicroUsd[],
+};
 
 /**
  *  Model family, used for grouping and per-family calibration weights.
@@ -1325,6 +1452,27 @@ export type RestoreStep = {
 	to_default: boolean,
 };
 
+/**  5-hour windows that started in one local hour. */
+export type RiskHour = {
+	hour: number,
+	windows: number,
+	/**  Windows that reached the limit. */
+	hit: number,
+	/**  Windows that reached 90 % (the limit included). */
+	high: number,
+};
+
+/**
+ *  The hours whose windows hit the limit most often, `from_hour` to `to_hour` (exclusive,
+ *  may pass midnight).
+ */
+export type RiskSpan = {
+	from_hour: number,
+	to_hour: number,
+	windows: number,
+	hit: number,
+};
+
 /**  Which rule produced a notice. */
 export type Rule = "threshold" | "projection" | 
 /**  The last projection warning, shortly before the limit is full. */
@@ -1348,6 +1496,15 @@ export type SchemaDriftView = {
 
 /**  What a scoped limit applies to. Stored as `model:<name>` or `surface:<name>`. */
 export type Scope = ({ model: string }) & { surface?: never } | ({ surface: string }) & { model?: never };
+
+/**  A scoped weekly limit (e.g. Fable) that reset with the row's window. */
+export type ScopedPeak = {
+	window_id: number,
+	scope: Scope,
+	peak_percent: number | null,
+	hit_limit: boolean | null,
+	estimated: boolean,
+};
 
 /**  One kind of item. The names are the `kind` values in `config.toml`. */
 export type SegmentKind = "five_hour" | "seven_day" | 
@@ -1698,6 +1855,35 @@ export type StorageView = {
 	portable: boolean,
 };
 
+export type StripDay = {
+	/**  Local midnight. */
+	day: Timestamp,
+	/**  The day's length in minutes (1440, or 1380/1500 when the clocks change). */
+	minutes: number,
+	segments: StripSegment[],
+};
+
+/**  The part of a window that falls on one local day, in minutes from local midnight. */
+export type StripSegment = {
+	/**  Index into [`WindowStrip::windows`]. */
+	window: number,
+	from_minute: number,
+	/**  Exclusive; at most the day's length (1500 on a 25-hour day). */
+	to_minute: number,
+};
+
+export type StripSession = {
+	name: SessionName,
+	percent: number | null,
+};
+
+/**  A 5-hour window in the strip. */
+export type StripWindow = {
+	window: WindowRow,
+	/**  The three largest session shares, for the hover. */
+	top: StripSession[],
+};
+
 export type SubagentRow = {
 	id: SessionId,
 	uuid: string,
@@ -1706,6 +1892,12 @@ export type SubagentRow = {
 	cost: MicroUsd,
 	tokens: TokenSums,
 	models: string[],
+};
+
+/**  One `seven_day_breakdown` surface of the window, 0–100. */
+export type SurfaceShare = {
+	key: string,
+	percent: number | null,
 };
 
 /**  A settings file TokenRadar can write a font into. */
@@ -1873,6 +2065,18 @@ export type UpdateView = {
 	can_install: boolean,
 };
 
+export type WeekCycles = {
+	/**  Newest first. */
+	items: CycleRow[],
+	/**  Scopes of the scoped limits in `items`, one column each. */
+	scopes: Scope[],
+	/**
+	 *  How the day values were computed: `estimated` with the calibration's confidence, or
+	 *  `cost_only`.
+	 */
+	day_basis: Basis,
+};
+
 /**  The week the overview is about. */
 export type WeekSpan = {
 	starts_at: Timestamp,
@@ -1931,6 +2135,10 @@ export type WindowDetail = {
 	other: OtherView | null,
 	/**  Measured readings, fused (ADR-060) and thinned; empty for an estimated window. */
 	points: SeriesPoint[],
+	/**  The sessions' shares building up over the window (Step 17a). */
+	contrib: Contrib,
+	/**  Notifications fired for this window (the log keeps 30 days). */
+	alerts: AlertRow[],
 };
 
 /**  Which windows a list shows. */
@@ -1971,6 +2179,14 @@ export type WindowRow = {
 	other_percent: number | null,
 	/**  `None` until the window is attributed. */
 	basis: Basis | null,
+};
+
+export type WindowStrip = {
+	/**  The account has 5-hour windows at all (ADR-041: verified Ultra has none). */
+	any: boolean,
+	windows: StripWindow[],
+	/**  Every local day from the first window in range to today, newest first. */
+	days: StripDay[],
 };
 
 /* Tauri Specta runtime */

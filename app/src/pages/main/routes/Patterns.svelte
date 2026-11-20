@@ -1,9 +1,8 @@
-<!-- The patterns page: an empty state until it is built. -->
+<!-- The patterns page (Step 17a) at `#patterns?filters`. -->
 <script lang="ts">
-import Soon from "./Soon.svelte";
+import PatternsPage from "../patterns/PatternsPage.svelte";
 
-/** `#route/param`: unused until the page has detail views. */
-let _props: { param: string | null } = $props();
+let { query }: { param: string | null; query: string } = $props();
 </script>
 
-<Soon route="patterns" />
+<PatternsPage {query} />

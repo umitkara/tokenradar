@@ -14,10 +14,6 @@ main-load-failed = Bu sayfa yüklenemedi. Pencereyi kapatıp yeniden açın.
 
 ## Sonraki bir sürümde gelecek sayfalar.
 
-main-soon-windows = Limit pencerelerinin arşivi geliyor
-main-soon-windows-body = Kapanan her 5 saatlik ve haftalık pencere: ne kadar doldu, neyin tükettiği.
-main-soon-patterns = Kullanım örüntüleri geliyor
-main-soon-patterns-body = Claude Code'u haftanın hangi saatlerinde en çok kullandığınız, ısı haritası olarak.
 
 ## Grafikler
 
@@ -275,3 +271,119 @@ project-models-empty = Kayıtlı kullanım yok.
 project-top = En pahalı oturumlar
 project-top-empty = Oturum yok.
 project-sessions = Oturumlar
+
+## Pencereler (Adım 17a)
+
+span-4w = 4 hafta
+span-12w = 12 hafta
+span-all = Tümü
+span-custom = Özel
+windows-tabs = Görünüm
+windows-tab-weeks = Haftalık döngüler
+windows-tab-strip = 5 saatlik pencereler
+windows-tab-list = Liste
+windows-filters = Pencere filtreleri
+windows-empty = Bu aralıkta pencere yok.
+windows-col-week = Hafta
+windows-col-days = Günler
+windows-col-peak = Tepe
+windows-col-hit = Limite takıldı
+windows-col-projects = En çok etkileyen projeler
+windows-col-surfaces = Anthropic'in kırılımı
+windows-col-start = Başlangıç
+windows-col-end = Bitiş
+windows-col-limit = Limit
+windows-col-sessions = Oturum
+windows-col-cost = Maliyet
+windows-col-other = Diğer
+windows-hit-no = Hayır
+windows-hit-unknown = Bilinmiyor
+windows-estimated = Tahmini
+windows-open = Sürüyor
+windows-limit-five = 5 saatlik pencere
+windows-days-note = Günler, sıfırlanmadan başlayan 24 saatlik dilimlerdir. Değerleri bu bilgisayardaki Claude Code kullanımının ≈ tahminidir ve "Diğer"i içermez; bu yüzden toplamları tepe değerin altında kalabilir.
+windows-days-by-cost = Henüz güvenilir bir kalibrasyon yok, bu yüzden günler maliyeti gösteriyor.
+windows-day-tip = { $when } · { $value } · { $cost }
+windows-day-future = { $when } · henüz gelmedi
+windows-project-none = Proje yok
+windows-strip-none-title = Bu hesapta 5 saatlik pencere yok
+windows-strip-none-body = Doğrulanmış Ultra hesaplarında yalnızca haftalık limitler var. Onları haftalık döngüler gösteriyor.
+windows-strip-legend = Dolgu tepe değeri gösterir. Kırmızı kenarlık pencerenin limite takıldığını, kesikli kenarlık tahmini olduğunu söyler.
+windows-strip-days = Günler
+windows-block-tip = { $from }–{ $to } · tepe { $peak }{ $hit ->
+    [yes] {" "}· limite takıldı
+   *[no] {""}
+}
+window-close = Kapat
+window-curve = Kullanım
+window-curve-none = Bu pencerenin okuması yok: kayıtlardan tahmin edildi.
+window-contrib = Oturum katkıları
+window-contrib-rest = Diğer oturumlar
+window-contrib-note = Her oturumun payı, maliyetiyle aynı biçimde zamana yayıldı.
+window-contrib-cost = Bu pencerede bölüştürülecek bir yüzde yok, bu yüzden katkılar maliyeti gösteriyor.
+window-contrib-empty = Bu pencerede Claude Code kullanımı yok.
+window-shares = Paylar
+window-share-other = Diğer (claude.ai, Desktop)
+window-shares-empty = Henüz atıf yapılmadı.
+window-alerts = Bildirimler
+window-alerts-empty = Bu pencere için bildirim yok. Kayıt 30 gün tutulur.
+window-alert = { $rule ->
+    [threshold] %{ $threshold } aşıldı
+    [projection] Limite ulaşacağı öngörüldü
+    [final] Limitten önceki son uyarı
+    [reset] Limit sıfırlandı
+   *[other] { $rule }
+}
+window-not-found = Bu pencere artık yok.
+
+## Örüntüler (Adım 17a)
+
+patterns-filters = Örüntü filtreleri
+patterns-heatmap = Haftanın günü ve saat
+patterns-metric = Ölçü
+patterns-metric-percent = ≈ % haftalık
+patterns-metric-cost = Maliyet
+patterns-metric-tokens = Token
+patterns-heat-label = Haftanın gününe ve saate göre kullanım, yerel saat
+patterns-cell-tip = { $day } { $hour } · toplam { $total } · { $days ->
+    [0] etkinlik yok
+   *[other] { $days } etkin günde ortalama { $mean }
+}
+patterns-heat-legend-low = Az
+patterns-heat-legend-high = Çok
+patterns-percent-none = Henüz güvenilir bir kalibrasyon yok, bu yüzden ≈ % gösterilemiyor. Maliyet ya da token seçin.
+patterns-empty = Bu aralıkta kullanım yok.
+patterns-hours = Gün içi dağılım
+patterns-weekday = Hafta içi
+patterns-weekend = Hafta sonu
+patterns-hours-note = Aralıktaki hafta içi ve hafta sonu günlerinin gün başına ortalaması.
+patterns-hour-tip = { $hour } · hafta içi { $weekday } · hafta sonu { $weekend }
+patterns-risk = Limite takılma riski en yüksek saatler
+patterns-risk-none-title = 5 saatlik pencere yok
+patterns-risk-none-body = Bu bölüm 5 saatlik pencerelere bakar. Doğrulanmış Ultra hesaplarında yalnızca haftalık limitler var.
+patterns-risk-few = Henüz yeterli veri yok: { $min } pencerenin { $n } tanesi var.
+patterns-risk-statement = Pencereleriniz en çok { $from }-{ $to } arasında başlayınca limite takılıyor ({ $n } pencerenin { $hit } tanesi).
+patterns-risk-flat = Öne çıkan bir başlangıç saati yok: { $n } pencerenin { $hit } tanesi limite takıldı.
+patterns-risk-hit = Limite takıldı
+patterns-risk-high = %90'a ulaştı
+patterns-risk-windows = Tüm pencereler
+patterns-risk-tip = { $hour } · { $n } pencere · { $hit } takıldı · { $high } tanesi %90 ve üstü
+patterns-mix = Haftalara göre model karışımı
+patterns-mix-note = Her haftanın API karşılığı maliyetindeki pay.
+patterns-mix-tip = { $when } haftası · { $parts }
+
+## Dışa aktarma (Adım 17a)
+
+export-button = Dışa aktar…
+export-title = { $what ->
+    [sessions] Oturumları
+    [windows] Pencereleri
+   *[daily] Günlük toplamları
+} dışa aktar
+export-format = Biçim
+export-hide-paths = Proje yollarını gizle
+export-scope = Bu sayfada görünen aralığı ve filtreleri kullanır.
+export-privacy = Yalnızca kullanım ve meta veri. İstem ya da yanıt yok.
+export-save = Kaydet…
+export-saved = Kaydedildi: { $path }
+export-failed = Dosya yazılamadı: { $error }

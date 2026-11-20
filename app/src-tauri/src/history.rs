@@ -8,6 +8,7 @@ use tauri::AppHandle;
 use tokenradar_core::calibration::Calibration;
 use tokenradar_core::config::{AppConfig, DataConfig};
 use tokenradar_core::domain::{AccountId, LimitRef, Timestamp};
+use tokenradar_core::export::{ExportFormat, ExportRequest};
 use tokenradar_core::limits::LimitView;
 use tokenradar_core::paths::Paths;
 use tokenradar_core::queries::{self, PlanInput, ProjectFilter, QueryContext, SystemZone};
@@ -74,6 +75,39 @@ pub fn temp_patterns(filter: &ProjectFilter) -> Vec<String> {
         .and_then(|paths| AppConfig::load(paths.config_path()).ok())
         .map_or_else(|| DataConfig::default().temp_dirs, |c| c.data.temp_dirs);
     queries::temp_like_patterns(&dirs, |name| std::env::var(name).ok())
+}
+
+/// Asks where to save an export and writes it in the app's language. `Ok(None)`: the user
+/// cancelled. The file is metadata and usage only (`tokenradar_core::export`).
+pub fn export(
+    app: &AppHandle,
+    request: &ExportRequest,
+    format: ExportFormat,
+    hide_paths: bool,
+) -> Result<Option<String>, String> {
+    use tauri::Manager as _;
+    use tauri_plugin_dialog::DialogExt as _;
+    let locale = app.state::<crate::prefs::Prefs>().locale();
+    let ext = format.extension();
+    let name = tokenradar_core::export::file_name(request, format, Timestamp::now(), &SystemZone);
+    let Some(target) = app
+        .dialog()
+        .file()
+        .set_file_name(name)
+        .add_filter(ext.to_uppercase(), &[ext])
+        .blocking_save_file()
+    else {
+        return Ok(None);
+    };
+    let path = target.into_path().map_err(|e| e.to_string())?;
+    let bytes = run(app, |q, ctx| {
+        tokenradar_core::export::export(&q.store, ctx, request, format, hide_paths, locale)
+    })?;
+    std::fs::write(&path, bytes).map_err(|e| {
+        tracing::warn!(error = %e, "export: file not written");
+        e.to_string()
+    })?;
+    Ok(Some(path.display().to_string()))
 }
 
 fn prepare(app: &AppHandle) -> Option<Query> {

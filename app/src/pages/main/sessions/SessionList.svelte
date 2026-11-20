@@ -35,6 +35,7 @@ import { subscribeCoreEvents } from "../../../lib/ipc/core-events";
 import { inTauri } from "../../../lib/ipc/runtime";
 import { clock } from "../../../lib/time/clock.svelte";
 import { usd } from "../../panel/detail";
+import ExportButton from "../ExportButton.svelte";
 import { countOf } from "../overview/view";
 import { hrefFor } from "../router";
 import Badge from "./Badge.svelte";
@@ -334,6 +335,10 @@ onMount(() => {
       options={sortOptions}
       label={t("sessions-sort")}
       onchange={(sort: SessionSort) => apply({ sort })}
+    />
+    <ExportButton
+      kind="sessions"
+      request={() => ({ kind: "sessions", filter: toFilter(current, new Date(), locked) })}
     />
   </search>
 
