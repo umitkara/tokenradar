@@ -8,10 +8,12 @@
 //!   user's yes.
 //! - `doctor` writes a diagnostics bundle the user can read and share.
 //! - `path add|remove` puts this binary's directory on the user's `PATH` (the installer uses it).
+//! - `open [PAGE]` opens the app's main window.
 
 mod args;
 mod context;
 mod doctor;
+mod open;
 mod render;
 mod report;
 mod setup;
@@ -112,6 +114,7 @@ fn run(ctx: &Context, command: Command) -> ExitCode {
         } => exit(setup::mod_uninstall(ctx, yes, config_dir)),
         Command::Doctor { out } => exit(doctor::run(ctx, out)),
         Command::Path { add } => path(ctx, add),
+        Command::Open { route } => open::run(ctx, route),
     }
 }
 

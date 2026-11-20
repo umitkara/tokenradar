@@ -171,6 +171,7 @@ doctor-calibration = { $limit } kalibrasyonu: { $level ->
         [yes] , kullanım-limit oranı yakın zamanda değişti
        *[no] {""}
     }
+open-app-missing = TokenRadar uygulaması bu tokenradar'ın yanında bulunamadı. TokenRadar'ı Başlat menüsünden açın.
 error = hata: { $message }
 cli-help =
     TokenRadar - yapay zekâ kodlama ajanları için kullanım limitleri
@@ -188,6 +189,8 @@ cli-help =
       mod uninstall [--yes] [--config-dir <DİZİN> | --all]
       doctor [--out <ZIP>]                Sorun bildirirken paylaşılacak tanılama paketi
       path add|remove                     Bu tokenradar'ı kullanıcı PATH'inize ekler ya da kaldırır
+      open [SAYFA]                        TokenRadar penceresini aç; SAYFA overview, windows,
+                                          sessions, projects ya da patterns
     Seçenekler:
       -h, --help       Yardımı göster
       -V, --version    Sürümü göster

@@ -6,6 +6,7 @@ pub mod attribution;
 pub mod calibration;
 pub mod clock;
 pub mod config;
+pub mod deeplink;
 pub mod doctor;
 pub mod domain;
 pub mod events;

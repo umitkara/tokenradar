@@ -2,6 +2,8 @@
 
 use std::path::PathBuf;
 
+use tokenradar_core::deeplink::MainRoute;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Command {
     Help,
@@ -51,6 +53,10 @@ pub enum Command {
     /// Puts the CLI's directory on the user's `PATH` (`add`) or takes it off.
     Path {
         add: bool,
+    },
+    /// Opens the app's main window, on `route` when given (Step 15).
+    Open {
+        route: Option<MainRoute>,
     },
 }
 
@@ -140,6 +146,11 @@ pub fn parse(mut parser: lexopt::Parser) -> Result<Command, lexopt::Error> {
         ["doctor"] => Command::Doctor { out: f.out.take() },
         ["path", "add"] => Command::Path { add: true },
         ["path", "remove"] => Command::Path { add: false },
+        ["open"] => Command::Open { route: None },
+        ["open", page] => match MainRoute::parse(page) {
+            Some(route) => Command::Open { route: Some(route) },
+            None => return Err(format!("unknown page '{page}'").into()),
+        },
         [..] => return Err(format!("unknown command '{}'", words.join(" ")).into()),
     };
     check_flags(&command, &f)?;
@@ -160,7 +171,9 @@ fn check_flags(command: &Command, f: &Flags) -> Result<(), lexopt::Error> {
         | Command::Sessions { .. }
         | Command::History => (true, false, false, false, false, false, false),
         Command::Doctor { .. } => (false, false, false, false, false, true, false),
-        Command::Path { .. } => (false, false, false, false, false, false, false),
+        Command::Path { .. } | Command::Open { .. } => {
+            (false, false, false, false, false, false, false)
+        }
         Command::Help | Command::Version => return Ok(()),
     };
     let used = [
@@ -276,6 +289,13 @@ mod tests {
             parse_args(&["path", "remove"]),
             Ok(Command::Path { add: false })
         );
+        assert_eq!(parse_args(&["open"]), Ok(Command::Open { route: None }));
+        assert_eq!(
+            parse_args(&["open", "Sessions"]),
+            Ok(Command::Open {
+                route: Some(MainRoute::Sessions)
+            })
+        );
     }
 
     #[test]
@@ -291,6 +311,8 @@ mod tests {
         assert!(parse_args(&["doctor", "--json"]).is_err());
         assert!(parse_args(&["path"]).is_err());
         assert!(parse_args(&["path", "add", "--yes"]).is_err());
+        assert!(parse_args(&["open", "settings"]).is_err());
+        assert!(parse_args(&["open", "--json"]).is_err());
         assert!(parse_args(&["statusline", "install", "--all"]).is_err());
         assert!(parse_args(&["statusline", "uninstall", "--all", "--config-dir", "D:/c"]).is_err());
     }

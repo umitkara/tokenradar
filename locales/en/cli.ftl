@@ -195,6 +195,7 @@ doctor-calibration = Calibration of { $limit }: { $level ->
         [yes] , usage-to-limit ratio changed recently
        *[no] {""}
     }
+open-app-missing = The TokenRadar app was not found next to this tokenradar. Start TokenRadar from the Start menu.
 error = error: { $message }
 cli-help =
     TokenRadar - usage limits for AI coding agents
@@ -212,6 +213,8 @@ cli-help =
       mod uninstall [--yes] [--config-dir <DIR> | --all]
       doctor [--out <ZIP>]                Diagnostics bundle to share when reporting a problem
       path add|remove                     Put this tokenradar on your user PATH, or take it off
+      open [PAGE]                         Open the TokenRadar window; PAGE is overview, windows,
+                                          sessions, projects or patterns
     Options:
       -h, --help       Print help
       -V, --version    Print version
