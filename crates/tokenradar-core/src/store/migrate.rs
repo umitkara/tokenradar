@@ -10,6 +10,7 @@ const MIGRATIONS: &[(i64, &str)] = &[
     (2, include_str!("migrations/0002_compact_events.sql")),
     (3, include_str!("migrations/0003_attribution.sql")),
     (4, include_str!("migrations/0004_session_attrs.sql")),
+    (5, include_str!("migrations/0005_project_display_path.sql")),
 ];
 
 pub(crate) const LATEST: i64 = MIGRATIONS[MIGRATIONS.len() - 1].0;

@@ -522,9 +522,28 @@ fn account_and_project_upserts_are_keyed_by_identity() {
         account_id: a,
         path_norm: "d:\\projects\\x".into(),
         display_name: "x".into(),
+        display_path: None,
     };
     let p = catalog::upsert_project(&conn, &spec).expect("p");
     assert_eq!(catalog::upsert_project(&conn, &spec).expect("p"), p);
+
+    // Schema v5: the recorded path fills in, and a key without one keeps it.
+    let display = |conn: &rusqlite::Connection| -> Option<String> {
+        conn.query_row(
+            "SELECT display_path FROM projects WHERE id = ?1",
+            [p],
+            |r| r.get(0),
+        )
+        .expect("read")
+    };
+    assert_eq!(display(&conn), None);
+    let cased = ProjectSpec {
+        display_path: Some("D:\\Projects\\x".into()),
+        ..spec.clone()
+    };
+    assert_eq!(catalog::upsert_project(&conn, &cased).expect("p"), p);
+    assert_eq!(catalog::upsert_project(&conn, &spec).expect("p"), p);
+    assert_eq!(display(&conn).as_deref(), Some("D:\\Projects\\x"));
 }
 
 #[test]

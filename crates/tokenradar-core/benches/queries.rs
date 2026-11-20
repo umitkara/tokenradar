@@ -60,6 +60,15 @@ fn cases<'a>(store: &'a Store, ctx: &'a QueryContext<'a>) -> Vec<(&'static str, 
     .expect("sessions")
     .items[0]
         .id;
+    // The default temporary-folder patterns, with a made-up %TEMP%.
+    let temp = queries::temp_like_patterns(
+        &tokenradar_core::config::DEFAULT_TEMP_DIRS.map(str::to_owned),
+        |_| Some(r"C:\Users\dev\AppData\Local\Temp".to_owned()),
+    );
+    let hide_temp = ProjectFilter {
+        hide_temp: true,
+        ..ProjectFilter::default()
+    };
     let busiest = queries::list_projects(
         store,
         ctx,
@@ -67,6 +76,7 @@ fn cases<'a>(store: &'a Store, ctx: &'a QueryContext<'a>) -> Vec<(&'static str, 
         ProjectSort::Cost,
         None,
         Some(1),
+        &[],
     )
     .expect("projects")
     .items[0]
@@ -191,6 +201,39 @@ fn cases<'a>(store: &'a Store, ctx: &'a QueryContext<'a>) -> Vec<(&'static str, 
                         ProjectSort::Cost,
                         None,
                         None,
+                        &[],
+                    )
+                    .expect("q"),
+                );
+            }),
+        ),
+        (
+            "list_projects/hide_temp",
+            Box::new(move || {
+                black_box(
+                    queries::list_projects(
+                        store,
+                        ctx,
+                        &hide_temp,
+                        ProjectSort::Cost,
+                        None,
+                        None,
+                        &temp,
+                    )
+                    .expect("q"),
+                );
+            }),
+        ),
+        (
+            "project_tree/cost",
+            Box::new(move || {
+                black_box(
+                    queries::project_tree(
+                        store,
+                        ctx,
+                        &ProjectFilter::default(),
+                        ProjectSort::Cost,
+                        &[],
                     )
                     .expect("q"),
                 );

@@ -12,6 +12,9 @@ pub struct ProjectKey {
     /// Unique per account. Windows paths are case-folded so `C:\Work` and `c:\work` match.
     pub path_norm: String,
     pub display_name: String,
+    /// The path as recorded, separators and trailing separator normalized but case kept; `None`
+    /// when unresolved.
+    pub display_path: Option<String>,
 }
 
 impl ProjectKey {
@@ -42,14 +45,16 @@ impl ProjectKey {
             Some(Self {
                 path_norm,
                 display_name,
+                display_path: Some(path),
             })
         } else {
             let mut path = cwd.to_owned();
             trim_trailing(&mut path, '/');
             let display_name = last_component(&path, '/');
             Some(Self {
-                path_norm: path,
+                path_norm: path.clone(),
                 display_name,
+                display_path: Some(path),
             })
         }
     }
@@ -60,6 +65,7 @@ impl ProjectKey {
         Self {
             path_norm: format!("{UNRESOLVED_PREFIX}{dir}"),
             display_name: dir.to_owned(),
+            display_path: None,
         }
     }
 
@@ -126,6 +132,13 @@ mod tests {
             (expected.0.clone(), "TokenRadar".into())
         );
         assert_eq!(key("D:/Projects/Araclar/TokenRadar/"), expected);
+        let k = ProjectKey::from_cwd("d:/Work/Orbit/Api-Server/").expect("cwd");
+        assert_eq!(k.display_path.as_deref(), Some(r"D:\Work\Orbit\Api-Server"));
+        assert_eq!(
+            ProjectKey::from_dir_name("D--x").display_path,
+            None,
+            "an unresolved key has no path to show"
+        );
     }
 
     #[test]

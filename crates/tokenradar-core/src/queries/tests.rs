@@ -70,6 +70,7 @@ impl Env {
                 account_id: account,
                 path_norm: path.into(),
                 display_name: name.into(),
+                display_path: None,
             })
             .expect("project")
         };
@@ -471,6 +472,7 @@ fn projects_list_trend_and_detail() {
         ProjectSort::Cost,
         None,
         None,
+        &[],
     )
     .expect("list");
     let names: Vec<&str> = page.items.iter().map(|p| p.name.as_str()).collect();
@@ -490,10 +492,12 @@ fn projects_list_trend_and_detail() {
         &ProjectFilter {
             search: Some("work/be".into()),
             range: None,
+            hide_temp: false,
         },
         ProjectSort::LastActive,
         None,
         None,
+        &[],
     )
     .expect("list");
     assert_eq!(searched.items.len(), 1);
@@ -504,6 +508,7 @@ fn projects_list_trend_and_detail() {
         ProjectSort::Cost,
         None,
         Some(1),
+        &[],
     )
     .expect("list");
     let rest = list_projects(
@@ -513,10 +518,12 @@ fn projects_list_trend_and_detail() {
         ProjectSort::Cost,
         one.next.as_deref(),
         Some(1),
+        &[],
     )
     .expect("list");
     assert_eq!(rest.items[0].name, "beta");
     assert!(rest.next.is_none());
+    assert_eq!(page.hidden, None, "nothing hidden unless asked");
 
     let d = get_project(&e.store, &ctx, e.proj_a)
         .expect("get")
@@ -525,6 +532,56 @@ fn projects_list_trend_and_detail() {
     assert_eq!(d.models.len(), 2);
     assert_eq!(d.weeks.len(), 1);
     assert!(d.weeks[0].percent.is_some());
+}
+
+#[test]
+fn projects_temp_filter_and_tree() {
+    let e = Env::new();
+    week_fixture(&e);
+    let cals = [cal(0.5, 0.9, 3)];
+    let zone = FixedZone::utc();
+    let ctx = e.ctx(&cals, &zone, T0 + 4 * DAY);
+    attribution::refresh(&e.store, e.account, &cals, ctx.now, true, true).expect("refresh");
+
+    // Temporary folders: the patterns hide `beta`, and the first page says how many it hid.
+    let temp = crate::queries::temp_like_patterns(&["work/BE*".to_owned()], |_| None);
+    let hide = ProjectFilter {
+        hide_temp: true,
+        ..ProjectFilter::default()
+    };
+    let kept =
+        list_projects(&e.store, &ctx, &hide, ProjectSort::Cost, None, None, &temp).expect("list");
+    let names: Vec<&str> = kept.items.iter().map(|p| p.name.as_str()).collect();
+    assert_eq!(names, ["alpha"]);
+    assert_eq!(kept.hidden, Some(1));
+    let none =
+        list_projects(&e.store, &ctx, &hide, ProjectSort::Cost, None, None, &[]).expect("list");
+    assert_eq!((none.items.len(), none.hidden), (2, Some(0)));
+
+    // The tree: both projects under one merged folder, totals on it.
+    let tree = project_tree(
+        &e.store,
+        &ctx,
+        &ProjectFilter::default(),
+        ProjectSort::Cost,
+        &[],
+    )
+    .expect("tree");
+    let labels: Vec<&str> = tree.nodes.iter().map(|n| n.label.as_str()).collect();
+    assert_eq!(labels, ["d:/work", "alpha", "beta"]);
+    assert_eq!(tree.nodes[0].projects, 2);
+    assert_eq!(
+        tree.nodes[0].cost,
+        MicroUsd(tree.nodes[1].cost.0 + tree.nodes[2].cost.0)
+    );
+    assert_eq!(tree.hidden, None);
+    let hidden_tree = project_tree(&e.store, &ctx, &hide, ProjectSort::Cost, &temp).expect("tree");
+    assert_eq!(
+        hidden_tree.nodes.len(),
+        1,
+        "one project left, no folder above it"
+    );
+    assert_eq!(hidden_tree.hidden, Some(1));
 }
 
 #[test]
@@ -919,6 +976,7 @@ fn session_dirs_are_the_tree_cwds_and_a_resolved_project_path() {
             account_id: e.account,
             path_norm: "unresolved:C--x".into(),
             display_name: "x".into(),
+            display_path: None,
         })
         .expect("project");
     let lone = e.session("s-lone", unresolved, None);

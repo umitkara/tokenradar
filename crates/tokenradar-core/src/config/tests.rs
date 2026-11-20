@@ -214,6 +214,7 @@ fn sections_are_saved_normalized_and_keep_unknown_keys() {
         &DataConfig {
             raw_retention_days: 1,
             update_check: false,
+            temp_dirs: vec![" a ".into(), "A".into(), String::new(), "b".into()],
         },
     )
     .expect("save data");
@@ -235,6 +236,7 @@ fn sections_are_saved_normalized_and_keep_unknown_keys() {
     assert_eq!(cfg.notifications, prefs.normalized());
     assert_eq!(cfg.data.raw_retention_days, MIN_RAW_RETENTION_DAYS);
     assert!(!cfg.data.update_check);
+    assert_eq!(cfg.data.temp_dirs, ["a", "b"]);
     assert_eq!(cfg.advanced.log_level, LogLevel::Debug);
 }
 

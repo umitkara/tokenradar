@@ -253,13 +253,24 @@ pub struct DataConfig {
     pub raw_retention_days: u32,
     /// Look for a new release on GitHub (Step 12).
     pub update_check: bool,
+    /// Folder patterns of throwaway projects, hidden from the projects page by default (Step
+    /// 16b): a path part matched anywhere, `*` for any text, `%NAME%` for an environment
+    /// variable, case-insensitive. See [`crate::queries::temp_like_patterns`].
+    pub temp_dirs: Vec<String>,
 }
+
+/// The temporary-folder patterns a fresh config starts with.
+pub const DEFAULT_TEMP_DIRS: [&str; 2] = ["%TEMP%", r"\Temp\"];
+/// At most this many patterns, each at most [`MAX_TEMP_DIR_LEN`] characters.
+pub const MAX_TEMP_DIRS: usize = 32;
+pub const MAX_TEMP_DIR_LEN: usize = 260;
 
 impl Default for DataConfig {
     fn default() -> Self {
         Self {
             raw_retention_days: DEFAULT_RAW_RETENTION_DAYS,
             update_check: true,
+            temp_dirs: DEFAULT_TEMP_DIRS.map(str::to_owned).to_vec(),
         }
     }
 }
@@ -271,6 +282,15 @@ impl DataConfig {
         self.raw_retention_days = self
             .raw_retention_days
             .clamp(MIN_RAW_RETENTION_DAYS, MAX_RAW_RETENTION_DAYS);
+        // Trimmed, without empty, overlong or repeated patterns (compared ignoring case).
+        let mut seen = std::collections::HashSet::new();
+        self.temp_dirs = std::mem::take(&mut self.temp_dirs)
+            .into_iter()
+            .map(|p| p.trim().to_owned())
+            .filter(|p| !p.is_empty() && p.chars().count() <= MAX_TEMP_DIR_LEN)
+            .filter(|p| seen.insert(p.to_lowercase()))
+            .take(MAX_TEMP_DIRS)
+            .collect();
         self
     }
 }

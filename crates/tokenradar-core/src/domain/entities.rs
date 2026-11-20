@@ -203,6 +203,10 @@ pub struct ProjectSpec {
     /// Normalized `cwd`: case-folded on Windows. Unique per account.
     pub path_norm: String,
     pub display_name: String,
+    /// The path with its recorded case (schema v5); `None` when unresolved or not read again
+    /// since the upgrade.
+    #[serde(default)]
+    pub display_path: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]

@@ -152,6 +152,7 @@ pub fn generate(path: &Path, p: &Params) -> Summary {
                 account_id: account,
                 path_norm: format!("d:/synthetic/group-{}/project-{i:02}", i % 5),
                 display_name: format!("project-{i:02}"),
+                display_path: None,
             })
             .expect("project")
         })

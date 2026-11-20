@@ -92,12 +92,20 @@ pub(crate) fn account(conn: &Connection, id: AccountId) -> Result<Option<Account
 pub(crate) fn upsert_project(conn: &Connection, spec: &ProjectSpec) -> Result<ProjectId> {
     let id = conn
         .prepare_cached(
-            "INSERT INTO projects (account_id, path_norm, display_name) VALUES (?1, ?2, ?3)
-             ON CONFLICT (account_id, path_norm) DO UPDATE SET display_name = excluded.display_name
+            "INSERT INTO projects (account_id, path_norm, display_name, display_path)
+             VALUES (?1, ?2, ?3, ?4)
+             ON CONFLICT (account_id, path_norm) DO UPDATE SET
+               display_name = excluded.display_name,
+               display_path = COALESCE(excluded.display_path, display_path)
              RETURNING id",
         )?
         .query_row(
-            params![spec.account_id, spec.path_norm, spec.display_name],
+            params![
+                spec.account_id,
+                spec.path_norm,
+                spec.display_name,
+                spec.display_path
+            ],
             |r| r.get(0),
         )?;
     Ok(id)

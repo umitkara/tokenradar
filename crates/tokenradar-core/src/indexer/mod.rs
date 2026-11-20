@@ -724,6 +724,7 @@ impl Indexer {
             account_id: self.account,
             path_norm: key.path_norm.clone(),
             display_name: key.display_name,
+            display_path: key.display_path,
         })?;
         self.projects.insert(key.path_norm, id);
         Ok(id)

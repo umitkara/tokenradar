@@ -17,6 +17,8 @@ mod plans;
 mod projects;
 mod series;
 mod sessions;
+mod temp;
+mod tree;
 mod windows;
 mod zone;
 
@@ -39,8 +41,8 @@ pub use overview::{
 };
 pub use plans::{PlanFee, plan_fee};
 pub use projects::{
-    ProjectDetail, ProjectFilter, ProjectPage, ProjectRow, ProjectSort, ProjectWeek, get_project,
-    list_projects,
+    ProjectDetail, ProjectFilter, ProjectNode, ProjectPage, ProjectRow, ProjectSort, ProjectTree,
+    ProjectWeek, get_project, list_projects, project_tree,
 };
 pub use series::{
     HeatCell, HeatMetric, Heatmap, SeriesPoint, SessionMarker, TimeSeries, WindowBand, get_heatmap,
@@ -51,6 +53,7 @@ pub use sessions::{
     SessionSort, SubagentRow, TimelineBucket, get_session, get_session_impact, list_sessions,
     session_dirs,
 };
+pub use temp::temp_like_patterns;
 pub use windows::{
     OtherView, ShareRow, WindowDetail, WindowFilter, WindowPage, WindowRow, get_window,
     list_windows,
