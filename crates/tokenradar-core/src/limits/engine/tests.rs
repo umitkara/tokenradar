@@ -368,7 +368,7 @@ fn upward_threshold_crossings_are_reported_once() {
 }
 
 #[test]
-fn projection_uses_the_observed_slope_and_signals_changes() {
+fn projection_uses_the_observed_edges_and_signals_changes() {
     let fx = fixture();
     let mut e = fx.engine(t(0));
     // 1 %/min, reset in 60 min from 50 % → full before the reset.
@@ -386,7 +386,10 @@ fn projection_uses_the_observed_slope_and_signals_changes() {
     events.extend(ev);
     let p = snap.limits[0].projection.expect("projection");
     assert!((p.rate_per_min - 1.0).abs() < 1e-9);
-    assert_eq!(p.confidence, crate::limits::Confidence::High);
+    // Whole percents: the rate comes from the edges. Three intervals, but each edge is only
+    // known to within a minute of a three-minute span, so one level below high.
+    assert_eq!(p.method, rate::RateMethod::Steps);
+    assert_eq!(p.confidence, crate::limits::Confidence::Medium);
     assert!(p.will_hit_before_reset);
     assert_eq!(p.eta_100_at, Some(t(4 * 60 * SEC + 46 * 60 * SEC)));
     assert!(matches!(
@@ -724,3 +727,169 @@ fn an_absent_window_raises_no_threshold_events() {
 
 mod calibration;
 mod fusion;
+
+// --- Step edges (Step 12t) -----------------------------------------------------------
+
+const MINUTE: i64 = 60 * SEC;
+
+/// Whole-percent API readings every `gaps` minutes of a use of `rate` points per minute from
+/// `start` %, the API rounding to the nearest point.
+fn api_polls(start: f64, rate: f64, gaps: &[i64], until_min: i64) -> Vec<(i64, f64)> {
+    let mut out = Vec::new();
+    let (mut m, mut i) = (0, 0);
+    while m <= until_min {
+        #[allow(clippy::cast_precision_loss)]
+        let truth = start + rate * m as f64;
+        out.push((m, truth.round()));
+        m += gaps[i % gaps.len()];
+        i += 1;
+    }
+    out
+}
+
+#[test]
+fn quarter_hour_api_polls_project_near_the_true_rate_without_flapping() {
+    // The finding of Step 12t, synthetic: a limit only the usage API reports, read every
+    // 5–19 min, used at 1 point per hour from 40.2 %. Full after ~60 h, reset after 75 h.
+    let fx = fixture();
+    let mut e = fx.engine(t(0));
+    let reset = 75 * 60 * MINUTE;
+    let rate = 1.0 / 60.0;
+    let mut flips = 0;
+    let mut checked = 0;
+    for (m, p) in api_polls(40.2, rate, &[15, 5, 19, 11, 15, 8, 17, 14], 30 * 60) {
+        let at = m * MINUTE;
+        e.ingest(
+            &fx.obs(LimitKind::WeeklyAll, p, reset, Source::Api, at),
+            t(at),
+        );
+        let (snap, events) = e.snapshot(t(at));
+        flips += events
+            .iter()
+            .filter(|ev| matches!(ev, LimitEvent::ProjectionChanged { .. }))
+            .count();
+        let Some(proj) = snap.limits[0].projection else {
+            continue;
+        };
+        if proj.method == rate::RateMethod::Steps && proj.confidence != Confidence::Low {
+            assert!(
+                (proj.rate_per_min / rate - 1.0).abs() < 0.2,
+                "{m} min: {}",
+                proj.rate_per_min
+            );
+            assert!(proj.will_hit_before_reset, "{m} min");
+            checked += 1;
+        }
+    }
+    assert!(checked > 100, "{checked}");
+    // Once on, never off again.
+    assert_eq!(flips, 1);
+}
+
+#[test]
+fn edges_belong_to_one_window_and_survive_a_restart() {
+    let fx = fixture();
+    let reset = 300 * MINUTE;
+    let polls = api_polls(10.2, 1.0 / 10.0, &[3], 60);
+    {
+        let mut e = fx.engine(t(0));
+        for &(m, p) in &polls {
+            let at = m * MINUTE;
+            e.ingest(
+                &fx.obs(LimitKind::Session, p, reset, Source::Api, at),
+                t(at),
+            );
+        }
+        let p = current(&mut e, t(60 * MINUTE))[0]
+            .projection
+            .expect("projection");
+        assert_eq!(p.method, rate::RateMethod::Steps);
+        assert_eq!(p.confidence, Confidence::High);
+        // A new window starts without edges: its first reading is not one.
+        let next = reset + 300 * MINUTE;
+        e.ingest(
+            &fx.obs(LimitKind::Session, 1.0, next, Source::Api, 61 * MINUTE),
+            t(61 * MINUTE),
+        );
+        assert_eq!(current(&mut e, t(61 * MINUTE))[0].projection, None);
+    }
+    // The stored readings of the old window rebuild its edges after a restart (heartbeat
+    // writes keep them sharp). Store a window that is still running at restart.
+    let fx = fixture();
+    let mut e = fx.engine(t(0));
+    for &(m, p) in &polls {
+        let at = m * MINUTE;
+        e.ingest(
+            &fx.obs(LimitKind::Session, p, reset, Source::Api, at),
+            t(at),
+        );
+    }
+    let before = current(&mut e, t(60 * MINUTE))[0].projection;
+    drop(e);
+    let mut e = fx.engine(t(60 * MINUTE));
+    let after = current(&mut e, t(60 * MINUTE))[0].projection;
+    assert_eq!(after.map(|p| p.method), Some(rate::RateMethod::Steps));
+    assert_eq!(
+        after.map(|p| p.rate_per_min),
+        before.map(|p| p.rate_per_min)
+    );
+}
+
+#[test]
+fn fractional_readings_keep_the_observed_slope() {
+    let fx = fixture();
+    let mut e = fx.engine(t(0));
+    // A source with decimals (Codex until step 20, or a future statusline) is exact.
+    for i in 0..5 {
+        let at = i * MINUTE;
+        #[allow(clippy::cast_precision_loss)]
+        let p = 50.25 + 0.5 * i as f64;
+        e.ingest(
+            &fx.obs(LimitKind::Session, p, 64 * MINUTE, Source::Statusline, at),
+            t(at),
+        );
+    }
+    let p = current(&mut e, t(4 * MINUTE))[0]
+        .projection
+        .expect("projection");
+    assert_eq!(p.method, rate::RateMethod::Observed);
+    assert!((p.rate_per_min - 0.5).abs() < 1e-9);
+}
+
+#[test]
+fn a_mixed_window_takes_the_source_with_more_edges() {
+    let fx = fixture();
+    let mut e = fx.engine(t(0));
+    let reset = 3 * 24 * 60 * MINUTE;
+    // The API saw one step in an hour; a busy session's statusline saw four, at 1 point per
+    // 5 minutes, rounding down.
+    for (m, p) in [(0, 30.0), (15, 30.0), (30, 31.0), (45, 31.0), (60, 32.0)] {
+        let at = m * MINUTE;
+        e.ingest(
+            &fx.obs(LimitKind::WeeklyAll, p, reset, Source::Api, at),
+            t(at),
+        );
+    }
+    for (m, p) in [
+        (40, 31.0),
+        (44, 31.0),
+        (46, 32.0),
+        (49, 32.0),
+        (51, 33.0),
+        (54, 33.0),
+        (56, 34.0),
+        (59, 34.0),
+        (61, 35.0),
+    ] {
+        let at = m * MINUTE;
+        e.ingest(
+            &fx.obs(LimitKind::WeeklyAll, p, reset, Source::Statusline, at),
+            t(at),
+        );
+    }
+    let p = current(&mut e, t(61 * MINUTE))[0]
+        .projection
+        .expect("projection");
+    assert_eq!(p.method, rate::RateMethod::Steps);
+    assert!((p.rate_per_min - 0.2).abs() < 1e-9, "{}", p.rate_per_min);
+}

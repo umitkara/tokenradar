@@ -931,6 +931,8 @@ export type QuietHours = {
 export type RateMethod = 
 /**  Slope of observed percentages. */
 "observed" | 
+/**  Points per minute between the edges of an integer source (Step 12t, ADR-062). */
+"steps" | 
 /**  Local cost rate times the window's percent-per-dollar. */
 "cost_rate" | 
 /**  Local cost rate times the learned percent-per-dollar (Step 13, ADR-061). */

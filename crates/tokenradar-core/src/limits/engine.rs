@@ -22,9 +22,9 @@ use std::cell::Cell;
 use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, HashMap};
 
-use super::fusion::Bound;
+use super::fusion::{self, Bound};
 use super::presence::{self, Presence};
-use super::rate::{self, Confidence, Projection};
+use super::rate::{self, Confidence, Projection, Steps};
 use super::share::{self, RootUsage};
 use super::view::{
     AccountView, ApiStatusView, EstimateReason, FRESH_MS, Freshness, IndexState, LimitEvent,
@@ -128,8 +128,11 @@ struct Track {
     /// Time of the newest real reading folded into `bound`.
     last_at: Timestamp,
     reason: Option<EstimateReason>,
-    /// Fused values of the current window from the last 30 minutes, oldest first.
+    /// Fused values of fractional readings of the current window from the last 30 minutes,
+    /// oldest first: the Theil–Sen slope's input.
     history: Vec<(Timestamp, f64)>,
+    /// Edges of each whole-percent source in the current window (Step 12t, ADR-062).
+    steps: Vec<(Source, Steps)>,
     written: HashMap<Source, Written>,
     will_hit: bool,
 }
@@ -147,6 +150,7 @@ impl Track {
             bound,
             reason: None,
             history: Vec::new(),
+            steps: Vec::new(),
             written: HashMap::new(),
             will_hit: false,
         }
@@ -199,14 +203,25 @@ impl Track {
             .map(|r| r.saturating_sub_millis(length))
     }
 
-    /// Adds the fused value at the time of `obs` to the slope's history. Only the newest
-    /// reading counts: an older one already went into the bound, and the value it would
-    /// stand for at its time is unknown.
+    /// Feeds the rate. A whole-percent reading goes to its source's edges, which keep their
+    /// own order. A fractional one adds the fused value at its time to the slope's history;
+    /// there only the newest reading counts: an older one already went into the bound, and the
+    /// value it would stand for at its time is unknown.
     fn remember(&mut self, obs: &LimitObservation, now: Timestamp) {
-        if obs.source == Source::Estimate
-            || !same_window(obs.resets_at, self.fused.resets_at)
-            || obs.observed_at < self.last_at
-        {
+        if obs.source == Source::Estimate || !same_window(obs.resets_at, self.fused.resets_at) {
+            return;
+        }
+        if fusion::interval(obs.source, obs.percent).is_some_and(|iv| !iv.exact) {
+            let steps = if let Some(i) = self.steps.iter().position(|(s, _)| *s == obs.source) {
+                &mut self.steps[i].1
+            } else {
+                self.steps.push((obs.source, Steps::default()));
+                &mut self.steps.last_mut().expect("just pushed").1
+            };
+            steps.observe(obs.observed_at, obs.percent);
+            return;
+        }
+        if obs.observed_at < self.last_at {
             return;
         }
         let at = obs.observed_at;
@@ -214,6 +229,18 @@ impl Track {
         self.history.insert(pos, (at, self.fused.percent));
         let cutoff = now.as_millis() - rate::RATE_LOOKBACK_MS;
         self.history.retain(|(t, _)| t.as_millis() >= cutoff);
+    }
+
+    /// Takes over what the rate learned in the same window from the track this one replaces.
+    fn carry_rate(&mut self, old: &mut Self) {
+        self.history = std::mem::take(&mut old.history);
+        self.steps = std::mem::take(&mut old.steps);
+        self.will_hit = old.will_hit;
+    }
+
+    /// The best edge rate of the window's whole-percent sources.
+    fn step_rate(&self) -> Option<rate::StepRate> {
+        rate::best_step_rate(self.steps.iter().filter_map(|(_, s)| s.rate()))
     }
 }
 
@@ -401,8 +428,7 @@ impl LimitEngine {
             let mut next = Track::new(obs.clone());
             next.written = std::mem::take(&mut track.written);
             if comparable {
-                next.history = std::mem::take(&mut track.history);
-                next.will_hit = track.will_hit;
+                next.carry_rate(track);
             }
             *track = next;
         } else {
@@ -595,6 +621,7 @@ impl LimitEngine {
                 };
                 track.reason = Some(EstimateReason::Reset);
                 track.history.clear();
+                track.steps.clear();
                 track.will_hit = false;
                 if emit {
                     events.push(LimitEvent::Reset {
@@ -860,7 +887,14 @@ fn limit_views(
                 }
                 _ => None,
             };
-            rate::projection(now, obs.percent, obs.resets_at, &track.history, costs)
+            rate::projection(
+                now,
+                obs.percent,
+                obs.resets_at,
+                &track.history,
+                track.step_rate(),
+                costs,
+            )
         } else {
             None
         };
