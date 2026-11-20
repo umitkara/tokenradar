@@ -12,6 +12,7 @@ import {
   type Alert,
   type Row,
   bandLine,
+  fullIn,
   limitName,
   paceRow,
   rowLevel,
@@ -60,7 +61,7 @@ function card(els: Els, lang: Lang, row: Row, width: number, now: number, surfac
   const details: string[] = []
   if (row.resetsAt !== undefined) details.push(d.resetsIn(dur(lang, row.resetsAt - now)))
   if (row.willHit && row.etaAt !== undefined) {
-    details.push(`${d.colProjection}: ≈${d.fullIn(dur(lang, row.etaAt - now))}`)
+    details.push(`${d.colProjection}: ${fullIn(lang, row, now)}`)
   } else if (row.projected) {
     details.push(`${d.colProjection}: ${d.resetFirst}`)
   }

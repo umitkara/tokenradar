@@ -30,6 +30,7 @@ const weekly = (extra: Partial<Row> = {}): Row => ({
   stale: false,
   projected: false,
   willHit: false,
+  soon: false,
   elapsed: (1 - 50 / 168) * 100,
   ...extra,
 })

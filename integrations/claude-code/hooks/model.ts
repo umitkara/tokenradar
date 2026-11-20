@@ -6,6 +6,7 @@ import type { SessionUsage } from 'claude-code'
 
 import type {
   AlertState,
+  Confidence,
   History,
   Level,
   LiveSession,
@@ -38,6 +39,13 @@ export const PACE_AHEAD = 10
  */
 export const PACE_QUIET = 100 / 7
 
+/**
+ * A projection raises the band only when it reaches 100 % within this long at a rate
+ * TokenRadar trusts: the app's own rule for its notice (`PROJECTION_HORIZON_MIN`,
+ * Step 12t), so both warn at once.
+ */
+export const PROJECTION_HORIZON_MS = 60 * 60_000
+
 const HOUR_MS = 3_600_000
 export const DAY_MS = 24 * HOUR_MS
 
@@ -68,6 +76,10 @@ export type Row = {
   projected: boolean
   willHit: boolean
   etaAt?: number
+  /** TokenRadar's confidence in the rate; absent from an older CLI. */
+  confidence?: Confidence
+  /** The projection may warn: trusted and full within [`PROJECTION_HORIZON_MS`]. */
+  soon: boolean
   /** How much of the window's time has passed, %. */
   elapsed?: number
 }
@@ -106,6 +118,8 @@ export function measureFrom(
 const isObject = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v)
 const optNumber = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : undefined)
+const optConfidence = (v: unknown): Confidence | undefined =>
+  v === 'low' || v === 'medium' || v === 'high' ? v : undefined
 
 /**
  * `tokenradar status --json` (schema 1) reduced to what the mod needs; `null`
@@ -142,6 +156,8 @@ export function parseStatus(stdout: string, sessionId: string, now: number): Rad
     if (resetsAt !== undefined) limit.resetsAt = resetsAt
     const etaAt = optNumber(l.eta_100_at)
     if (etaAt !== undefined) limit.etaAt = etaAt
+    const confidence = optConfidence(l.projection_confidence)
+    if (confidence !== undefined) limit.confidence = confidence
     limits.push(limit)
   }
 
@@ -270,10 +286,12 @@ export function mergeRows(m: Measure | null, r: Radar | null, now: number): Row[
       stale: false,
       projected: tr?.projected ?? false,
       willHit: tr?.willHit ?? false,
+      soon: false,
     }
     const resetsAt = w.resetsAt ?? tr?.resetsAt
     if (resetsAt !== undefined) row.resetsAt = resetsAt
     if (tr?.etaAt !== undefined) row.etaAt = tr.etaAt
+    if (tr?.confidence !== undefined) row.confidence = tr.confidence
     out.push(row)
   }
   for (const l of fromRadar.values()) {
@@ -287,9 +305,11 @@ export function mergeRows(m: Measure | null, r: Radar | null, now: number): Row[
       observedAt: l.observedAt,
       projected: l.projected,
       willHit: l.willHit,
+      soon: false,
     }
     if (l.resetsAt !== undefined) row.resetsAt = l.resetsAt
     if (l.etaAt !== undefined) row.etaAt = l.etaAt
+    if (l.confidence !== undefined) row.confidence = l.confidence
     out.push(row)
   }
 
@@ -297,19 +317,31 @@ export function mergeRows(m: Measure | null, r: Radar | null, now: number): Row[
     .map(row => {
       if (row.resetsAt === undefined || row.resetsAt > now) {
         const elapsed = elapsedOf(row.id, row.resetsAt, now)
-        return elapsed === undefined ? row : { ...row, elapsed }
+        const live = { ...row, soon: warnsSoon(row, now) }
+        return elapsed === undefined ? live : { ...live, elapsed }
       }
-      const { resetsAt: _, etaAt: __, ...rest } = row
-      return { ...rest, percent: 0, estimated: true, willHit: false, projected: false }
+      const { resetsAt: _, etaAt: __, confidence: ___, ...rest } = row
+      return { ...rest, percent: 0, estimated: true, willHit: false, projected: false, soon: false }
     })
     .sort((a, b) => ORDER(a.id) - ORDER(b.id))
 }
 
 // --- Thresholds ----------------------------------------------------------
 
+/**
+ * The app's notice rule (Step 12t): full before the reset, within the horizon, at a rate
+ * that is not low-confidence. Without a confidence (an older CLI) nothing warns.
+ */
+export function warnsSoon(row: Pick<Row, 'willHit' | 'etaAt' | 'confidence'>, now: number): boolean {
+  if (!row.willHit || row.etaAt === undefined) return false
+  if (row.confidence !== 'medium' && row.confidence !== 'high') return false
+  const left = row.etaAt - now
+  return left > 0 && left <= PROJECTION_HORIZON_MS
+}
+
 export function rowLevel(row: Row): Level {
   if (row.percent >= CRIT_AT) return 2
-  if (row.percent >= WARN_AT || row.willHit) return 1
+  if (row.percent >= WARN_AT || row.soon) return 1
   return 0
 }
 
@@ -330,8 +362,7 @@ export function alertsOf(rows: readonly Row[]): Alert[] {
           ? [{ row, level: 1, reason: 'pace' }]
           : []
       }
-      const reason: Alert['reason'] =
-        row.percent >= WARN_AT || row.etaAt === undefined ? 'used' : 'projection'
+      const reason: Alert['reason'] = row.percent >= WARN_AT || !row.soon ? 'used' : 'projection'
       return [{ row, level, reason }]
     })
     .sort((a, b) => b.level - a.level || b.row.percent - a.row.percent)
@@ -424,6 +455,13 @@ export function sourceName(lang: Lang, source: string): string {
 
 export const value = (lang: Lang, row: Row) => `${row.estimated ? '≈' : ''}${pct(lang, row.percent)}`
 
+/** `≈ full in …`, marked rough when TokenRadar's rate is low-confidence (Step 12t). */
+export function fullIn(lang: Lang, row: Row, now: number): string {
+  const d = t(lang)
+  const text = `≈${d.fullIn(dur(lang, (row.etaAt ?? now) - now))}`
+  return row.confidence === 'low' ? `${text} (${d.rough})` : text
+}
+
 export function bandLine(lang: Lang, a: Alert, now: number): string {
   const d = t(lang)
   const name = limitName(lang, a.row.id)
@@ -495,7 +533,7 @@ export function report(
           ? `${sourceName(lang, row.source)} (${d.updatedAgo(dur(lang, now - row.observedAt))})`
           : sourceName(lang, row.source),
         row.willHit && row.etaAt !== undefined
-          ? `≈${d.fullIn(dur(lang, row.etaAt - now))}`
+          ? fullIn(lang, row, now)
           : row.projected
             ? d.resetFirst
             : '—',

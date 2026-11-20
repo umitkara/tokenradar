@@ -43,6 +43,8 @@ type Dict = {
   colSource: string
   colProjection: string
   fullIn: (dur: string) => string
+  /** Marks a projection at a low-confidence rate. */
+  rough: string
   resetFirst: string
   updatedAgo: (dur: string) => string
   absent: (name: string) => string
@@ -105,6 +107,7 @@ const EN: Dict = {
   colSource: 'Source',
   colProjection: 'At this rate',
   fullIn: dur => `full in ${dur}`,
+  rough: 'rough',
   resetFirst: "won't fill",
   updatedAgo: dur => `updated ${dur} ago`,
   absent: name => `${name}: not on this account.`,
@@ -172,6 +175,7 @@ const TR: Dict = {
   colSource: 'Kaynak',
   colProjection: 'Bu hızla',
   fullIn: dur => `${dur} içinde dolar`,
+  rough: 'kaba',
   resetFirst: 'dolmaz',
   updatedAgo: dur => `${dur} önce güncellendi`,
   absent: name => `${name}: bu hesapta yok.`,

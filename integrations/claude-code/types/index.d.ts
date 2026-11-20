@@ -33,7 +33,11 @@ export type RadarLimit = {
   projected: boolean
   willHit: boolean
   etaAt?: number
+  /** How far TokenRadar trusts its rate; absent from an older CLI (Step 12t). */
+  confidence?: Confidence
 }
+
+export type Confidence = 'low' | 'medium' | 'high'
 
 /** A running Claude Code session from `tokenradar status --json` (ADR-046: no title). */
 export type LiveSession = {
