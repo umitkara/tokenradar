@@ -23,6 +23,8 @@ import type { Source, ThemePref } from "../../lib/ipc/bindings";
 import { inTauri } from "../../lib/ipc/runtime";
 import { applyTheme, settings } from "../../lib/settings.svelte";
 import OverviewBody from "../main/overview/OverviewBody.svelte";
+import ProjectDetail from "../main/projects/ProjectDetail.svelte";
+import ProjectList from "../main/projects/ProjectList.svelte";
 import SessionDetail from "../main/sessions/SessionDetail.svelte";
 import SessionList from "../main/sessions/SessionList.svelte";
 import Detail from "../panel/Detail.svelte";
@@ -30,6 +32,7 @@ import { detailOf, session, snapshot } from "../panel/fixtures";
 import { emptyChart, sparks, twoLines, weeklyOnly } from "./charts";
 import { bars as initialBars, limit, nudge, ringCases, sessions, weekly } from "./fixtures";
 import { overviewDemo } from "./overview";
+import { projectDetailDemo, projectSessionsDemo, projectsDemo, projectTreeDemo } from "./projects";
 import { sessionDetailDemo, sessionsDemo } from "./sessions";
 
 let rings = $state(ringCases);
@@ -166,6 +169,32 @@ function change() {
     <h2>{t("gallery-session-detail")}</h2>
     <div class="overview">
       <SessionDetail id={1000} preset={sessionDetailDemo(Date.now())} />
+    </div>
+  </section>
+
+  <section id="projects">
+    <h2>{t("gallery-projects")}</h2>
+    <div class="sessions">
+      <ProjectList query="" preset={{ rows: projectsDemo(Date.now(), sessionRows === 40 ? 24 : sessionRows), nodes: [], hidden: 3 }} />
+    </div>
+  </section>
+
+  <section id="project-tree">
+    <h2>{t("gallery-project-tree")}</h2>
+    <div class="sessions">
+      <ProjectList query="view=tree" preset={{ rows: [], nodes: projectTreeDemo(Date.now()), hidden: 3 }} />
+    </div>
+  </section>
+
+  <section id="project-detail">
+    <h2>{t("gallery-project-detail")}</h2>
+    <div class="overview">
+      <ProjectDetail
+        id={100}
+        query=""
+        preset={projectDetailDemo(Date.now())}
+        presetSessions={projectSessionsDemo(Date.now())}
+      />
     </div>
   </section>
 

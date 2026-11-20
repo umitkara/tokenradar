@@ -41,8 +41,8 @@ use tokenradar_core::deeplink::MainRoute;
 use tokenradar_core::domain::{LimitRef, ProjectId, SessionId};
 use tokenradar_core::queries::{
     self, HeatMetric, Heatmap, ImpactRow, Overview, ProjectDetail, ProjectFilter, ProjectPage,
-    ProjectSort, SessionDetail, SessionFilter, SessionPage, SessionSort, TimeRange, TimeSeries,
-    WindowDetail, WindowFilter, WindowPage,
+    ProjectSort, ProjectTree, SessionDetail, SessionFilter, SessionPage, SessionSort, TimeRange,
+    TimeSeries, WindowDetail, WindowFilter, WindowPage,
 };
 
 /// Relative to the `app/src-tauri` crate. Release builds never write the bindings.
@@ -124,6 +124,7 @@ pub fn builder() -> Builder<tauri::Wry> {
             get_session_impact,
             open_session_dir,
             list_projects,
+            project_tree,
             get_project,
             get_timeseries,
             get_heatmap,
@@ -464,7 +465,8 @@ async fn get_session_impact(app: AppHandle, id: SessionId) -> Result<Vec<ImpactR
     .await
 }
 
-/// Projects with usage in the filter's range, one keyset page after `cursor`.
+/// Projects with usage in the filter's range, one keyset page after `cursor`. With
+/// `filter.hide_temp`, the config's temporary-folder patterns leave projects out.
 #[tauri::command]
 #[specta::specta]
 async fn list_projects(
@@ -475,8 +477,34 @@ async fn list_projects(
     limit: Option<u32>,
 ) -> Result<ProjectPage, String> {
     blocking(move || {
+        let temp = history::temp_patterns(&filter);
         history::run(&app, |q, ctx| {
-            queries::list_projects(&q.store, ctx, &filter, sort, cursor.as_deref(), limit)
+            queries::list_projects(
+                &q.store,
+                ctx,
+                &filter,
+                sort,
+                cursor.as_deref(),
+                limit,
+                &temp,
+            )
+        })
+    })
+    .await
+}
+
+/// The same projects as a folder tree with totals per folder (Step 16b).
+#[tauri::command]
+#[specta::specta]
+async fn project_tree(
+    app: AppHandle,
+    filter: ProjectFilter,
+    sort: ProjectSort,
+) -> Result<ProjectTree, String> {
+    blocking(move || {
+        let temp = history::temp_patterns(&filter);
+        history::run(&app, |q, ctx| {
+            queries::project_tree(&q.store, ctx, &filter, sort, &temp)
         })
     })
     .await

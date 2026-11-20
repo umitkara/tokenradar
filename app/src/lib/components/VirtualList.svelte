@@ -6,7 +6,7 @@
     `aria-activedescendant`; rows carry `aria-rowindex` (the header is row 1) and the grid
     `aria-rowcount` (-1 while more pages may follow).
   - Keys: ↑ ↓, Page Up / Page Down, Home / End move the active row; Enter opens it. A click
-    opens the row too.
+    opens the row too. Other keys go to `onkey` (a tree's ← and →).
   - Paging: when the rendered slice comes within `overscan` rows of the end and `hasMore`,
     `onmore` is called (once per page; the caller sets `loading` while it fetches).
 -->
@@ -28,6 +28,8 @@ interface Props {
   loading?: boolean;
   onmore?: () => void;
   onactivate?: (item: T, index: number) => void;
+  /** Other keys on the active row (a tree's ← and →); `true` when handled. */
+  onkey?: (key: string, item: T, index: number) => boolean;
 }
 
 let {
@@ -42,6 +44,7 @@ let {
   loading = false,
   onmore,
   onactivate,
+  onkey,
 }: Props = $props();
 
 const OVERSCAN = 6;
@@ -76,11 +79,15 @@ function onkeydown(e: KeyboardEvent) {
     e.preventDefault();
     active = next;
     show(next);
-  } else if (e.key === "Enter" && active != null) {
+  } else if (active != null) {
     const item = items[active];
     if (item === undefined) return;
-    e.preventDefault();
-    onactivate?.(item, active);
+    if (e.key === "Enter") {
+      e.preventDefault();
+      onactivate?.(item, active);
+    } else if (!e.ctrlKey && !e.altKey && !e.metaKey && onkey?.(e.key, item, active)) {
+      e.preventDefault();
+    }
   }
 }
 
@@ -88,6 +95,13 @@ function onclick(index: number) {
   active = index;
   const item = items[index];
   if (item !== undefined) onactivate?.(item, index);
+}
+
+/** Makes `index` the active row and scrolls it into view (a tree's ← to the parent). */
+export function select(index: number) {
+  if (index < 0 || index >= items.length) return;
+  active = index;
+  show(index);
 }
 
 /** Back to the top, for a new set of filters. */

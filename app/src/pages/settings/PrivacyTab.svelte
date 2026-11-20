@@ -1,5 +1,5 @@
 <!--
-  Privacy & data: storage and retention, where the app connects, deleting TokenRadar's data
+  Privacy & data: storage and retention, temporary folders (Step 16b), where the app connects, deleting TokenRadar's data
   (two confirmations: the dialog and its checkbox) and the diagnostics bundle (`#diagnostics`).
 -->
 <script lang="ts">
@@ -10,6 +10,7 @@ import { t } from "../../lib/i18n/i18n.svelte";
 import { commands, type LogLevel } from "../../lib/ipc/bindings";
 import Field from "./Field.svelte";
 import { loadAll, savePrefs, store } from "./state.svelte";
+import TempDirsCard from "./TempDirsCard.svelte";
 import { optionsWith, RETENTION_PRESETS, sizeMessage } from "./view";
 
 let { onerror }: { onerror: (key: string | null) => void } = $props();
@@ -103,6 +104,8 @@ async function createBundle() {
     </Field>
   {/if}
 </Card>
+
+<TempDirsCard {onerror} />
 
 <Card title={t("privacy-network")}>
   <p>{t("privacy-network-intro")}</p>

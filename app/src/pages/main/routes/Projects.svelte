@@ -1,9 +1,23 @@
-<!-- The projects page: an empty state until it is built. -->
+<!--
+  The projects page (Step 16b): the list at `#projects?filters`, one project at
+  `#projects/<id>?sessions-filters`.
+-->
 <script lang="ts">
-import Soon from "./Soon.svelte";
+import ProjectDetail from "../projects/ProjectDetail.svelte";
+import ProjectList from "../projects/ProjectList.svelte";
 
-/** `#route/param`: unused until the page has detail views. */
-let _props: { param: string | null } = $props();
+let { param, query }: { param: string | null; query: string } = $props();
+
+const id = $derived.by(() => {
+  const n = Number(param);
+  return param != null && Number.isSafeInteger(n) && n > 0 ? n : null;
+});
 </script>
 
-<Soon route="projects" />
+{#if id != null}
+  {#key id}
+    <ProjectDetail {id} {query} />
+  {/key}
+{:else}
+  <ProjectList {query} />
+{/if}

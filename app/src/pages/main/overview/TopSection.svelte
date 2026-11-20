@@ -2,19 +2,21 @@
   "What is using it?" (Step 15b): the 5 sessions and 5 projects with the largest share of this
   week's weekly limit, each with its `≈` share, API-equivalent cost and a daily-cost sparkline.
   Shares are always `≈` (attribution is an estimate) and dimmed while the calibration is not good
-  enough; then a note says how they are split. Rows open their detail pages from Step 16 on.
+  enough; then a note says how they are split. Each name links to its detail page (Step 16b).
 -->
 <script lang="ts">
 import Card from "../../../lib/components/Card.svelte";
 import Sparkline from "../../../lib/components/Sparkline.svelte";
 import { t } from "../../../lib/i18n/i18n.svelte";
 import type { Overview } from "../../../lib/ipc/bindings";
+import { hrefFor } from "../router";
 import { dataState, usd } from "./view";
 
 let { overview }: { overview: Overview } = $props();
 
 interface Row {
   key: string;
+  href: string;
   name: string;
   /** Project of a session, when it is not already the name. */
   sub: string | null;
@@ -26,6 +28,7 @@ interface Row {
 const sessions = $derived<Row[]>(
   overview.top_sessions.map((s) => ({
     key: String(s.session_id),
+    href: hrefFor("sessions", String(s.session_id)),
     name: s.name.text,
     sub: s.name.fallback ? null : (s.project?.name ?? null),
     percent: s.percent,
@@ -36,6 +39,7 @@ const sessions = $derived<Row[]>(
 const projects = $derived<Row[]>(
   overview.top_projects.map((p) => ({
     key: String(p.project.id),
+    href: hrefFor("projects", String(p.project.id)),
     name: p.project.name,
     sub: null,
     percent: p.percent,
@@ -63,7 +67,7 @@ const learningText = $derived.by(() => {
         {#each rows as row (row.key)}
           <li>
             <span class="name">
-              <span class="title" title={row.sub ? `${row.name} · ${row.sub}` : row.name}>{row.name}</span>
+              <a class="title" href={row.href} title={row.sub ? `${row.name} · ${row.sub}` : row.name}>{row.name}</a>
               {#if row.sub}<span class="sub">{row.sub}</span>{/if}
             </span>
             <span class="pct readout" class:dim title={t("overview-top-share")}>
@@ -148,6 +152,10 @@ const learningText = $derived.by(() => {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    text-decoration: none;
+  }
+  .title:hover {
+    text-decoration: underline;
   }
   .sub {
     flex-shrink: 1;

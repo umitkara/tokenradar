@@ -7,7 +7,10 @@
     `Ctrl+F` focuses it.
   - Refreshes while visible on running-session changes and new usage (at most every 10 s),
     keeping the rows already loaded.
-  - The project picker is a native select: it finds a project by typing its first letters.
+  - The project picker is a native select: it finds a project by typing its first letters. It
+    leaves out temporary folders (Step 16b).
+  - A project's detail embeds this list with `locked` (the project filter fixed, its picker
+    hidden) and `base` (filters go to `#projects/<id>?…`).
 -->
 <script lang="ts">
 import { onMount, untrack } from "svelte";
@@ -22,6 +25,7 @@ import { locale, t } from "../../../lib/i18n/i18n.svelte";
 import {
   type CoreEvent,
   commands,
+  type MainRoute,
   type ModelFamily,
   type ProjectRef,
   type SessionRow,
@@ -53,9 +57,18 @@ interface Props {
   query: string;
   /** Synthetic rows for the gallery; skips the backend. */
   preset?: SessionRow[] | null;
+  /** Only this project's sessions; the project picker is hidden. */
+  locked?: number | null;
+  /** The page whose fragment keeps the filters. */
+  base?: { route: MainRoute; param: string | null };
 }
 
-let { query, preset = null }: Props = $props();
+let {
+  query,
+  preset = null,
+  locked = null,
+  base = { route: "sessions", param: null },
+}: Props = $props();
 
 const PAGE = 100;
 const MIN_GAP_MS = 10_000;
@@ -81,7 +94,7 @@ let debounce: ReturnType<typeof setTimeout> | null = null;
 // The fragment changed (a filter, back or forward): read it again.
 $effect(() => {
   const next = parseQuery(query);
-  listMemory.query = query;
+  if (locked == null) listMemory.query = query;
   current = next;
   // Only the fragment drives this effect; typing must not re-run it.
   untrack(() => {
@@ -102,7 +115,7 @@ async function loadFirst(q: SessionQuery, keep = 0) {
   loading = true;
   lastLoad = Date.now();
   const limit = Math.min(200, Math.max(PAGE, keep));
-  const result = await commands.listSessions(toFilter(q, new Date()), q.sort, null, limit);
+  const result = await commands.listSessions(toFilter(q, new Date(), locked), q.sort, null, limit);
   if (mine !== generation) return;
   loading = false;
   loaded = true;
@@ -127,7 +140,7 @@ async function loadMore() {
   const mine = generation;
   loading = true;
   const result = await commands.listSessions(
-    toFilter(current, new Date()),
+    toFilter(current, new Date(), locked),
     current.sort,
     cursor,
     PAGE,
@@ -152,7 +165,7 @@ function schedule() {
 
 async function loadProjects() {
   const result = await commands.listProjects(
-    { range: null, search: null },
+    { range: null, search: null, hide_temp: true },
     "last_active",
     null,
     200,
@@ -167,7 +180,7 @@ async function loadProjects() {
 /** A filter change: a new history entry (back returns to the previous filters). */
 function apply(change: Partial<SessionQuery>) {
   const next = { ...current, ...change };
-  location.hash = hrefFor("sessions", null, toQuery(next));
+  location.hash = hrefFor(base.route, base.param, toQuery(next));
 }
 
 function onsearch() {
@@ -178,8 +191,8 @@ function onsearch() {
     const next = { ...current, q: searchText };
     const text = toQuery(next);
     // One entry per search, not per key: replace the fragment and read it ourselves.
-    history.replaceState(history.state, "", hrefFor("sessions", null, text));
-    listMemory.query = text;
+    history.replaceState(history.state, "", hrefFor(base.route, base.param, text));
+    if (locked == null) listMemory.query = text;
     current = next;
   }, 200);
 }
@@ -227,7 +240,14 @@ function ago(ms: number | null): string {
   return d < 60_000 ? t("sessions-just-now") : t("sessions-ago", { ms: d });
 }
 
-const filtered = $derived(toQuery({ ...current, sort: DEFAULT_QUERY.sort }) !== "");
+// A locked list ignores the project in its fragment.
+const filtered = $derived(
+  toQuery({
+    ...current,
+    sort: DEFAULT_QUERY.sort,
+    project: locked == null ? current.project : null,
+  }) !== "",
+);
 
 const rangeOptions = $derived(
   RANGE_PRESETS.map((value) => ({ value, label: t(`sessions-range-${value}`) })),
@@ -246,7 +266,7 @@ const sortOptions = $derived(
 
 onMount(() => {
   if (preset) return;
-  void loadProjects();
+  if (locked == null) void loadProjects();
   const stop = subscribeCoreEvents({
     onEvent: (e) => {
       if (RELEVANT.has(e.type)) schedule();
@@ -294,12 +314,14 @@ onMount(() => {
         <input type="date" value={current.to ?? ""} onchange={(e) => setDay("to", e.currentTarget.value)} />
       </label>
     {/if}
-    <Select
-      value={current.project != null ? String(current.project) : ""}
-      options={projectOptions}
-      label={t("sessions-project")}
-      onchange={(v: string) => apply({ project: v === "" ? null : Number(v) })}
-    />
+    {#if locked == null}
+      <Select
+        value={current.project != null ? String(current.project) : ""}
+        options={projectOptions}
+        label={t("sessions-project")}
+        onchange={(v: string) => apply({ project: v === "" ? null : Number(v) })}
+      />
+    {/if}
     <Select
       value={current.family ?? ""}
       options={familyOptions}
@@ -323,7 +345,7 @@ onMount(() => {
     {#if filtered}
       <EmptyState title={t("sessions-empty-filtered")} body={t("sessions-empty-filtered-body")}>
         {#snippet action()}
-          <a class="clear" href={hrefFor("sessions")}>{t("sessions-clear")}</a>
+          <a class="clear" href={hrefFor(base.route, base.param)}>{t("sessions-clear")}</a>
         {/snippet}
       </EmptyState>
     {:else}
@@ -366,7 +388,7 @@ onMount(() => {
           {#if r.transcript_deleted}
             <span title={t("sessions-deleted-tip")}><Badge tone="muted">{t("sessions-deleted")}</Badge></span>
           {/if}
-          {#if r.project}<span class="project">{r.project.name}</span>{/if}
+          {#if r.project && locked == null}<span class="project">{r.project.name}</span>{/if}
         </span>
         <span
           role="gridcell"

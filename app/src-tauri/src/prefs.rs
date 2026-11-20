@@ -124,6 +124,8 @@ pub struct PrefsView {
     pub statusline: StatuslinePrefs,
     /// The compact strip (`[widget]`, Step 18).
     pub widget: WidgetPrefs,
+    /// What "Restore defaults" puts back in `data.temp_dirs` (Step 16b).
+    pub default_temp_dirs: Vec<String>,
 }
 
 /// Sent to every open window when [`PrefsView`] changed.
@@ -157,6 +159,7 @@ impl Stored {
                 panel_warm_ttl_s: c.general.panel_warm_ttl_s(),
                 statusline: c.statusline.clone().normalized(),
                 widget: c.widget.prefs.clone().normalized(),
+                default_temp_dirs: config::DEFAULT_TEMP_DIRS.map(str::to_owned).to_vec(),
             },
         }
     }

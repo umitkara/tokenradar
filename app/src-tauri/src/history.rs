@@ -6,11 +6,11 @@ use std::path::Path;
 
 use tauri::AppHandle;
 use tokenradar_core::calibration::Calibration;
-use tokenradar_core::config::AppConfig;
+use tokenradar_core::config::{AppConfig, DataConfig};
 use tokenradar_core::domain::{AccountId, LimitRef, Timestamp};
 use tokenradar_core::limits::LimitView;
 use tokenradar_core::paths::Paths;
-use tokenradar_core::queries::{PlanInput, QueryContext, SystemZone};
+use tokenradar_core::queries::{self, PlanInput, ProjectFilter, QueryContext, SystemZone};
 use tokenradar_core::store::{Store, StoreError};
 
 use crate::core_bridge;
@@ -61,6 +61,19 @@ pub fn run<T>(
         tracing::warn!(%error, "history query failed");
         error.to_string()
     })
+}
+
+/// The config's temporary-folder patterns as `LIKE` patterns, when `filter` hides them (Step
+/// 16b). Read on each call, so a change in the settings applies to the next list.
+pub fn temp_patterns(filter: &ProjectFilter) -> Vec<String> {
+    if !filter.hide_temp {
+        return Vec::new();
+    }
+    let dirs = Paths::resolve()
+        .ok()
+        .and_then(|paths| AppConfig::load(paths.config_path()).ok())
+        .map_or_else(|| DataConfig::default().temp_dirs, |c| c.data.temp_dirs);
+    queries::temp_like_patterns(&dirs, |name| std::env::var(name).ok())
 }
 
 fn prepare(app: &AppHandle) -> Option<Query> {

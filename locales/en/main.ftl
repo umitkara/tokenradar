@@ -16,8 +16,6 @@ main-load-failed = This page could not be loaded. Close the window and open it a
 
 main-soon-windows = The limit window archive is coming
 main-soon-windows-body = Each closed 5-hour and weekly window, how full it got and what used it.
-main-soon-projects = The project list is coming
-main-soon-projects-body = Your projects with their sessions, cost and share of your limits.
 main-soon-patterns = Usage patterns are coming
 main-soon-patterns-body = When in the week you use Claude Code most, as a heat map.
 
@@ -227,3 +225,57 @@ session-open-dir = Open folder
 session-dir-missing = This folder no longer exists.
 session-dir-failed = The folder could not be opened.
 session-tokens = Tokens
+
+## Projects (Step 16b)
+
+projects-search = Search projects
+projects-search-placeholder = Name or part of the path
+projects-group = Group by folder
+projects-hide-temp = Hide temporary folders
+projects-sort-last-active = Last active
+projects-sort-cost = Cost
+projects-sort-impact = Weekly impact
+projects-sort-sessions = Sessions
+projects-hidden = { $n ->
+        [one] 1 project in a temporary folder is hidden.
+       *[other] { NUM($n, 0) } projects in temporary folders are hidden.
+    }
+projects-show-temp = Show them
+projects-list = Projects
+projects-tree = Projects by folder
+projects-col-name = Project
+projects-col-path = Path
+projects-col-sessions = Sessions
+projects-col-last = Last active
+projects-col-cost = Cost
+projects-col-weekly = Weekly
+projects-col-trend = 8 weeks
+projects-weekly-tip = Share of weekly limits in this range, summed over the project's sessions. Split from usage, so it is an estimate.
+projects-trend-tip = Cost per week over the last 8 weeks, ${ NUM($usd, 2) } in total
+projects-count = { $n ->
+        [one] 1 project
+       *[other] { NUM($n, 0) } projects
+    }
+projects-expanded = expanded
+projects-collapsed = collapsed
+projects-loading = Loading projects…
+projects-empty = No projects in this range
+projects-empty-body = Projects show up here as soon as Claude Code writes usage in a folder.
+projects-empty-filtered = No project matches these filters
+projects-empty-filtered-body = Try a longer time range, clear the search or show temporary folders.
+
+## Project detail (Step 16b)
+
+project-back = Back to projects
+project-not-found = This project is not in the database any more.
+project-cost = Cost, all time
+project-weekly-total = Weekly impact, all time
+project-weeks = Weekly impact
+project-weeks-empty = No weekly window recorded yet.
+project-weeks-note = Share of each weekly window, split from usage (≈). Dashed bars are estimated windows.
+project-weeks-by-cost = No shares yet: calibration is still learning. The bars show each week's cost.
+project-week-estimated = estimated window
+project-models-empty = No usage recorded.
+project-top = Most expensive sessions
+project-top-empty = No sessions.
+project-sessions = Sessions

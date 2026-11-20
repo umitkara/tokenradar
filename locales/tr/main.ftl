@@ -16,8 +16,6 @@ main-load-failed = Bu sayfa yüklenemedi. Pencereyi kapatıp yeniden açın.
 
 main-soon-windows = Limit pencerelerinin arşivi geliyor
 main-soon-windows-body = Kapanan her 5 saatlik ve haftalık pencere: ne kadar doldu, neyin tükettiği.
-main-soon-projects = Proje listesi geliyor
-main-soon-projects-body = Projeleriniz, oturumları, maliyetleri ve limitlerinizdeki paylarıyla.
 main-soon-patterns = Kullanım örüntüleri geliyor
 main-soon-patterns-body = Claude Code'u haftanın hangi saatlerinde en çok kullandığınız, ısı haritası olarak.
 
@@ -227,3 +225,51 @@ session-open-dir = Klasörü aç
 session-dir-missing = Bu klasör artık yok.
 session-dir-failed = Klasör açılamadı.
 session-tokens = Token
+
+## Projeler (Adım 16b)
+
+projects-search = Projelerde ara
+projects-search-placeholder = Ad ya da yolun bir parçası
+projects-group = Klasöre göre grupla
+projects-hide-temp = Geçici dizinleri gizle
+projects-sort-last-active = Son aktivite
+projects-sort-cost = Maliyet
+projects-sort-impact = Haftalık etki
+projects-sort-sessions = Oturum sayısı
+projects-hidden = Geçici dizinlerdeki { NUM($n, 0) } proje gizli.
+projects-show-temp = Göster
+projects-list = Projeler
+projects-tree = Klasöre göre projeler
+projects-col-name = Proje
+projects-col-path = Yol
+projects-col-sessions = Oturum
+projects-col-last = Son aktivite
+projects-col-cost = Maliyet
+projects-col-weekly = Haftalık
+projects-col-trend = 8 hafta
+projects-weekly-tip = Bu aralıktaki haftalık limit payı, projenin oturumları üzerinden toplanır. Kullanımdan bölündüğü için tahmindir.
+projects-trend-tip = Son 8 haftanın haftalık maliyeti, toplam ${ NUM($usd, 2) }
+projects-count = { NUM($n, 0) } proje
+projects-expanded = açık
+projects-collapsed = kapalı
+projects-loading = Projeler yükleniyor…
+projects-empty = Bu aralıkta proje yok
+projects-empty-body = Claude Code bir klasörde kullanım yazdığı anda projeler burada görünür.
+projects-empty-filtered = Bu filtrelere uyan proje yok
+projects-empty-filtered-body = Daha uzun bir zaman aralığı seçin, aramayı temizleyin ya da geçici dizinleri gösterin.
+
+## Proje ayrıntısı (Adım 16b)
+
+project-back = Projelere dön
+project-not-found = Bu proje artık veritabanında yok.
+project-cost = Maliyet, tüm zamanlar
+project-weekly-total = Haftalık etki, toplam
+project-weeks = Haftalık etki
+project-weeks-empty = Henüz kayıtlı haftalık pencere yok.
+project-weeks-note = Her haftalık pencereden alınan pay, kullanımdan bölünür (≈). Kesikli çubuklar tahmini pencerelerdir.
+project-weeks-by-cost = Henüz pay yok: kalibrasyon hâlâ öğreniyor. Çubuklar her haftanın maliyetini gösterir.
+project-week-estimated = tahmini pencere
+project-models-empty = Kayıtlı kullanım yok.
+project-top = En pahalı oturumlar
+project-top-empty = Oturum yok.
+project-sessions = Oturumlar

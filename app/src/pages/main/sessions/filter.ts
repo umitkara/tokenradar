@@ -4,7 +4,7 @@
 // in a fixed order, so the same filters always give the same text. Unknown or malformed values
 // fall back to their default instead of failing.
 
-import type { ModelFamily, SessionFilter, SessionSort } from "../../../lib/ipc/bindings";
+import type { ModelFamily, SessionFilter, SessionSort, TimeRange } from "../../../lib/ipc/bindings";
 
 export type RangePreset = "today" | "7d" | "30d" | "all" | "custom";
 
@@ -37,9 +37,10 @@ export const DEFAULT_QUERY: SessionQuery = {
   sort: "last_active",
 };
 
+const DAY_MS = 86_400_000;
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 
-function day(s: string | null): string | null {
+export function day(s: string | null): string | null {
   if (s == null || !DAY_RE.test(s)) return null;
   const d = localDay(s);
   return d && formatDay(d) === s ? s : null;
@@ -58,23 +59,16 @@ export function formatDay(d: Date): string {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 
-function oneOf<T extends string>(value: string | null, allowed: readonly T[]): T | null {
+export function oneOf<T extends string>(value: string | null, allowed: readonly T[]): T | null {
   return value != null && (allowed as readonly string[]).includes(value) ? (value as T) : null;
 }
 
 /** The fragment's query text (without `?`) → filters; anything unreadable is the default. */
 export function parseQuery(text: string): SessionQuery {
   const p = new URLSearchParams(text);
-  const range = oneOf(p.get("range"), RANGE_PRESETS) ?? DEFAULT_QUERY.range;
-  const from = range === "custom" ? day(p.get("from")) : null;
-  const to = range === "custom" ? day(p.get("to")) : null;
   const project = Number(p.get("project"));
-  // Both days, earlier first (ISO days compare as text); a custom range needs both.
-  const days = from != null && to != null ? [from, to].sort() : null;
   return {
-    range: range === "custom" && days == null ? DEFAULT_QUERY.range : range,
-    from: days?.[0] ?? null,
-    to: days?.[1] ?? null,
+    ...parseRange(p, DEFAULT_QUERY.range),
     project: Number.isSafeInteger(project) && project > 0 ? project : null,
     family: oneOf(p.get("model"), FAMILIES),
     live: p.get("live") === "1",
@@ -86,59 +80,85 @@ export function parseQuery(text: string): SessionQuery {
 /** Filters → the fragment's query text, defaults left out; `""` for the default list. */
 export function toQuery(f: SessionQuery): string {
   const p = new URLSearchParams();
-  const custom = f.range === "custom" && f.from != null && f.to != null;
-  if (f.range !== DEFAULT_QUERY.range && (f.range !== "custom" || custom)) p.set("range", f.range);
-  if (custom && f.from && f.to) {
-    p.set("from", f.from);
-    p.set("to", f.to);
-  }
+  writeRange(p, f, DEFAULT_QUERY.range);
   if (f.project != null) p.set("project", String(f.project));
   if (f.family != null) p.set("model", f.family);
   if (f.live) p.set("live", "1");
   if (f.q.trim() !== "") p.set("q", f.q);
   if (f.sort !== DEFAULT_QUERY.sort) p.set("sort", f.sort);
-  // URLSearchParams writes spaces as `+`; `%20` reads the same and survives copy and paste.
+  return queryText(p);
+}
+
+/** URLSearchParams writes spaces as `+`; `%20` reads the same and survives copy and paste. */
+export function queryText(p: URLSearchParams): string {
   return p.toString().replace(/\+/g, "%20");
 }
 
-const DAY_MS = 86_400_000;
+/** A range preset and its custom days, as the sessions and projects lists keep them. */
+export interface RangeQuery {
+  range: RangePreset;
+  from: string | null;
+  to: string | null;
+}
 
 /**
- * The backend filter for `now`: presets count back from now ("today" from local midnight), a
- * custom range covers its local days whole. `locked` pins the project (a project's detail).
+ * The backend range for `now`: presets count back from now ("today" from local midnight), a
+ * custom range covers its local days whole; `null` for all time.
  */
-export function toFilter(f: SessionQuery, now: Date, locked: number | null = null): SessionFilter {
+export function rangeFilter(f: RangeQuery, now: Date): TimeRange | null {
   const end = now.getTime();
-  let range: SessionFilter["range"] = null;
   switch (f.range) {
     case "today": {
       const start = new Date(now);
       start.setHours(0, 0, 0, 0);
-      range = { from: start.getTime(), to: end };
-      break;
+      return { from: start.getTime(), to: end };
     }
     case "7d":
-      range = { from: end - 7 * DAY_MS, to: end };
-      break;
+      return { from: end - 7 * DAY_MS, to: end };
     case "30d":
-      range = { from: end - 30 * DAY_MS, to: end };
-      break;
+      return { from: end - 30 * DAY_MS, to: end };
     case "custom": {
       const from = f.from ? localDay(f.from) : null;
       const to = f.to ? localDay(f.to) : null;
-      if (from && to) {
-        // The day after `to`, at local midnight (`setDate` keeps it across DST changes).
-        to.setDate(to.getDate() + 1);
-        range = { from: from.getTime(), to: to.getTime() };
-      }
-      break;
+      if (!from || !to) return null;
+      // The day after `to`, at local midnight (`setDate` keeps it across DST changes).
+      to.setDate(to.getDate() + 1);
+      return { from: from.getTime(), to: to.getTime() };
     }
     case "all":
-      break;
+      return null;
   }
+}
+
+/** Reads `range`, `from` and `to`; a custom range needs both days, earlier first. */
+export function parseRange(p: URLSearchParams, fallback: RangePreset): RangeQuery {
+  const range = oneOf(p.get("range"), RANGE_PRESETS) ?? fallback;
+  const from = range === "custom" ? day(p.get("from")) : null;
+  const to = range === "custom" ? day(p.get("to")) : null;
+  // ISO days compare as text.
+  const days = from != null && to != null ? [from, to].sort() : null;
+  return {
+    range: range === "custom" && days == null ? fallback : range,
+    from: days?.[0] ?? null,
+    to: days?.[1] ?? null,
+  };
+}
+
+/** Writes `range`, `from` and `to` unless the range is `fallback`. */
+export function writeRange(p: URLSearchParams, f: RangeQuery, fallback: RangePreset) {
+  const custom = f.range === "custom" && f.from != null && f.to != null;
+  if (f.range !== fallback && (f.range !== "custom" || custom)) p.set("range", f.range);
+  if (custom && f.from && f.to) {
+    p.set("from", f.from);
+    p.set("to", f.to);
+  }
+}
+
+/** The backend filter for `now`. `locked` pins the project (a project's detail). */
+export function toFilter(f: SessionQuery, now: Date, locked: number | null = null): SessionFilter {
   const search = f.q.trim();
   return {
-    range,
+    range: rangeFilter(f, now),
     project: locked ?? f.project,
     family: f.family,
     live_only: f.live,

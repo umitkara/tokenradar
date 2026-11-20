@@ -149,8 +149,13 @@ export const commands = {
 	 *  arbitrary path; `Err("missing")` when the folder no longer exists.
 	 */
 	openSessionDir: (id: SessionId, path: string) => typedError<null, string>(__TAURI_INVOKE("open_session_dir", { id, path })),
-	/**  Projects with usage in the filter's range, one keyset page after `cursor`. */
+	/**
+	 *  Projects with usage in the filter's range, one keyset page after `cursor`. With
+	 *  `filter.hide_temp`, the config's temporary-folder patterns leave projects out.
+	 */
 	listProjects: (filter: ProjectFilter, sort: ProjectSort, cursor: string | null, limit: number | null) => typedError<ProjectPage, string>(__TAURI_INVOKE("list_projects", { filter, sort, cursor, limit })),
+	/**  The same projects as a folder tree with totals per folder (Step 16b). */
+	projectTree: (filter: ProjectFilter, sort: ProjectSort) => typedError<ProjectTree, string>(__TAURI_INVOKE("project_tree", { filter, sort })),
 	/**  One project over all time: weekly trend, model mix, most expensive sessions. */
 	getProject: (id: ProjectId) => typedError<ProjectDetail | null, string>(__TAURI_INVOKE("get_project", { id })),
 	/**
@@ -460,6 +465,12 @@ export type DataConfig = {
 	raw_retention_days?: number,
 	/**  Look for a new release on GitHub (Step 12). */
 	update_check?: boolean,
+	/**
+	 *  Folder patterns of throwaway projects, hidden from the projects page by default (Step
+	 *  16b): a path part matched anywhere, `*` for any text, `%NAME%` for an environment
+	 *  variable, case-insensitive. See [`crate::queries::temp_like_patterns`].
+	 */
+	temp_dirs?: string[],
 };
 
 export type DataSourcesView = {
@@ -1133,6 +1144,8 @@ export type PrefsView = {
 	statusline: StatuslinePrefs,
 	/**  The compact strip (`[widget]`, Step 18). */
 	widget: WidgetPrefs,
+	/**  What "Restore defaults" puts back in `data.temp_dirs` (Step 16b). */
+	default_temp_dirs: string[],
 };
 
 export type Preset = 
@@ -1161,14 +1174,45 @@ export type ProjectFilter = {
 	range: TimeRange | null,
 	/**  Matches the name and parts of the path. */
 	search: string | null,
+	/**  Leave out projects in temporary folders (the `temp` patterns of the call). */
+	hide_temp?: boolean,
 };
 
 /**  Row id in `projects`. */
 export type ProjectId = number;
 
+/**
+ *  A folder or project of [`ProjectTree`]. A folder with one child and no project of its own
+ *  is merged with that child (`D:\Projects\Tools`), so every level branches.
+ */
+export type ProjectNode = {
+	/**  0 at the top. */
+	depth: number,
+	/**  What this node adds to its parent's path (`Tools\aktif`, or the project's name). */
+	label: string,
+	/**  The full path up to here. */
+	path: string,
+	/**  The project at exactly this path, with its own totals. */
+	project: ProjectRow | null,
+	/**  Totals of this node and everything under it. */
+	projects: number,
+	sessions: number,
+	last_active: Timestamp | null,
+	cost: MicroUsd,
+	weekly_percent: number | null,
+	trend: MicroUsd[],
+	/**  Nodes directly under this one; they follow it in [`ProjectTree::nodes`]. */
+	children: number,
+};
+
 export type ProjectPage = {
 	items: ProjectRow[],
 	next: string | null,
+	/**
+	 *  On the first page of a list that hides temporary folders: how many projects with usage
+	 *  in the range it hides.
+	 */
+	hidden: number | null,
 };
 
 /**  A project as rows refer to it. */
@@ -1180,7 +1224,10 @@ export type ProjectRef = {
 export type ProjectRow = {
 	id: ProjectId,
 	name: string,
-	/**  Normalized path; `unresolved:<dir>` when the cwd is unknown. */
+	/**
+	 *  The path as recorded (schema v5), otherwise the normalized one; `unresolved:<dir>` when
+	 *  the cwd is unknown.
+	 */
 	path: string,
 	/**  Main sessions with usage in the range. */
 	sessions: number,
@@ -1193,6 +1240,13 @@ export type ProjectRow = {
 };
 
 export type ProjectSort = "last_active" | "cost" | "impact" | "sessions";
+
+export type ProjectTree = {
+	/**  Depth first, each level in `sort` order, descending. */
+	nodes: ProjectNode[],
+	/**  As in [`ProjectPage::hidden`]. */
+	hidden: number | null,
+};
 
 /**  One weekly window of a project. */
 export type ProjectWeek = {

@@ -668,3 +668,14 @@ plan-save = Save
 plan-reset = Use the list price
 plan-invalid = Enter an amount above 0 with at most two decimals.
 plan-saved = Saved.
+
+## Temporary folders (Step 16b)
+
+temp-dirs = Temporary folders
+temp-dirs-hint = Projects in these folders are hidden on the projects page and in the sessions list's project picker; their sessions and costs still count everywhere. A pattern matches any part of the path and ignores case: * stands for any text, %TEMP% for an environment variable.
+temp-dirs-none = No patterns: every project is shown.
+temp-dirs-new = New pattern
+temp-dirs-placeholder = For example \scratch\ or %TEMP%
+temp-dirs-add = Add
+temp-dirs-remove = Remove { $pattern }
+temp-dirs-reset = Restore defaults

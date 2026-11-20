@@ -647,3 +647,14 @@ plan-save = Kaydet
 plan-reset = Liste fiyatına dön
 plan-invalid = { TR_SUFFIX(0, "abl") } büyük, en fazla iki ondalıklı bir tutar girin.
 plan-saved = Kaydedildi.
+
+## Geçici dizinler (Adım 16b)
+
+temp-dirs = Geçici dizinler
+temp-dirs-hint = Bu klasörlerdeki projeler Projeler sayfasında ve Oturumlar listesinin proje seçicisinde gizlenir; oturumları ve maliyetleri her yerde sayılmaya devam eder. Desen yolun herhangi bir parçasıyla eşleşir, büyük/küçük harfe bakmaz: * herhangi bir metin, %TEMP% bir ortam değişkeni yerine geçer.
+temp-dirs-none = Desen yok: tüm projeler gösterilir.
+temp-dirs-new = Yeni desen
+temp-dirs-placeholder = Örneğin \scratch\ ya da %TEMP%
+temp-dirs-add = Ekle
+temp-dirs-remove = { $pattern } desenini kaldır
+temp-dirs-reset = Varsayılanlara dön
