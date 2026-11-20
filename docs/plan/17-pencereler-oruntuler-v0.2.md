@@ -34,6 +34,14 @@ Gerçek veride (salt okunur sayım) hiç 5 saatlik pencere yok (ADR-041): yalnı
 
 **Adım sonunda onaylananlar (ADR-070, 2026-11-21):** Devir notundaki sekiz öneri kullanıcı tarafından onaylandı.
 
+## 17b öncesi kararlar (2026-11-21)
+
+**Kullanıcıyla kararlaştırılanlar:**
+- **Özet haftası:** Son yenilenen limit haftası özetlenir. Varsayılan gönderim haftalık reset'ten 1 saat sonradır; ayarlardan gün ve saat seçilebilir, o durumda da son yenilenen limit haftası özetlenir.
+- **Kaçan özet:** Uygulama gönderim anında kapalıysa, açıldığında bir kez gönderilir; vadesinin üzerinden 48 saat geçtiyse atlanır. Sessiz saatlerde bekletilir.
+- **İçerik:** 5 saatlik pencere varsa "N pencere limite takıldı"; yoksa satır haftalık limitin durumunu söyler ("takılmadı" / "Çar 14:20'de takıldı"), kapsamlı limitler (Fable) aynı satırdadır. Diğer satırlar: tepe %, API karşılığı maliyet, en çok etkileyen proje, önceki haftaya göre fark.
+- **Sürüm kapsamı:** Bu oturumda hazırlık ve yerel kurulum: sürüm 0.2.0'a yükselir, CHANGELOG, README ve performans raporu yazılır, yerel build kurulur. Tag, push ve release komutları kullanıcıya verilir; ne zaman çalıştırılacağına kullanıcı karar verir.
+
 ## Kapsam
 
 - **Pencereler ekranı:**

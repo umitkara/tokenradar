@@ -1719,3 +1719,37 @@
   - Takvim günleri: sıfırlama saatine göre ilk ve son gün kısmi kalır, yedi gün eşit karşılaştırılamaz.
   - Gün değerlerini tepeye ölçeklemek: "Diğer"in gün dağılımı bilinmediği için uydurma olurdu.
   - Beş oturumlu katkı grafiği: beşinci renk doğrulanmış paletin dışında kalırdı.
+
+### ADR-071 — Dönemsel özet: limit haftası, reset'ten bir saat sonra, kaçanı iki gün içinde bir kez
+
+**Durum:** Önerildi (2026-11-21, Adım 17b). "(kullanıcı kararı)" işaretli maddeler adımın başında kullanıcıyla kararlaştırıldı; diğerleri öneridir ve kullanıcı onayı bekler.
+
+- **Bağlam:**
+  - Plan haftalık özeti "haftalık reset anından 1 saat sonra veya kullanıcının seçtiği gün ve saatte" diye tarif ediyordu. Hangi haftanın özetlendiği ve uygulama kapalıyken ne olacağı açık değildi.
+  - Kullanıcının hesabında 5 saatlik pencere yok (ADR-041). Plandaki "limite takılan pencere sayısı" bu hesapta hep sıfır olurdu.
+  - Toast tıklaması şimdiye kadar hep paneli açıyordu (ADR-040). Plan özetin Genel Bakış'ı açmasını istiyor.
+- **Karar:**
+  - **Özet limit haftasını kapsar (kullanıcı kararı).** Son yenilenen `weekly_all` penceresi özetlenir, takvim haftası değil.
+    - Varsayılan gönderim reset'ten bir saat sonradır.
+    - Ayarlardan gün ve saat seçilebilir. O zaman özet, reset'ten sonraki ilk o gün ve saatte gelir; kapsadığı hafta yine son yenilenen limit haftasıdır.
+  - **Kaçan özet iki gün içinde geç gelir (kullanıcı kararı).** Uygulama gönderim anında kapalıysa (ya da bilgisayar uykudaysa), açıldığında özet bir kez gönderilir; vadesinin üzerinden 48 saat geçtiyse atlanır. Günlük özet bir sonrakinin vadesine kadar (24 saat) gönderilebilir.
+  - **İçerik (kullanıcı kararı):** Başlık geçen haftanın tepe değeridir. Gövde en çok üç satırdır:
+    1. Limite takılma: 5 saatlik pencere varsa "N pencereden M tanesi limite takıldı"; her zaman haftalık limitin durumu ("takılmadı" ya da "Çar 14:20'de takıldı"); kapsamlı limitler (Fable) tepe değeriyle ya da "doldu" olarak. Tahmini haftada takılma "bilinmiyor"dur.
+    2. API karşılığı maliyet ve en çok etkileyen proje (saklanan atıftan).
+    3. Önceki haftaya göre fark: tepe puan farkı ve maliyetin yüzde değişimi.
+  - **Günlük özet** varsayılan olarak kapalıdır. Dünü (yerel gün) özetler: haftalık limitten `≈` puan (güvenilir kalibrasyon varsa; yoksa maliyet başlıkta), maliyet, oturum sayısı ve en çok kullanılan proje. Varsayılan saat 09:00.
+  - **Bir kez:** Gönderilen özet `notification_log`'a `digest:<weekly|daily>:-:<dönem sonu>:-` anahtarıyla yazılır. Yeniden başlatma onu tekrar göstermez. Bellekte bu kayıtlar gönderim zamanına göre 10 gün tutulur; seçilmiş bir gün reset'ten bir hafta sonra olabildiği için diğer kuralların 8 günlük penceresi yetmez.
+  - **Sessiz saatler ve susturma:** Vadesi gelen özet bunlar bitene kadar bekler, sonra gönderilir. O ana kadar gecikme sınırı geçtiyse atlanır.
+  - **Atıf beklemesi:** Kapanan pencerenin atfı henüz yoksa özet 15 dakikada bir yeniden denenir, vadeden en çok 2 saat sonrasına kadar. Sonra proje satırı olmadan gider.
+  - **Boş dönem:** Hiç kullanım ve sıfırdan büyük okuma yoksa özet kaydedilir ama gösterilmez.
+  - **Tıklama Genel Bakış'ı açar:** `Notice` bir hedef taşır (`panel` ya da `overview`). Windows toast'ı `tokenradar://main/overview` ile protokol etkinleştirmesi yapar. Diğer platformlarda eklenti tıklaması şimdilik paneli açar (Adım 21).
+  - **Ayarlar:** Bildirimler sekmesinde "Haftalık özet" ve "Günlük özet" kartları. "Geçen haftanın özetini şimdi göster" düğmesi özeti zamanlanmış hâliyle hemen gösterir; kaydetmez, zamanlanmış özet yine gelir.
+  - **Hesap:** Birincil hesap (ana pencerenin hesabı). Çoklu hesap Adım 19'dadır.
+  - **Uyanma:** Çekirdeğin limit iş parçacığı bir sonraki vadeye kadar uyur. Açık bir haftalık pencere yoksa 6 saatte bir ya da bir reset olayıyla yeniden bakar. Boşta ek iş, günde en çok birkaç kısa sorgudur.
+- **Bedel:**
+  - Özet bir pencere kapandıktan sonra gelir; takvim haftasıyla düşünen kullanıcı için reset günü alışılmadık olabilir.
+  - Kaçan özetin 48 saat sınırı keyfidir: daha uzun kapalı kalan kullanıcı o haftanın özetini hiç görmez.
+- **Alternatifler:**
+  - Takvim haftası: tepe değer iki limit penceresine bölünür, "limite takıldı mı" sorusu anlamını yitirir.
+  - Kaçan özeti hiç göndermemek ya da her zaman göndermek: biri bilgiyi kaybettirir, diğeri bir hafta sonra bayat özet gösterir.
+  - 5 saatlik pencere yoksa takılma satırını tamamen atlamak: haftalık limitin dolup dolmadığı en önemli bilgi olduğu için seçilmedi.

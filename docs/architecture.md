@@ -134,7 +134,7 @@ Sürümler uygulama anında güncel stable olarak seçilir ve lock dosyalarıyla
 | `StatuslineIngest` | IPC'den ve spool dosyalarından gelen S1 verisini işler. `core-ipc` thread'i push'ları `core-limits`'e iletir; `core-limits` spool'u açılışta ve 5 dakikada bir içe aktarır (ADR-029). |
 | `Calibrator` (v0.2) | %/maliyet katsayısı k'yı tahmin eder, güven skorunu ve sapmayı (drift) izler. |
 | `Attributor` (v0.2) | Δ%'yi oturumlara dağıtır, "Diğer" kovasını yönetir. |
-| `Notifier` | Eşik, projeksiyon ve reset kurallarını uygular. Histerezis ve tekilleştirme yapar, sessiz saatlere uyar. |
+| `Notifier` | Eşik, projeksiyon ve reset kurallarını uygular. Histerezis ve tekilleştirme yapar, sessiz saatlere uyar. Dönemsel özetleri (haftalık: son yenilenen limit haftası, reset+1 sa ya da seçilen gün ve saat; günlük: dün) zamanlar ve bir kez gönderir; kaçan özet 48 saat içinde geç gelir (ADR-071). |
 | `IpcServer` | CLI ve statusline protokolünü sunar (§11). |
 | `EventBus` | `tokio::sync::broadcast<CoreEvent>` (kapasite 256, runtime gerektirmez). Geride kalan alıcı `Resync` alır ve tam durumu `CoreHandle::status()` ile yeniden yükler. Tauri katmanı olayları yalnızca açık pencerelere iletir. |
 | `CoreRuntime` | Bileşenleri adlandırılmış `std::thread`'lerde başlatır (`core-watch`, `core-index-<hesap>`, `retention`, `store-writer`) ve `shutdown(timeout)` ile durdurur (ADR-027). |
