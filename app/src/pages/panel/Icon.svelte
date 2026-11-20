@@ -1,6 +1,6 @@
 <!-- The panel's 16 px line icons. Decorative: the button or text next to them carries the meaning. -->
 <script lang="ts">
-type Name = "gear" | "refresh" | "bell" | "bell-off" | "cloud-off" | "info" | "folder";
+type Name = "gear" | "refresh" | "bell" | "bell-off" | "cloud-off" | "info" | "folder" | "window";
 
 let { name }: { name: Name } = $props();
 </script>
@@ -39,6 +39,10 @@ let { name }: { name: Name } = $props();
     <path d="M8 7.2v3.6M8 5h0" />
   {:else if name === "folder"}
     <path d="M2 4.5h4l1.5 1.5H14v6.5H2Z" />
+  {:else if name === "window"}
+    <!-- A window with a sidebar: the main window. -->
+    <rect x="2" y="3" width="12" height="10" rx="1.5" />
+    <path d="M6 3v10" />
   {/if}
 </svg>
 

@@ -175,7 +175,10 @@ $effect(() => {
       {#if active > 0}
         <span class="active"><span class="live" aria-hidden="true"></span>{t("panel-active", { count: active })}</span>
       {/if}
-      <span class="tip-end">
+      <span class="tip-end header-actions">
+        <IconButton label={t("panel-open-main")} placement="below" onclick={() => void commands.openMain(null)}>
+          <Icon name="window" />
+        </IconButton>
         <IconButton
           label={t("panel-open-settings")}
           placement="below"
@@ -315,6 +318,10 @@ $effect(() => {
     align-items: center;
     gap: var(--space-2);
     min-height: 28px;
+  }
+  .header-actions {
+    display: flex;
+    gap: 2px;
   }
   .brand {
     flex: 1;

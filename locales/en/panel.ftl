@@ -4,6 +4,8 @@ panel-live-sessions = Running sessions
 panel-top-sessions = Largest this window
 panel-no-live-sessions = No session is running right now.
 panel-open-settings = Settings
+# Opens the main window: history, sessions and projects.
+panel-open-main = Open TokenRadar
 panel-close = Close
 # Running Claude Code sessions, in the header.
 panel-active = { $count } active

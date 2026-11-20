@@ -47,6 +47,7 @@ export default defineConfig(({ mode }) => ({
         panel: resolve(root, "panel.html"),
         settings: resolve(root, "settings.html"),
         onboarding: resolve(root, "onboarding.html"),
+        main: resolve(root, "main.html"),
         // The component gallery ships only in development builds (`vite build --mode development`).
         ...(mode === "production" ? {} : { gallery: resolve(root, "gallery.html") }),
       },

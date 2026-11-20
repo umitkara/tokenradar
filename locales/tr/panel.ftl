@@ -4,6 +4,8 @@ panel-live-sessions = Çalışan oturumlar
 panel-top-sessions = Bu pencerede en çok
 panel-no-live-sessions = Şu an aktif oturum yok.
 panel-open-settings = Ayarlar
+# Ana pencereyi açar: geçmiş, oturumlar ve projeler.
+panel-open-main = TokenRadar'ı aç
 panel-close = Kapat
 # Üst bilgideki çalışan Claude Code oturumları.
 panel-active = { $count } aktif

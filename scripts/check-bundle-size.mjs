@@ -15,6 +15,9 @@ const manifestPath = join(dist, ".vite/manifest.json");
 /** Gzip budgets in bytes, per entry. */
 const BUDGETS = {
   "panel.html": { js: 60 * 1024, css: 15 * 1024 },
+  // The main window: 180 KB JS including uPlot. Its pages load on demand; the check counts the
+  // entry with every page chunk it can import (worst case: all pages visited).
+  "main.html": { js: 180 * 1024, dynamic: true },
 };
 
 if (!existsSync(manifestPath)) {
@@ -23,10 +26,13 @@ if (!existsSync(manifestPath)) {
 }
 const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
 
-function collect(key, seen = new Set()) {
+/** Static imports; with `dynamic`, also the chunks `import()` can load (lazy pages). */
+function collect(key, dynamic, seen = new Set()) {
   if (seen.has(key)) return seen;
   seen.add(key);
-  for (const dep of manifest[key]?.imports ?? []) collect(dep, seen);
+  const chunk = manifest[key];
+  const deps = [...(chunk?.imports ?? []), ...(dynamic ? (chunk?.dynamicImports ?? []) : [])];
+  for (const dep of deps) collect(dep, dynamic, seen);
   return seen;
 }
 
@@ -42,7 +48,7 @@ for (const [entry, budget] of Object.entries(BUDGETS)) {
     continue;
   }
   const files = { js: new Set(), css: new Set(), other: new Set() };
-  for (const key of collect(entry)) {
+  for (const key of collect(entry, budget.dynamic === true)) {
     const chunk = manifest[key];
     if (chunk.file.endsWith(".js")) files.js.add(chunk.file);
     for (const css of chunk.css ?? []) files.css.add(css);
@@ -55,11 +61,13 @@ for (const [entry, budget] of Object.entries(BUDGETS)) {
     (sum, f) => sum + readFileSync(join(dist, f)).length,
     0,
   );
-  const ok = js <= budget.js && css <= budget.css;
+  // Entries without a CSS budget report their CSS only (performance-budget.md has none).
+  const ok = js <= budget.js && (budget.css === undefined || css <= budget.css);
   failed ||= !ok;
   console.log(
     `${ok ? "ok  " : "FAIL"} ${entry}: JS ${kb(js)} / ${kb(budget.js)}, ` +
-      `CSS ${kb(css)} / ${kb(budget.css)} (gzip); other assets ${kb(assets)} raw`,
+      `CSS ${kb(css)}${budget.css === undefined ? "" : ` / ${kb(budget.css)}`} (gzip); ` +
+      `other assets ${kb(assets)} raw`,
   );
 }
 
