@@ -10,7 +10,7 @@ members = [
 exclude = ["vendor"]
 
 [workspace.package]
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 rust-version = "1.99"
 license = "MIT"
@@ -54,16 +54,48 @@ debug = "line-tables-only"
 [profile.dev.package."*"]
 debug = false
 
+# Built for size, except the budgeted hot paths (indexer, queries, limit engine, SQLite, JSON
+# parsing), which stay at full speed. At `opt-level = 3` throughout the app reached 16.05 MiB
+# against its 15 MB budget (Step 17b, ADR-072).
 [profile.release]
-opt-level = 3
+opt-level = "s"
 lto = "fat"
 codegen-units = 1
 strip = true
 panic = "abort"
-# Step 02 measures size vs. speed; `opt-level = "s"` is the alternative to evaluate.
+
+[profile.release.package.tokenradar-core]
+opt-level = 3
+
+[profile.release.package.rusqlite]
+opt-level = 3
+
+[profile.release.package.libsqlite3-sys]
+opt-level = 3
+
+[profile.release.package.serde_json]
+opt-level = 3
+
+[profile.release.package.memchr]
+opt-level = 3
 
 # The CLI is size-bound (≤ 3 MB) and its hot path is short (statusline p95 < 30 ms), so it is
 # built for size: `cargo build --profile release-cli -p tokenradar-cli` (Step 11b).
 [profile.release-cli]
 inherits = "release"
+opt-level = "s"
+
+[profile.release-cli.package.tokenradar-core]
+opt-level = "s"
+
+[profile.release-cli.package.rusqlite]
+opt-level = "s"
+
+[profile.release-cli.package.libsqlite3-sys]
+opt-level = "s"
+
+[profile.release-cli.package.serde_json]
+opt-level = "s"
+
+[profile.release-cli.package.memchr]
 opt-level = "s"

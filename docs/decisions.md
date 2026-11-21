@@ -1753,3 +1753,23 @@
   - Takvim haftası: tepe değer iki limit penceresine bölünür, "limite takıldı mı" sorusu anlamını yitirir.
   - Kaçan özeti hiç göndermemek ya da her zaman göndermek: biri bilgiyi kaybettirir, diğeri bir hafta sonra bayat özet gösterir.
   - 5 saatlik pencere yoksa takılma satırını tamamen atlamak: haftalık limitin dolup dolmadığı en önemli bilgi olduğu için seçilmedi.
+
+### ADR-072 — Release profili boyuta göre, bütçeli sıcak yollar hıza göre derlenir
+
+**Durum:** Önerildi (2026-11-21, Adım 17b). "(kullanıcı kararı)" işaretli madde kullanıcıyla kararlaştırıldı; diğerleri öneridir ve kullanıcı onayı bekler.
+
+- **Bağlam:**
+  - v0.2.0 derlemesinde `tokenradar-app.exe` 16,05 MiB çıktı. Bütçe ≤ 15 MB'dır (Adım 18: 14,22 MiB).
+  - Yeni bağımlılık yok. Büyüme 13–17. adımların kodundan geliyor: kalibrasyon, atıf, sorgular, dışa aktarma ve IPC komutları. Bu adımlarda ikili boyutu ölçülmemişti.
+  - Deneme derlemeleri: her şey `opt-level = "s"` ile 11,46 MiB; `s` ile ama `tokenradar-core` `3`'te 12,36 MiB.
+- **Karar:**
+  - **Release profili `opt-level = "s"`, `tokenradar-core` `3` (kullanıcı kararı).** Tauri, WebView2 bağları, tray ve widget çizimi gibi kabuk kodu boyuta göre derlenir. İndeksleyici, sorgular ve limit motoru hızda kalır.
+  - Sıcak yolun parçası olan bağımlılıklar da `3`'te kalır: `rusqlite`, `libsqlite3-sys` (SQLite'ın C kodu), `serde_json` ve `memchr`.
+  - `release-cli` profili bu istisnaları yeniden `s`'ye çeker. CLI'nin ikilisi öncekiyle aynı kalır (ADR-034).
+  - Her sürümde ikili boyutu ölçülür ve performans raporuna yazılır.
+- **Bedel:**
+  - Kabuk kodu biraz yavaşlayabilir. Panel ve ana pencere açılışı, sorgu gecikmeleri yeniden ölçüldü (`docs/perf/2026-11-21-v0.2.0.md`).
+  - Paket listesi elle tutulur; yeni bir sıcak yol bağımlılığı eklenirse listeye de eklenmelidir.
+- **Alternatifler:**
+  - Bütçeyi yükseltmek: büyüme sürecek, sorun ertelenir.
+  - Her şeyi `s` ile derlemek: 0,9 MiB daha küçük, ama bütçeli indeksleme ve sorgu yolları yavaşlayabilir (ölçülmedi).
