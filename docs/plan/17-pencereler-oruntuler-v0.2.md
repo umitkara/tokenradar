@@ -107,20 +107,20 @@ Gerçek veride (salt okunur sayım) hiç 5 saatlik pencere yok (ADR-041): yalnı
 
 ### Periyodik özet
 
-- [ ] `Notifier` kuralı: Haftalık özet, haftalık reset anından 1 saat sonra veya kullanıcının seçtiği gün ve saatte gönderilir. İçerik:
+- [x] `Notifier` kuralı: Haftalık özet, haftalık reset anından 1 saat sonra veya kullanıcının seçtiği gün ve saatte gönderilir. İçerik:
   - Geçen haftanın tepe değeri
   - Limite takılan pencere sayısı
   - API karşılığı maliyet
   - En yüksek etkili proje
   - Önceki haftayla karşılaştırma
-- [ ] Günlük özet opsiyoneldir (varsayılan kapalı).
-- [ ] Ayarlara "Özet" bölümü eklenir.
-- [ ] Testler (sahte saat): Zamanlama, yeniden başlatma sonrası tekrar göndermeme, sessiz saatlere uyma.
+- [x] Günlük özet opsiyoneldir (varsayılan kapalı).
+- [x] Ayarlara "Özet" bölümü eklenir.
+- [x] Testler (sahte saat): Zamanlama, yeniden başlatma sonrası tekrar göndermeme, sessiz saatlere uyma.
 
 ### v0.2.0 sürümü
 
-- [ ] Performans: Ana pencerenin tüm ekranları için bellek ve gecikme ölçülür. 1 yıllık sentetik veriyle sorgu ve çizim süreleri raporlanır.
-- [ ] README: v0.2 özellikleri (ekran görüntüleriyle), atıf ve kalibrasyonun nasıl çalıştığına dair kısa ve dürüst bir açıklama ("estimates are labeled").
+- [x] Performans: Ana pencerenin tüm ekranları için bellek ve gecikme ölçülür. 1 yıllık sentetik veriyle sorgu ve çizim süreleri raporlanır.
+- [x] README: v0.2 özellikleri (ekran görüntüleriyle), atıf ve kalibrasyonun nasıl çalıştığına dair kısa ve dürüst bir açıklama ("estimates are labeled").
 - [ ] CHANGELOG ve sürüm numaraları güncellenir. Tag ve release **kullanıcı onayıyla** yapılır (Adım 12 prosedürü).
 
 ## Teknik notlar ve tuzaklar
@@ -215,3 +215,87 @@ pnpm tauri build
 - `list_weeks/year` ≈ 47 ms, sınıra yakın; gerekirse pencere başına sorgular toplu hale getirilir.
 - Bildirim geçmişi 30 günle sınırlı; dönemsel özet aynı `notification_log`'u kullanacaksa saklama süresi düşünülmeli.
 - Tarihler mevcut sayfalardaki gibi `toLocaleDateString` ile yazılıyor; ADR-031'in "Intl kullanılmaz" kuralı yalnızca sayı, süre ve saat biçimlendiricileri için uygulanıyor.
+
+### 17b (2026-11-21)
+
+**Yapılanlar:**
+- Çekirdek:
+  - `notifier/digest.rs`: `Rule::Digest`, haftalık ve günlük dönem (`Slot`), durum (`DigestState`), metin. `NoticeTarget` (panel ya da Genel Bakış).
+  - `notifier/prefs.rs`: `[notifications.digest]` (haftalık açık, reset+1 sa ya da seçilen gün ve saat; günlük kapalı, 09:00).
+  - `queries/digest.rs`: `week_bounds`, `weekly_digest` (tepe, takılma anı, kapsamlı limitler, 5 saatlik pencereler, en çok etkileyen proje, önceki hafta) ve `daily_digest`.
+  - `queries/zone.rs`: `at_local_minute`, `next_local_day_start`, `local_weekday`.
+  - `runtime.rs`: Limit iş parçacığı bir sonraki özet vadesinde uyanır (`check_digests`). Atıf yoksa 15 dakikada bir, en çok 2 saat bekler.
+- Uygulama:
+  - Toast tıklaması `tokenradar://main/overview` ile Genel Bakış'ı açar.
+  - `preview_weekly_digest` komutu.
+  - Bildirimler sekmesinde "Haftalık özet" ve "Günlük özet" kartları. Gün seçicide tam gün adları (`weekdayLongName`).
+- Testler:
+  - Çekirdek: `notifier/digest_tests.rs` (12), `queries/tests/digest.rs` (3), runtime'da yeniden başlatmaya dayanıklılık testi.
+  - Uygulama: özet toast'unun Genel Bakış'ı açması.
+  - Ön yüz: tam gün adları.
+- Sürüm:
+  - 0.2.0 sürüm numarası (`Cargo.toml`, `app/package.json`).
+  - CHANGELOG `[0.2.0]`.
+  - README: ana pencere, özetler, "How the estimates work" ve Pencereler sayfasının sentetik görüntüsü (`docs/img/main-windows-*.png`).
+  - Release profili boyuta göre (ADR-072).
+- Sentetik üretici `--end-now` ve `--config-dir` aldı: uygulama sentetik veritabanını kendi hesabı gibi açabiliyor (README görüntüleri). Benchmark'a iki özet sorgusu eklendi.
+- Belgeler:
+  - ADR-071 ve ADR-072 (Önerildi).
+  - `architecture.md` §5.
+  - `performance-budget.md`.
+  - `docs/perf/2026-11-21-v0.2.0.md`.
+
+**Doğrulama:**
+- `cargo fmt --check` ve `cargo clippy --workspace --all-targets -- -D warnings` temiz. `cargo test --workspace` geçti: core 623, app 105, CLI 29, i18n 16.
+- `pnpm -C app check / lint / test` temiz (242 test). `main.html` JS 124,8 KB, `panel.html` JS 47,6 KB.
+- `pnpm tauri build`: `TokenRadar_0.2.0_x64-setup.exe` 5,65 MiB. `tokenradar-app.exe` 12,91 MiB, CLI 2,60 MiB.
+- Sorgular 1 yıllık sentetik veride p95 ≤ 36,7 ms.
+- Bellek ve gecikme: perf raporu. Planın `-Scenario main-window` parametresi betikte yok; senaryo CDP ile sürüldü.
+- Gerçek veri koşusu: Kullanıcı kurulu uygulamayı kapattı. Release derlemesinin portable kopyası gerçek verinin kopyasıyla açıldı.
+  - Ana pencerenin beş sayfası ölçüldü.
+  - Ayarlardaki özet kartları TR/açık ve EN/koyu çekildi.
+  - "Geçen haftanın özetini şimdi göster" toast'u TR ve EN'de doğru metinle geldi.
+  - Görüntüler incelendikten sonra silindi.
+- 0.2.0 kurulumu kurulu uygulamanın üzerine yapıldı (kullanıcı onayıyla, `/S`). Uygulama şema v2'den v5'e geçti. Kapalıyken biriken 40 statusline okuması içe aktarıldı.
+
+**Sapmalar:**
+- Kullanıcı kararlarıyla: limit haftası, reset + 1 sa, kaçan özet 48 saat içinde, haftalık limite takılma satırı (bkz. "17b öncesi kararlar").
+- Plandaki "limite takılan pencere sayısı", 5 saatlik penceresi olan hesaplarda gösterilir. Diğerlerinde haftalık limitin takılma durumu gösterilir.
+- **İkili boyutu aşıldı ve düzeltildi:** `opt-level = 3` ile 16,05 MiB çıktı. Kullanıcı kararıyla kabuk `s`, çekirdek `3` (ADR-072): 12,91 MiB. Sorgu süreleri değişmedi.
+- **v0.2.0 bilinen bir bütçe aşımıyla hazırlandı (kullanıcı kararı):** Panelin sıcak açılışı 56,2 ms (≤ 50 ms). Eski profille de 53,8 ms, yani neden profil değil.
+
+**Önerilen kararlar (ADR-071 ve ADR-072, kullanıcı onayı bekliyor):**
+1. Özetin anahtarı `digest:<weekly|daily>:-:<dönem sonu>:-`. Gönderilen özetler bellekte 10 gün tutulur.
+2. Günlük özet bir sonrakinin vadesine kadar (24 saat) geç gönderilebilir.
+3. Sessiz saatler ve susturma özeti bekletir. Sonunda gecikme sınırı geçmişse özet atlanır.
+4. Atıf beklemesi: 15 dakikada bir, vadeden en çok 2 saat sonrasına kadar.
+5. Boş dönem kaydedilir ama gösterilmez.
+6. Tıklama Genel Bakış'ı açar. Windows dışında eklenti tıklaması şimdilik paneli açar (Adım 21).
+7. Ayarlar kartları ve "şimdi göster" düğmesi. Düğme hiçbir şey kaydetmez.
+8. Birincil hesap kullanılır. Açık pencere yoksa 6 saatte bir yeniden bakılır.
+9. ADR-072: Sıcak yol bağımlılıkları da `3`'te kalır (`rusqlite`, `libsqlite3-sys`, `serde_json`, `memchr`). CLI profili bunları `s`'ye geri çeker.
+
+**Açık konular:**
+- **Tag ve release kullanıcıda.** Komutlar aşağıdadır. Release yayınlandıktan sonra:
+  - `bucket/tokenradar.json` güncellenmeli.
+  - winget PR'ı açılmalı (CONTRIBUTING, Releasing 3–4).
+- **Panelin sıcak açılışı gerilemesi:** 47,2 ms'ten (7 Kasım) 54–56 ms'e çıktı. 12'den bu yana gelen commit'ler panel ölçümüyle ikiye bölünerek aranmalı.
+- Gerçek bir özetin zamanında bir kez gelmesi henüz gözlenmedi. İlk fırsat Çar 2026-11-25'teki haftalık reset'ten bir saat sonrası. Kabul kriteri buna bağlı.
+- Özet toast'una tıklamanın Genel Bakış'ı açtığı yalnızca birim testiyle sınandı. Portable kopya protokol kaydı olmadığı için tıklamayı yönlendiremez. Kurulu 0.2.0'da elle denenmeli.
+- Ana pencere belleği hızlı bir ilk turda bir kez 183,0 MB'a çıktı (≈ 6 s, bütçe 180). İlk kullanımda tepe 140 MB. Kaynak WebView2'nin renderer/GPU süreçleri; v0.3'te izlenmeli.
+- Oturumlar ve Projeler sayfalarının veriyle boyanması sınıra yakın (en kötü 94,8 ve 91,4 ms).
+- Sentetik görüntülerde görülenler (gerçek hesapta 5 saatlik pencere yok):
+  - Genel Bakış grafiğinde 5 saatlik çizgi, pencereler arasındaki boşlukta 0'a düşmek yerine saatlerce eğimli iniyor (15b'den beri).
+  - CDP `click()` ile rota değişince sayfa başlığında kalın odak halkası görünüyor. Gerçek fare tıklamasında görünüp görünmediği denenmeli.
+- Ayarlar Bildirimler sekmesinde, 5 saatlik penceresi olmayan hesapta da "5 saatlik pencere" eşik satırı görünüyor (ADR-041 öncesinden kalma).
+- 17a'dan: TR CSV'nin Excel'de açılması (kullanıcı).
+
+**Sürüm komutları (kullanıcı çalıştırır):**
+
+```powershell
+git push origin main
+git tag v0.2.0
+git push origin v0.2.0
+# release.yml taslak release oluşturur; kontrol edip yayınla:
+gh release view v0.2.0 --web
+```
