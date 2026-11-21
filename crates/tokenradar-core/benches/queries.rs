@@ -342,6 +342,23 @@ fn cases<'a>(store: &'a Store, ctx: &'a QueryContext<'a>) -> Vec<(&'static str, 
             }),
         ),
         (
+            "weekly_digest",
+            Box::new(move || {
+                let week = queries::week_bounds(store, ctx).expect("q").0.expect("a closed week");
+                black_box(queries::weekly_digest(store, ctx, week).expect("q"));
+            }),
+        ),
+        (
+            "daily_digest",
+            Box::new(move || {
+                let day = queries::local_day_start(ctx.zone, now);
+                let from = Timestamp::from_millis(day.as_millis() - DAY);
+                black_box(
+                    queries::daily_digest(store, ctx, TimeRange::new(from, day)).expect("q"),
+                );
+            }),
+        ),
+        (
             "get_overview",
             Box::new(move || {
                 black_box(

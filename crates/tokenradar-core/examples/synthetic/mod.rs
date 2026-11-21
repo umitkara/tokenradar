@@ -55,6 +55,8 @@ pub struct Params {
     /// ADR-041).
     pub session_windows: bool,
     pub seed: u64,
+    /// The account's Claude folder.
+    pub config_dir: String,
 }
 
 impl Default for Params {
@@ -70,6 +72,7 @@ impl Default for Params {
             raw_retention_days: 90,
             session_windows: true,
             seed: 0x7e57_da7a,
+            config_dir: "C:/synthetic/.claude".into(),
         }
     }
 }
@@ -148,7 +151,7 @@ pub fn generate(path: &Path, p: &Params) -> Summary {
         .upsert_account(AccountSpec {
             provider: Provider::Claude,
             label: "Synthetic".into(),
-            config_dir: "C:/synthetic/.claude".into(),
+            config_dir: p.config_dir.clone(),
             plan: Some("max".into()),
             tier: Some("default_claude_max_20x".into()),
             environment: "native".into(),
