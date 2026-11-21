@@ -6,8 +6,25 @@ All notable changes to TokenRadar are recorded here. The format follows
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-21
+
+Analytics: where your limits went, week by week and session by session. Every derived number is an estimate and is marked `≈`.
+
 ### Added
 
+- **Main window** with five pages: Overview, Windows, Sessions, Projects and Patterns. Open it from the tray menu, the panel or `tokenradar open [page]`; it is created on demand and closed after a short idle time, so it costs no memory while you do not use it.
+- **Overview:** this week's API-equivalent cost against the same point of last week, the model mix, tokens by kind, the sessions and projects that moved your limits most, and what your plan is worth at API prices (with the month's progress and an optional plan fee per account).
+- **Sessions:** every session with its project, models, cost and share of the weekly limit, sortable and filterable, with subagents under their session. The detail shows its folders, effort and fast mode, its usage over time and its share of each window.
+- **Projects:** a list and a folder tree with each project's cost and average weekly share, and a project detail with its weeks and sessions. Temporary folders (configurable in Settings) can be hidden.
+- **Windows:** one row per weekly window with a seven-day strip, the peak, the day it hit the limit, the top three projects and the scoped limits (e.g. Fable). A list of all windows and a drawer with the window's percentage curve, the sessions' contributions over time and the notifications it raised. Accounts with a 5-hour window also get a 5-hour strip.
+- **Patterns:** a weekday × hour heat map (≈ %, cost or tokens), the hour profile on weekdays and weekends, the hours when 5-hour windows hit the limit (with at least ten windows) and the model mix week by week.
+- **Export** of sessions, windows (CSV or JSON) and daily totals (CSV) from each page, with that page's range and filters. CSV files open correctly in Excel in English and Turkish; project paths can be left out.
+- **Weekly summary** notification an hour after the weekly limit resets (or on a day and time you choose): the week's peak, whether a limit filled up, API-equivalent cost, the top project and the change from the week before. If the app was closed, it comes at the next start within two days. An optional daily summary covers yesterday. Clicking a summary opens the overview; Settings → Notifications can show last week's summary at once.
+- **Calibration:** TokenRadar learns how many percent of each limit a dollar of API-equivalent use costs, from the readings it saw, per model family. Estimates when no reading is fresh, the panel's details and `tokenradar doctor` use it, with its confidence.
+- **Attribution:** each weekly (and 5-hour) window is split among the sessions that ran in it; use from elsewhere (claude.ai, the desktop app, another computer) shows as "Other". Weeks before the first reading are estimated from the logs and marked as such.
+- **Desktop widget:** a small native strip with the limits, floating on the desktop or docked on the taskbar, without a web view.
+- Accounts without a 5-hour window (ADR-041) get a single ring in the tray and no empty 5-hour rows anywhere.
+- The projection warns about weekly limits a day ahead, but only when the rate is well established.
 - Statusline v2: an 8-cell bar on the limit windows, scoped weekly limits (e.g. Fable), context window, API-equivalent cost and the model. Choose the segments, their order, one or two lines and the bar in Settings or in `[statusline]` in `config.toml`, with a live preview.
 - Every value on the statusline keeps its source and age: app values older than 10 minutes are dimmed, and the app's estimates are never shown there.
 - Experimental Claude Code mod in `integrations/claude-code/`: a band above the prompt near a limit, a toast when one is crossed (only while the app is closed) and `/radar` for every limit with its source.
@@ -34,13 +51,16 @@ All notable changes to TokenRadar are recorded here. The format follows
 
 ### Changed
 
-- **The database moves to schema v2.** On first start the app reads every transcript once more to pick up past compactions; this takes about as long as the first indexing. Version 0.1.0 cannot open a v2 database: to go back, delete the database and let 0.1.0 index again.
+- **The database moves to schema v5.** On first start the app reads every transcript once more (for compactions, folders, effort and fast mode); this takes about as long as the first indexing. Version 0.1.0 cannot open the new database: to go back, delete the database and let 0.1.0 index again.
+- When the status line and the usage API report whole percentages that disagree by rounding, the higher reading wins, so a limit never looks lower than it is.
+- Sources that report whole percentages get their burn rate from the moments the value steps up, instead of from noisy differences.
 - The statusline leaves the last four columns free, which Claude Code cuts with `…`, and measures glyph widths per terminal cell.
 - The statusline drops the pie glyph; the bar takes its place. Without color (`NO_COLOR`) or in a narrow terminal the bar is left out.
 
 ### Fixed
 
 - The tray panel scrolls when its content is taller than the window; before, many sessions were cut off at the bottom.
+- Stored costs are recomputed when the price table changes, and models without a price are listed in the panel and in `tokenradar doctor` instead of being counted as free.
 
 ## [0.1.0] - 2026-10-30
 
@@ -60,5 +80,6 @@ The first public release: Claude Code's usage limits in the Windows tray.
 - Signed automatic updates from GitHub Releases: a daily check that can be turned off, installed only when you click "Install and restart".
 - English and Turkish UI.
 
-[Unreleased]: https://github.com/umitkara/tokenradar/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/umitkara/tokenradar/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/umitkara/tokenradar/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/umitkara/tokenradar/releases/tag/v0.1.0

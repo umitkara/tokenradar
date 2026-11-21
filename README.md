@@ -2,9 +2,9 @@
 
 > A tiny, tray-first radar for your AI coding agent usage limits.
 
-TokenRadar sits in the Windows tray and shows how much of your **Claude Code** 5-hour and weekly limits you have used, which sessions are running, and when the next limit is likely to hit. It is local only, has no telemetry and never reads your conversations.
+TokenRadar sits in the Windows tray and shows how much of your **Claude Code** 5-hour and weekly limits you have used, which sessions are running, and when the next limit is likely to hit. Its main window shows where your limits went: week by week, session by session and project by project. It is local only, has no telemetry and never reads your conversations.
 
-**Status: v0.1, the first public release.** Windows 10/11 (x64). Codex, macOS and Linux come later (see [Roadmap](#roadmap)).
+**Status: v0.2, analytics.** Windows 10/11 (x64). Codex, macOS and Linux come later (see [Roadmap](#roadmap)).
 
 <p align="center">
   <picture>
@@ -19,13 +19,24 @@ TokenRadar sits in the Windows tray and shows how much of your **Claude Code** 5
 
 - **Live limits in the tray.** A two-ring icon shows the weekly limit (outer ring) and the 5-hour window (inner ring). The tooltip has the exact numbers and reset times.
 - **Tray panel.** One click opens a small panel: both windows with their reset times, a projection of when a limit fills up, running sessions with their projects, and where every number comes from. Its **Details** view adds the pace against the time gone, the weekly time strip, a usage chart and each session's cost.
-- **Notifications.** Thresholds you choose (75 %, 90 % and 100 % by default), a warning when the current pace fills a limit before it resets, a last warning before full, reset announcements and quiet hours.
+- **Main window.** Overview, Windows, Sessions, Projects and Patterns pages: this week against the same point of last week, every weekly window with its peak and top projects, each session's and project's share of your limits, a weekday × hour heat map and the model mix over time. Export to CSV or JSON. The window exists only while you use it.
+- **Notifications.** Thresholds you choose (75 %, 90 % and 100 % by default), a warning when the current pace fills a limit before it resets, a last warning before full, reset announcements and quiet hours. A **weekly summary** an hour after the weekly limit resets (peak, whether a limit filled up, API-equivalent cost, top project, change from the week before), and an optional daily one.
 - **Statusline bridge.** Claude Code's status line hands TokenRadar the exact `rate_limits` it gets from Anthropic, with no extra request (see below).
 - **Usage API, only with consent.** If you allow it, TokenRadar asks `api.anthropic.com` for your limit percentages every few minutes, the same request Claude Code makes.
-- **Honest numbers.** Every value carries its source: statusline, API or estimate. Estimates are marked with `≈`; low-confidence values are dimmed.
+- **Honest numbers.** Every value carries its source: statusline, API or estimate. Estimates are marked with `≈`; low-confidence values are dimmed. See [How the estimates work](#how-the-estimates-work).
+- **Desktop widget.** An optional small strip with the limits, floating or docked on the taskbar.
 - **Small footprint.** About 25 MB of memory while it sits in the tray, no windows kept alive, near-zero idle CPU.
 - **CLI.** `tokenradar status`, `limits`, `sessions` (also as `--json`), `history --json` for the current windows' readings, and `doctor` for a privacy-safe diagnostics bundle.
 - **English and Turkish** UI.
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/img/main-windows-dark.png">
+    <img src="docs/img/main-windows-light.png" width="720" alt="The TokenRadar main window on the Windows page: one row per weekly limit window with a seven-day bar strip, the peak, whether it hit the limit, the top three projects with their estimated share, the Fable limit and Anthropic's breakdown">
+  </picture>
+  <br>
+  <sub>The main window's Windows page (synthetic data).</sub>
+</p>
 
 ## Install
 
@@ -134,6 +145,16 @@ claude --plugin-dir integrations/claude-code
 
 If `tokenradar` is not on your `PATH` there (a portable install, for example), set the **TokenRadar CLI** option to the full path of `tokenradar.exe`. The mod speaks the language TokenRadar is set to; with a CLI older than 0.1.1 it speaks English.
 
+## How the estimates work
+
+Anthropic reports only percentages per limit window, never which session used how much. TokenRadar fills that gap from your local logs, and labels the result as an estimate.
+
+- **Calibration.** Your logs give each request's tokens, which TokenRadar prices at API rates. Comparing that cost with how much the percentage rose over the same time gives a rate: how many percent of a limit one dollar of API-equivalent use costs, per model family. Each rate has a confidence that grows with the readings behind it; low-confidence rates are dimmed or not used.
+- **Attribution.** A window's rise is split day by day among the sessions that ran in it, in proportion to their cost. The part of the rise your logs cannot explain at the calibrated rate (claude.ai, the desktop app, another computer) shows as **Other** instead of being spread over your sessions. Without a trusted rate, the whole rise is shared out by cost and there is no Other.
+- **Weeks without readings** (before you installed TokenRadar, or while it was off) are estimated from the logs alone and marked as such.
+
+So a session's "≈ 6 % of the week" is a careful estimate, not a measurement. The limit percentages themselves come straight from Claude Code or the usage API whenever they are available.
+
 ## Privacy
 
 TokenRadar is local only. There is no account, no telemetry and no analytics.
@@ -175,9 +196,9 @@ Run `tokenradar doctor` (or Settings → Privacy & data → Create diagnostics b
 
 | Version | Focus |
 |---|---|
-| v0.1 | Live limits in the tray, panel, notifications, statusline bridge, CLI, installer and updates |
-| v0.2 | Analytics: calibration, per-session attribution, windows archive, patterns |
-| v0.3 | Mini widget, multiple accounts, WSL |
+| v0.1 ✓ | Live limits in the tray, panel, notifications, statusline bridge, CLI, installer and updates |
+| v0.2 ✓ | Analytics: calibration, per-session attribution, windows archive, patterns, summaries |
+| v0.3 | Multiple accounts, WSL |
 | v0.4 | Codex provider |
 | v0.5 | macOS and Linux |
 
