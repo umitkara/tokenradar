@@ -53,7 +53,7 @@ windows = { version = "0.62", features = [
     "Win32_Graphics_Imaging",
     "Win32_System_Com",
 ] }
-windows-core = "0.62"
+windows-core = "0.100"
 windows-numerics = "0.3"
 # Tray: local time, icon size (DPI), taskbar theme, high contrast and the change watcher window.
 # Panel: monitor work area, taskbar edge and rounded corners.
