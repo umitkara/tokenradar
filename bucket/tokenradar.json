@@ -1,5 +1,5 @@
 {
-    "version": "0.1.0",
+    "version": "0.2.0",
     "description": "Tray radar for the usage limits of AI coding agents (Claude Code). Local only.",
     "homepage": "https://github.com/umitkara/tokenradar",
     "license": "MIT",
@@ -7,8 +7,8 @@
         "TokenRadar runs in portable mode: its data is kept in $persist_dir\\data.",
         "Run 'tokenradar statusline install' to connect Claude Code's status line."
     ],
-    "url": "https://github.com/umitkara/tokenradar/releases/download/v0.1.0/TokenRadar_0.1.0_x64-portable.zip",
-    "hash": "ed066e88c67170542078f4707dd8276062f12366a54052fb6b1ca69f10afb498",
+    "url": "https://github.com/umitkara/tokenradar/releases/download/v0.2.0/TokenRadar_0.2.0_x64-portable.zip",
+    "hash": "5d49d5882a3b6b9a4cbc5fb0ccdb77a00f41d9a76dfb58b5bde8bdc2863594b7",
     "bin": "bin\\tokenradar.exe",
     "shortcuts": [
         [
