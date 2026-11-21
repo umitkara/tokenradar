@@ -8,7 +8,7 @@ import Button from "../../lib/components/Button.svelte";
 import Card from "../../lib/components/Card.svelte";
 import Select from "../../lib/components/Select.svelte";
 import Toggle from "../../lib/components/Toggle.svelte";
-import { weekdayName } from "../../lib/i18n/format";
+import { weekdayLongName } from "../../lib/i18n/format";
 import { locale, t } from "../../lib/i18n/i18n.svelte";
 import {
   commands,
@@ -43,7 +43,7 @@ const whens = $derived<{ value: WeeklyAt; label: string }[]>([
 const days = $derived(
   weekOrder(
     firstWeekday(locale(), typeof navigator === "undefined" ? undefined : navigator.language),
-  ).map((d) => ({ value: d, label: weekdayName(locale(), toJsDay(d)) })),
+  ).map((d) => ({ value: d, label: weekdayLongName(locale(), toJsDay(d)) })),
 );
 
 const finals = $derived(

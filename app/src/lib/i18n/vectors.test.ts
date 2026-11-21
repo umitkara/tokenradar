@@ -5,7 +5,16 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { createBundle, format } from "./fluent";
-import { clock, dur, type Locale, num, parseDurStyle, pct, weekdayClock } from "./format";
+import {
+  clock,
+  dur,
+  type Locale,
+  num,
+  parseDurStyle,
+  pct,
+  weekdayClock,
+  weekdayLongName,
+} from "./format";
 import { parseCase, trSuffix } from "./suffix";
 
 type Vector = Record<string, string | number | boolean>;
@@ -49,6 +58,13 @@ describe("shared i18n vectors", () => {
       expect(got, JSON.stringify(v)).toBe(v.out);
     }
     expect(clock("tr", 9, 5, true)).toBe("09:05");
+  });
+
+  it("full weekday names, Sunday zero", () => {
+    expect(weekdayLongName("tr", 1)).toBe("Pazartesi");
+    expect(weekdayLongName("tr", 3)).toBe("Çarşamba");
+    expect(weekdayLongName("en", 0)).toBe("Sunday");
+    expect(weekdayLongName("en", 7)).toBe("Sunday");
   });
 
   it("TR_SUFFIX", () => {

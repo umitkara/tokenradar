@@ -131,6 +131,16 @@ export function weekdayName(locale: Locale, day: number): string {
   return WEEKDAYS[locale][((day % 7) + 7) % 7] ?? "";
 }
 
+const WEEKDAYS_LONG: Record<Locale, string[]> = {
+  en: ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"],
+  tr: ["Pazar", "Pazartesi", "Salı", "Çarşamba", "Perşembe", "Cuma", "Cumartesi"],
+};
+
+/** The full weekday name (`0` = Sunday), for pickers: TR `Pazartesi`, EN `Monday`. */
+export function weekdayLongName(locale: Locale, day: number): string {
+  return WEEKDAYS_LONG[locale][((day % 7) + 7) % 7] ?? "";
+}
+
 /** Weekday (`0` = Sunday, as `Date#getDay`) and time: TR `Çar 10:59`, EN `Wed 10:59 AM`. */
 export function weekdayClock(
   locale: Locale,
